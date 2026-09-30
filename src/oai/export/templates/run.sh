@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Run the enclave stage of analysis "@@ANALYSIS@@" from this bundle.
-# Needs: python3 >= 3.11, R >= 4.2 with renv (if env/renv.lock exists), sha256sum,
+# Needs: python3 >= 3.11, R >= 4.4 (ideally the lockfile's version) if env/renv.lock exists, sha256sum,
 # and OAI_GENO_DIR pointing at the controlled-access genotype directory.
 set -euo pipefail
 
@@ -23,10 +23,20 @@ python3 -m venv .venv
 if [ -f env/renv.lock ]; then
   echo "==> R packages"
   mkdir -p .rlib
-  if [ -d vendor/r ]; then export RENV_CONFIG_REPOS_OVERRIDE="file://$HERE/vendor/r"; fi
+  export R_LIBS="$HERE/.rlib"
+  export OAI_R_REPOS="https://cloud.r-project.org"
+  if [ -d vendor/r ]; then
+    export OAI_R_REPOS="file://$HERE/vendor/r"
+    export RENV_CONFIG_REPOS_OVERRIDE="$OAI_R_REPOS"
+  fi
+  # Bootstrap renv (from vendor/r when offline), then warn if R differs from the lockfile's.
+  Rscript -e 'if (!requireNamespace("renv", quietly = TRUE)) install.packages("renv", repos = Sys.getenv("OAI_R_REPOS"), lib = ".rlib")'
+  Rscript -e 'want <- renv::lockfile_read("env/renv.lock")$R$Version
+    have <- paste(R.version$major, R.version$minor, sep = ".")
+    if (!identical(package_version(have)[, 1:2], package_version(want)[, 1:2]))
+      warning(sprintf("R %s here but the lockfile was built with R %s; some packages may need compiling", have, want), call. = FALSE)'
   Rscript -e 'renv::restore(project = ".", lockfile = "env/renv.lock", library = ".rlib", prompt = FALSE)'
   R CMD INSTALL --no-test-load --library=.rlib code/oaimodels_*.tar.gz
-  export R_LIBS="$HERE/.rlib"
 fi
 
 export OAI_CONFIG="$HERE/config/oai.toml"

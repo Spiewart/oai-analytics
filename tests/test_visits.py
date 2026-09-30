@@ -102,3 +102,11 @@ def test_unverified_visit_needs_visdys():
 def test_unverified_visit_with_visdys_is_fine():
     long = pl.DataFrame({"ID": [1000001], "visit": ["V13"], "VISDYS": [4383]})
     assert time_years(long)["time_years"].to_list() == pytest.approx([4383 / 365.25])
+
+
+def test_to_long_unifies_stem_case_across_visits():
+    # M1: the release spells V01visdys in lowercase but V03VISDYS in uppercase.
+    wide = pl.DataFrame({"ID": [1000001], "V01visdys": [370], "V03VISDYS": [740]})
+    long = to_long(wide)
+    assert long.columns == ["ID", "visit", "VISDYS"]
+    assert time_years(long)["time_source"].to_list() == ["visdys", "visdys"]

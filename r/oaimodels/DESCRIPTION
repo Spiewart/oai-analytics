@@ -7,7 +7,7 @@ Description: Loads analysis frames written by the Python side and wraps the
     mixed, cumulative-link, GEE and Cox models specified in the OAI analysis plan.
 License: MIT + file LICENSE
 Encoding: UTF-8
-Depends: R (>= 4.2)
+Depends: R (>= 4.4)
 Imports: nanoparquet
 Suggests: testthat (>= 3.0.0), lme4, ordinal, geepack, survival
 Config/testthat/edition: 3

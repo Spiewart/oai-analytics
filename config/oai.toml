@@ -10,7 +10,8 @@
 # telephone contacts. V11-V14 exist in this release (extended follow-up) but their
 # nominal months are unconfirmed: check AllClinical13_ReleaseComments_Yr14.pdf and
 # AllClinical14_ReleaseComments_Y16.pdf in OAI_DATA_DIR, then add month/contact and
-# set verified = true. Until then time comes from V##VISDYS (present from V03 on).
+# set verified = true. Until then time comes from V##VISDYS (V01-V14; V01 spells it
+# V01visdys, which to_long() normalizes).
 [visits]
 V00 = { month = 0, contact = "clinic", verified = true }
 V01 = { month = 12, contact = "clinic", verified = true }

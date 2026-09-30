@@ -210,3 +210,27 @@ def test_real_wheel_ships_templates(tmp_path):
         names = zf.namelist()
     assert "oai/export/templates/run.sh" in names
     assert "oai/export/templates/README_ENCLAVE.md" in names
+
+
+# --- Final-review fixes (I7) ----------------------------------------------------
+
+
+def test_run_script_bootstraps_renv_and_checks_r_version(toy, settings, tmp_path):
+    result = export_analysis(toy, settings, builders=fake_builders([]), now=NOW)
+    text = (_extract(result.path, tmp_path / "x") / "run.sh").read_text()
+    assert 'requireNamespace("renv"' in text
+    assert "lockfile_read" in text and "R.version" in text
+
+
+def test_offline_recipe_fetches_exact_locked_versions(toy, settings, tmp_path):
+    result = export_analysis(toy, settings, builders=fake_builders([]), now=NOW)
+    readme = (_extract(result.path, tmp_path / "x") / "README_ENCLAVE.md").read_text()
+    assert "lockfile_read" in readme and '"Archive"' in readme  # exact versions, incl. archived
+    assert "download.packages" not in readme  # would fetch current, not locked, versions
+
+
+def test_documented_r_floor_matches_lockfile_requirements():
+    # MASS 7.3-65 / Matrix 1.7-4 in r/renv.lock need R >= 4.4.
+    assert "R (>= 4.4)" in (REPO / "r" / "oaimodels" / "DESCRIPTION").read_text()
+    assert "R ≥ 4.4" in (REPO / "README.md").read_text()
+    assert "R >= 4.4" in (REPO / "src" / "oai" / "export" / "templates" / "run.sh").read_text()

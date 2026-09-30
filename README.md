@@ -6,7 +6,7 @@ An analysis suite for [Osteoarthritis Initiative](https://nda.nih.gov/oai) (OAI)
 
 ## Setup
 
-Requirements: [uv](https://docs.astral.sh/uv/), git, and R ≥ 4.2 for model steps.
+Requirements: [uv](https://docs.astral.sh/uv/), git, and R ≥ 4.4 for model steps (the lockfile is built with R 4.5.2).
 
 ```bash
 uv sync

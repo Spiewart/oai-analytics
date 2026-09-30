@@ -15,12 +15,28 @@ import polars as pl
 
 from oai.errors import OAIError
 
-ID_COLUMN_NAMES = frozenset({"id", "src_subject_id", "subjid", "subject_id", "sample_id"})
-PARTICIPANT_ID = re.compile(r"\b9\d{6}\b")
+ID_COLUMN_NAMES = frozenset(
+    {
+        "id",
+        "iid",
+        "fid",
+        "src_subject_id",
+        "subjid",
+        "subject_id",
+        "sample_id",
+        "sampid",
+        "dbgap_subject_id",
+        "participant_id",
+    }
+)
+# A 9-prefixed 7-digit run not inside a longer number or a decimal fraction. Catches
+# FID_IID joins and "OAI" prefixes; no lookbehind so polars (Rust regex) can use it too.
+PARTICIPANT_ID = re.compile(r"(?:^|[^\d.])9\d{6}(?:\D|$)")
 COUNT_COLUMN = re.compile(r"^(n|count|n_.+|.+_n|.+_count)$", re.IGNORECASE)
 TABULAR_SEPARATORS = {".csv": ",", ".tsv": "\t"}
 TEXT_SUFFIXES = {".json", ".txt", ".md", ".log"}
 MANUAL_REVIEW_SUFFIXES = {".png", ".pdf", ".svg", ".jpg", ".jpeg", ".html"}
+SCANNED_REVIEW_SUFFIXES = {".svg", ".html"}  # text formats that can embed whole datasets
 
 
 class EgressError(OAIError):
@@ -59,7 +75,11 @@ def small_cell_violations(df: pl.DataFrame, min_cell: int) -> list[str]:
 
 def _frame_problems(df: pl.DataFrame, name: str, *, min_cell: int, ignore: set[str]) -> list[str]:
     problems = []
-    for col in df.columns:
+    for position, col in enumerate(df.columns):
+        if PARTICIPANT_ID.search(col):
+            problems.append(
+                f"{name}: column name at position {position} looks like a participant ID"
+            )
         if col.lower() in ID_COLUMN_NAMES:
             problems.append(f"{name}: identifier column {col!r}")
         if col in ignore:
@@ -70,6 +90,15 @@ def _frame_problems(df: pl.DataFrame, name: str, *, min_cell: int, ignore: set[s
             problems.append(f"{name}: column {col!r} has {hits} participant-ID-like value(s)")
     problems.extend(f"{name}: {message}" for message in small_cell_violations(df, min_cell))
     return problems
+
+
+def _txt_table_problems(path: Path, rel: str, *, min_cell: int, ignore: set[str]) -> list[str]:
+    """Apply table checks to a .txt that parses as tab-delimited with 2+ columns."""
+    try:
+        df = pl.read_csv(path, separator="\t", infer_schema_length=10_000)
+    except pl.exceptions.PolarsError:
+        return []
+    return _frame_problems(df, rel, min_cell=min_cell, ignore=ignore) if df.width > 1 else []
 
 
 def check_egress(
@@ -94,9 +123,15 @@ def check_egress(
                 report.problems += _frame_problems(
                     pl.read_parquet(path), rel, min_cell=min_cell, ignore=ignore
                 )
-            elif suffix in TEXT_SUFFIXES:
+            elif suffix in TEXT_SUFFIXES or suffix in SCANNED_REVIEW_SUFFIXES:
                 if PARTICIPANT_ID.search(path.read_text(errors="replace")):
                     report.problems.append(f"{rel}: contains participant-ID-like values")
+                if suffix == ".txt":
+                    report.problems += _txt_table_problems(
+                        path, rel, min_cell=min_cell, ignore=ignore
+                    )
+                if suffix in SCANNED_REVIEW_SUFFIXES:
+                    report.manual_review.append(path)
             elif suffix in MANUAL_REVIEW_SUFFIXES:
                 report.manual_review.append(path)
             else:

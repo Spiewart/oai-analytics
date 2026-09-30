@@ -1,4 +1,5 @@
 import polars as pl
+import pytest
 from typer.testing import CliRunner
 
 from oai.cli import app
@@ -77,3 +78,43 @@ def test_cli_exit_codes(tmp_path):
     bad = CliRunner().invoke(app, ["check-egress", str(tmp_path)])
     assert bad.exit_code == 1
     assert "identifier column" in bad.output
+
+
+# --- Final-review fixes (I3) ----------------------------------------------------
+
+
+def test_joined_and_prefixed_ids_fail(tmp_path):
+    pl.DataFrame({"sample": [f"{FAKE_ID}_{FAKE_ID}", f"OAI{FAKE_ID}"]}).write_csv(
+        tmp_path / "s.csv"
+    )
+    report = check_egress(tmp_path, min_cell=11)
+    assert any("participant-ID-like" in p for p in report.problems)
+
+
+def test_ids_as_column_headers_fail(tmp_path):
+    pl.DataFrame({"term": ["x"], str(FAKE_ID): [0.1]}).write_csv(tmp_path / "wide.csv")
+    assert any("column name" in p for p in check_egress(tmp_path, min_cell=11).problems)
+
+
+@pytest.mark.parametrize("name", ["IID", "FID", "dbGaP_Subject_ID", "participant_id"])
+def test_genomics_identifier_column_names_fail(tmp_path, name):
+    pl.DataFrame({name: ["a"], "beta": [0.1]}).write_csv(tmp_path / "t.csv")
+    assert "identifier column" in check_egress(tmp_path, min_cell=11).problems[0]
+
+
+def test_tab_delimited_txt_gets_table_checks(tmp_path):
+    (tmp_path / "t.txt").write_text("IID\tbeta\nabc\t0.1\n")
+    assert any("identifier column" in p for p in check_egress(tmp_path, min_cell=11).problems)
+
+
+def test_html_and_svg_are_scanned_and_reviewed(tmp_path):
+    (tmp_path / "w.html").write_text(f"<script>var d = [{FAKE_ID}];</script>")
+    report = check_egress(tmp_path, min_cell=11)
+    assert not report.ok
+    assert report.manual_review == [tmp_path / "w.html"]
+
+
+def test_decimal_fractions_are_not_ids(tmp_path):
+    digits = "9" + "123456"
+    (tmp_path / "p.csv").write_text(f"term,p\nx,1.{digits}e-05\ny,0.{digits}\n")
+    assert check_egress(tmp_path, min_cell=11).ok

@@ -76,8 +76,9 @@ def nominal_month(code: str | int, *, visit_map: Mapping[str, Visit] | None = No
 def to_long(df: pl.DataFrame, id_cols: Sequence[str] = ("ID",)) -> pl.DataFrame:
     """Melt V##<STEM> columns into rows keyed on id_cols + visit.
 
-    Columns that are neither id columns nor V##-prefixed (e.g. P01BMI, READPRJ) are
-    dropped; join person-level fields separately.
+    Stems are upper-cased so visits that spell a variable differently (V01visdys vs
+    V03VISDYS) share one column. Columns that are neither id columns nor V##-prefixed
+    (e.g. P01BMI, READPRJ) are dropped; join person-level fields separately.
     """
     missing = [c for c in id_cols if c not in df.columns]
     if missing:
@@ -86,7 +87,8 @@ def to_long(df: pl.DataFrame, id_cols: Sequence[str] = ("ID",)) -> pl.DataFrame:
     for col in df.columns:
         match = VISIT_COLUMN.match(col)
         if match and col not in id_cols:
-            by_visit.setdefault(f"V{match[1]}", {})[col] = match[2]
+            # Stems are upper-cased: the release mixes V01visdys with V03VISDYS.
+            by_visit.setdefault(f"V{match[1]}", {})[col] = match[2].upper()
     if not by_visit:
         raise ValueError("No V##-prefixed columns found")
     parts = [

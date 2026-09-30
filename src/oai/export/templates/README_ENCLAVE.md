@@ -28,14 +28,23 @@ If the enclave has no internet access, populate `vendor/` on a connected Linux x
 # Python wheels
 pip download -r env/requirements.txt --platform manylinux2014_x86_64 \
   --python-version 3.11 --only-binary=:all: -d vendor/wheels
-# R sources as a local CRAN-like repo (renv honors RENV_CONFIG_REPOS_OVERRIDE)
-Rscript -e 'pkgs <- c("renv", names(renv::lockfile_read("env/renv.lock")$Packages));
-  dir.create("vendor/r/src/contrib", recursive = TRUE);
-  download.packages(pkgs, destdir = "vendor/r/src/contrib", type = "source",
-                    repos = "https://cloud.r-project.org");
-  tools::write_PACKAGES("vendor/r/src/contrib", type = "source")'
+# R sources at the EXACT lockfile versions (current or CRAN Archive/), as a local
+# CRAN-like repo; run.sh points renv at it via RENV_CONFIG_REPOS_OVERRIDE.
+Rscript -e 'lock <- renv::lockfile_read("env/renv.lock")
+  dir <- "vendor/r/src/contrib"; dir.create(dir, recursive = TRUE)
+  cran <- "https://cloud.r-project.org/src/contrib"
+  for (p in lock$Packages) {
+    f <- sprintf("%s_%s.tar.gz", p$Package, p$Version)
+    for (u in c(file.path(cran, f), file.path(cran, "Archive", p$Package, f)))
+      if (!inherits(try(download.file(u, file.path(dir, f), quiet = TRUE), silent = TRUE), "try-error")) break
+    if (!file.exists(file.path(dir, f))) stop("could not download ", f)
+  }
+  tools::write_PACKAGES(dir, type = "source")'
 ```
-`SHA256SUMS` does not need regenerating: it covers only the original bundle files, not `vendor/`.
+`renv` itself is in the lockfile, so `run.sh` can bootstrap it from `vendor/r`. `SHA256SUMS`
+does not need regenerating: it covers only the original bundle files, not `vendor/`.
+Offline restores compile from source, so the enclave needs R build tools; R should
+match the lockfile's version (run.sh warns when it does not).
 
 ## Containers (alternative)
 
