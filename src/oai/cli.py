@@ -15,6 +15,7 @@ from oai.config import get_settings
 from oai.errors import OAIError
 from oai.export.bundle import export_analysis
 from oai.export.egress import EgressError, check_egress
+from oai.loader import missing_summary
 from oai.manifest import find_analysis, list_analyses
 from oai.runner import run_analysis
 
@@ -97,15 +98,18 @@ def check_egress_cmd(
         report = check_egress(
             results_dir,
             min_cell=int(threshold),
+            small_cell=cfg.get("small_cell", "warn"),
             ignore_id_pattern_columns=cfg.get("ignore_id_pattern_columns", []),
         )
     for problem in report.problems:
         typer.secho(f"FAIL   {problem}", err=True, fg=typer.colors.RED)
+    for warning in report.warnings:
+        typer.secho(f"WARN   {warning}", err=True, fg=typer.colors.YELLOW)
     for path in report.manual_review:
         typer.echo(f"REVIEW {path}")
     typer.echo(
         f"{len(report.checked)} file(s) checked; {len(report.problems)} problem(s); "
-        f"{len(report.manual_review)} need manual review"
+        f"{len(report.warnings)} warning(s); {len(report.manual_review)} need manual review"
     )
     if not report.ok:
         raise typer.Exit(1)
@@ -143,3 +147,26 @@ def export(
         typer.echo(f"Bundle: {result.path}")
         typer.echo(f"Frame: {frame['rows']} rows x {len(frame['columns'])} columns")
         typer.echo(f"Logged to {settings.work_dir / 'export_log.jsonl'}")
+
+
+@app.command()
+def missing(
+    table: Annotated[str, typer.Argument(help="Table name, e.g. allclinical.")],
+    visit: Annotated[str | None, typer.Argument(help="Visit code, e.g. 00 or V06.")] = None,
+    csv: Annotated[Path | None, typer.Option(help="Also write the summary to this CSV.")] = None,
+) -> None:
+    """Show what the missing-value policy did to a table: code, label, count, result."""
+    with user_errors():
+        summary = missing_summary(table, visit)
+    if summary.is_empty():
+        typer.echo("No missing-value codes in this table.")
+    for row in summary.iter_rows(named=True):
+        result = "null" if row["value"] is None else repr(row["value"])
+        reason = f"  reason={row['reason']!r}" if row["reason"] is not None else ""
+        typer.echo(
+            f"{row['column']:<16} {row['code']:<3} {row['n']:>8}  -> {result:<6}{reason}  {row['label']}"
+        )
+    typer.echo(f"\n{summary['n'].sum()} cell(s) across {summary['column'].n_unique()} column(s)")
+    if csv is not None:
+        summary.write_csv(csv)
+        typer.echo(f"Wrote {csv}")

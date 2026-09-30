@@ -54,35 +54,60 @@ class MissingResolution:
 
 
 def resolve_missing(raw: str, *, column: str, table: str) -> MissingResolution:
-    """Decide what a missing-value cell becomes. USER-AUTHORED POLICY.
+    """Decide what a missing-value cell becomes. Current policy: every code -> null.
 
-    `raw` is the whole cell, e.g. ".: Missing Form/Incomplete Workbook", ".A: Not
-    Expected" or ".P: Prosthetic"; `column` and `table` (e.g. "V06XRKL", "kxr_sq_bu_06")
-    allow column-aware rules. Codes seen in the release: "." missing form, .M missing,
-    .A not expected, .N not required, .T technical problems, .F phone contact, .X don't do,
-    .R refused, .J unassigned, .P prosthetic, .D don't know.
+    Called once per distinct missing cell text per column while a table is parsed.
+    `raw` is the whole cell (".: Missing Form/Incomplete Workbook", ".A: Not Expected",
+    ...); `column` and `table` (e.g. "V06XRKL", "kxr_sq_bu_06") allow column-aware rules.
+    The release uses 13 codes; see docs/missing-values.md for the full list and counts.
 
-    - MissingResolution() -> null cell, no sidecar (the codebook still lists the codes).
-    - MissingResolution(reason=...) -> null cell plus the reason in <column>__reason,
-      e.g. to keep ".P" (replaced knee) distinguishable for progression endpoints.
-    - MissingResolution(value=...) -> a sentinel; a non-numeric one makes the column String.
+    What happened is always recorded and inspectable:
+    - Codebook.missing / missing_counts / missing_resolution for every table,
+    - missing_summary(table, visit) -> one row per column x code,
+    - `oai missing TABLE [VISIT] [--csv FILE]`.
 
-    Keep any helpers in this module: editing loader.py rebuilds every cached table.
+    To change the policy, return MissingResolution(reason=...) to keep the code in a
+    `<column>__reason` sidecar column (value still null), or MissingResolution(value=...)
+    for a sentinel (a non-numeric sentinel makes the whole column String). Editing
+    loader.py rebuilds every cached table automatically.
     """
     return MissingResolution()
 
 
 @dataclass
 class Codebook:
+    """Per-table value labels and a record of what the missing-value policy did.
+
+    labels              column -> code -> label, e.g. SIDE -> {"1": "Right", "2": "Left"}
+    missing             column -> missing code -> label, e.g. {".": "Missing Form/..."}
+    missing_counts      column -> missing code -> number of cells carrying that code
+    missing_resolution  column -> missing code -> {"value": ..., "reason": ...} as returned
+                        by resolve_missing (value None = the cells became null)
+
+    See docs/missing-values.md and `oai missing TABLE [VISIT]`.
+    """
+
     labels: dict[str, dict[str, str]] = field(default_factory=dict)
     missing: dict[str, dict[str, str]] = field(default_factory=dict)
+    missing_counts: dict[str, dict[str, int]] = field(default_factory=dict)
+    missing_resolution: dict[str, dict[str, dict[str, str | None]]] = field(default_factory=dict)
 
-    def to_json(self) -> dict[str, dict[str, dict[str, str]]]:
-        return {"labels": self.labels, "missing": self.missing}
+    def to_json(self) -> dict[str, dict]:
+        return {
+            "labels": self.labels,
+            "missing": self.missing,
+            "missing_counts": self.missing_counts,
+            "missing_resolution": self.missing_resolution,
+        }
 
     @classmethod
     def from_json(cls, data: dict) -> Codebook:
-        return cls(labels=data["labels"], missing=data["missing"])
+        return cls(
+            labels=data["labels"],
+            missing=data["missing"],
+            missing_counts=data.get("missing_counts", {}),
+            missing_resolution=data.get("missing_resolution", {}),
+        )
 
 
 def policy_fingerprint() -> str:
@@ -229,7 +254,8 @@ def parse_table(path: Path, *, table: str | None = None) -> tuple[pl.LazyFrame, 
             .alias(f"{c}::labels"),
             pl.struct(code=r.str.extract(MISSING_CODE, 1), label=r.str.extract(MISSING_LABEL, 1))
             .filter(r.str.contains(MISSING))
-            .unique()
+            .alias("m")
+            .value_counts(name="n")
             .implode()
             .alias(f"{c}::missing"),
         ]
@@ -251,7 +277,18 @@ def parse_table(path: Path, *, table: str | None = None) -> tuple[pl.LazyFrame, 
             ordered = sorted(labels, key=lambda d: float(d["code"]))
             book.labels[c] = {d["code"]: d["label"] for d in ordered}
         if missing := stats[f"{c}::missing"]:
-            book.missing[c] = {d["code"]: d["label"] or "" for d in missing}
+            book.missing[c] = {d["m"]["code"]: d["m"]["label"] or "" for d in missing}
+            counts: dict[str, int] = {}
+            for d in missing:
+                counts[d["m"]["code"]] = counts.get(d["m"]["code"], 0) + d["n"]
+            book.missing_counts[c] = dict(sorted(counts.items()))
+            book.missing_resolution[c] = {
+                re.match(MISSING_CODE, raw_cell).group(1): {
+                    "value": res.value,
+                    "reason": res.reason,
+                }
+                for raw_cell, res in resolutions.get(c, {}).items()
+            }
     return lf.select(typed), book
 
 
@@ -313,3 +350,39 @@ def codebook(
     """Value labels and missing-value codes for a table."""
     settings = settings or get_settings()
     return ensure_cached(_table_file(name, visit, settings), settings)[1]
+
+
+def missing_summary(
+    name: str, visit: str | int | None = None, *, settings: Settings | None = None
+) -> pl.DataFrame:
+    """One row per column x missing code: label, cell count and what the policy produced.
+
+    `value` is what the cells became (null unless resolve_missing returns a sentinel);
+    `reason` is what went into the `<column>__reason` sidecar (null = no sidecar).
+    """
+    settings = settings or get_settings()
+    tf = _table_file(name, visit, settings)
+    book = ensure_cached(tf, settings)[1]
+    rows = [
+        {
+            "table": tf.key,
+            "column": column,
+            "code": code,
+            "label": book.missing[column].get(code, ""),
+            "n": n,
+            "value": book.missing_resolution.get(column, {}).get(code, {}).get("value"),
+            "reason": book.missing_resolution.get(column, {}).get(code, {}).get("reason"),
+        }
+        for column, counts in book.missing_counts.items()
+        for code, n in counts.items()
+    ]
+    schema = {
+        "table": pl.String,
+        "column": pl.String,
+        "code": pl.String,
+        "label": pl.String,
+        "n": pl.Int64,
+        "value": pl.String,
+        "reason": pl.String,
+    }
+    return pl.DataFrame(rows, schema=schema)

@@ -5,11 +5,20 @@ from pathlib import Path
 
 import polars as pl
 import pytest
+from typer.testing import CliRunner
 
 from oai import loader
 from oai.catalog import CatalogError, catalog_for
+from oai.cli import app
 from oai.config import get_settings
-from oai.loader import LoaderError, MissingResolution, codebook, parse_table, read_table
+from oai.loader import (
+    LoaderError,
+    MissingResolution,
+    codebook,
+    missing_summary,
+    parse_table,
+    read_table,
+)
 
 
 def _write(directory, name, text, *, encoding="utf-8", newline="\n"):
@@ -239,3 +248,37 @@ def test_whole_release_loads_cleanly():
                 if values.cast(pl.Float64, strict=False).null_count() == 0:
                     offenders.append(f"{table}:{visit}:{col} numeric values typed String")
     assert not offenders, offenders[:20]
+
+
+# --- Missing-value capture ------------------------------------------------------
+
+
+def test_codebook_counts_and_resolutions_of_missing_codes():
+    cb = codebook("allclinical", "00")
+    assert cb.missing_counts["P01BMI"] == {".": 1}
+    assert cb.missing_counts["V00WOMKPR"] == {".A": 1}
+    assert cb.missing_resolution["V00WOMKPR"] == {".A": {"value": None, "reason": None}}
+
+
+def test_missing_summary_lists_each_column_and_code():
+    summary = missing_summary("allclinical", "00")
+    assert summary.columns == ["table", "column", "code", "label", "n", "value", "reason"]
+    assert summary.height == 2
+    row = summary.filter(pl.col("column") == "P01BMI").row(0, named=True)
+    assert row == {
+        "table": "allclinical_00",
+        "column": "P01BMI",
+        "code": ".",
+        "label": "Missing Form/Incomplete Workbook",
+        "n": 1,
+        "value": None,
+        "reason": None,
+    }
+
+
+def test_cli_missing_prints_and_saves_summary(tmp_path):
+    out = tmp_path / "missing.csv"
+    result = CliRunner().invoke(app, ["missing", "allclinical", "00", "--csv", str(out)])
+    assert result.exit_code == 0, result.output
+    assert "P01BMI" in result.stdout and "Not Expected" in result.stdout
+    assert pl.read_csv(out).height == 2

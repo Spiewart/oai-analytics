@@ -37,7 +37,8 @@ Settings resolve in this order: environment → `.env` → `[paths]` in `config/
 | `oai analyses` | List analyses and validate their `analysis.toml` |
 | `oai run NAME [--stage local\|enclave] [--step ID]` | Run an analysis's steps in order |
 | `oai export NAME` | Build an enclave bundle (`OAI_WORK_DIR/bundles/NAME-<utc>.tar.gz`) |
-| `oai check-egress DIR` | Fail unless `DIR` holds only aggregate, non-identifying outputs |
+| `oai missing TABLE [VISIT] [--csv FILE]` | Show each missing-value code per column: label, count and what it became |
+| `oai check-egress DIR` | Fail on identifiers or individual-level data; warn on small cells ([docs/egress.md](docs/egress.md)) |
 
 ## Python API
 
@@ -50,7 +51,7 @@ codebook("kxr_sq_bu", "00").labels["SIDE"]                               # {'1':
 long = time_years(to_long(read_table("allclinical", "03")))              # ID, visit, ..., time_years
 ```
 
-Coded cells (`1: Right`) load as their code, with labels in the codebook. Missing codes (`.: Missing Form/…`) are resolved by `oai.loader.resolve_missing`. `V##` is **not** elapsed months (V06 = 48 mo), so always use `oai.visits`.
+Coded cells (`1: Right`) load as their code, with labels in the codebook. Missing codes (`.: Missing Form/…`) currently all become null; `oai missing TABLE [VISIT]` shows what was nulled, and [docs/missing-values.md](docs/missing-values.md) explains the codes and how to change the policy. `V##` is **not** elapsed months (V06 = 48 mo), so always use `oai.visits`.
 
 ## Analyses
 

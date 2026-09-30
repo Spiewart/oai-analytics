@@ -29,9 +29,12 @@ V12 = { verified = false }
 V13 = { verified = false }
 V14 = { verified = false }
 
-# Rules applied by `oai check-egress` before anything leaves the enclave.
+# Rules applied by `oai check-egress` before anything leaves the enclave (docs/egress.md).
+# Identifier findings always block. Small cells are advisory by default: OAI/NDA and
+# dbGaP set no minimum cell size and NIH treats aggregate genomic summary results as
+# releasable, so retention is favored. Use "fail" if a journal/collaborator requires it.
 [egress]
-# Smallest non-zero count allowed in outgoing results (small-cell suppression).
-min_cell = 11
+small_cell = "warn"  # off | warn | fail
+min_cell = 5         # counts 1..min_cell-1 are flagged
 # Columns whose values legitimately look like 7-digit numbers (e.g. GWAS base-pair positions).
 ignore_id_pattern_columns = ["POS", "BP", "position"]

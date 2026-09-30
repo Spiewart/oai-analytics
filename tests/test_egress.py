@@ -3,7 +3,7 @@ import pytest
 from typer.testing import CliRunner
 
 from oai.cli import app
-from oai.export.egress import check_egress, small_cell_violations
+from oai.export.egress import EgressError, check_egress, small_cell_violations
 
 FAKE_ID = int("9" + "000123")  # built at runtime; never type the pattern literally
 
@@ -38,10 +38,44 @@ def test_position_columns_are_exempt_from_id_pattern(tmp_path):
     assert not check_egress(tmp_path, min_cell=11).ok
 
 
-def test_small_cells_fail(tmp_path):
+def test_small_cells_warn_by_default(tmp_path):
     pl.DataFrame({"group": ["a", "b", "c"], "n": [0, 4, 40]}).write_csv(tmp_path / "counts.csv")
-    [problem] = check_egress(tmp_path, min_cell=11).problems
-    assert "'n'" in problem
+    report = check_egress(tmp_path, min_cell=5)
+    assert report.ok
+    [warning] = report.warnings
+    assert "'n'" in warning
+
+
+def test_small_cells_fail_when_configured(tmp_path):
+    pl.DataFrame({"group": ["a", "b"], "n": [4, 40]}).write_csv(tmp_path / "counts.csv")
+    report = check_egress(tmp_path, min_cell=5, small_cell="fail")
+    assert not report.ok and "'n'" in report.problems[0]
+    assert report.warnings == []
+
+
+def test_small_cell_check_can_be_turned_off(tmp_path):
+    pl.DataFrame({"n": [1]}).write_csv(tmp_path / "counts.csv")
+    report = check_egress(tmp_path, min_cell=5, small_cell="off")
+    assert report.ok and report.warnings == []
+
+
+def test_unknown_small_cell_mode_is_rejected(tmp_path):
+    with pytest.raises(EgressError, match="small_cell"):
+        check_egress(tmp_path, min_cell=5, small_cell="strict")
+
+
+def test_repo_egress_defaults_favor_retention():
+    from oai.config import get_settings
+
+    egress = get_settings().project["egress"]
+    assert egress["small_cell"] == "warn" and egress["min_cell"] == 5
+
+
+def test_cli_small_cells_warn_but_pass(tmp_path):
+    pl.DataFrame({"n": [3]}).write_csv(tmp_path / "c.csv")
+    result = CliRunner().invoke(app, ["check-egress", str(tmp_path)])
+    assert result.exit_code == 0, result.output
+    assert "WARN" in result.output and "1 warning" in result.output
 
 
 def test_small_cell_rule_reference_behavior():

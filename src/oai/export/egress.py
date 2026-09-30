@@ -43,9 +43,13 @@ class EgressError(OAIError):
     """Egress could not be configured or run."""
 
 
+SMALL_CELL_MODES = ("off", "warn", "fail")
+
+
 @dataclass
 class EgressReport:
-    problems: list[str] = field(default_factory=list)
+    problems: list[str] = field(default_factory=list)  # block release
+    warnings: list[str] = field(default_factory=list)  # reported, do not block
     manual_review: list[Path] = field(default_factory=list)
     checked: list[Path] = field(default_factory=list)
 
@@ -55,25 +59,25 @@ class EgressReport:
 
 
 def small_cell_violations(df: pl.DataFrame, min_cell: int) -> list[str]:
-    """Return one message per column that breaks small-cell suppression. USER-AUTHORED RULE.
+    """Return one message per count column holding values in 1..min_cell-1.
 
-    Decide which columns are counts and which values are disclosive. Trade-offs:
-    - Matching only count-named columns (n, count, n_*, *_n, *_count) misses counts
-      hidden in columns like 'cases'; checking every integer column flags years and IDs.
-    - Zero is usually safe to release; 1..min_cell-1 usually is not. Some policies
-      also suppress complementary cells so a small cell can't be recovered from totals.
+    Count columns are those named n, count, n_*, *_n or *_count. Zero is not flagged.
+    Neither OAI/NDA nor dbGaP sets a minimum cell size, and NIH treats aggregate genomic
+    summary results as releasable (NOT-OD-19-023), so by default these findings are
+    advisory (`[egress] small_cell = "warn"`); set "fail" when a journal or collaborator
+    requires suppression. See docs/egress.md.
     """
-    problems = []
+    messages = []
     for col in df.columns:
         if not COUNT_COLUMN.match(col) or not df.schema[col].is_numeric():
             continue
         small = df.filter((pl.col(col) > 0) & (pl.col(col) < min_cell)).height
         if small:
-            problems.append(f"column {col!r} has {small} cell(s) with 0 < n < {min_cell}")
-    return problems
+            messages.append(f"column {col!r} has {small} cell(s) with 0 < n < {min_cell}")
+    return messages
 
 
-def _frame_problems(df: pl.DataFrame, name: str, *, min_cell: int, ignore: set[str]) -> list[str]:
+def _identifier_problems(df: pl.DataFrame, name: str, *, ignore: set[str]) -> list[str]:
     problems = []
     for position, col in enumerate(df.columns):
         if PARTICIPANT_ID.search(col):
@@ -88,48 +92,61 @@ def _frame_problems(df: pl.DataFrame, name: str, *, min_cell: int, ignore: set[s
         hits = values.str.contains(PARTICIPANT_ID.pattern).sum()
         if hits:
             problems.append(f"{name}: column {col!r} has {hits} participant-ID-like value(s)")
-    problems.extend(f"{name}: {message}" for message in small_cell_violations(df, min_cell))
     return problems
 
 
-def _txt_table_problems(path: Path, rel: str, *, min_cell: int, ignore: set[str]) -> list[str]:
-    """Apply table checks to a .txt that parses as tab-delimited with 2+ columns."""
+def _read_txt_table(path: Path) -> pl.DataFrame | None:
+    """A .txt that parses as tab-delimited with 2+ columns gets the table checks."""
     try:
         df = pl.read_csv(path, separator="\t", infer_schema_length=10_000)
     except pl.exceptions.PolarsError:
-        return []
-    return _frame_problems(df, rel, min_cell=min_cell, ignore=ignore) if df.width > 1 else []
+        return None
+    return df if df.width > 1 else None
 
 
 def check_egress(
-    results_dir: Path, *, min_cell: int, ignore_id_pattern_columns: Sequence[str] = ()
+    results_dir: Path,
+    *,
+    min_cell: int,
+    small_cell: str = "warn",
+    ignore_id_pattern_columns: Sequence[str] = (),
 ) -> EgressReport:
+    """Identifier findings always block; small-cell findings follow `small_cell`."""
+    if small_cell not in SMALL_CELL_MODES:
+        raise EgressError(
+            f"small_cell must be one of {', '.join(SMALL_CELL_MODES)}, not {small_cell!r}"
+        )
     report = EgressReport()
     if not results_dir.is_dir():
         report.problems.append(f"{results_dir}: not a directory")
         return report
     ignore = set(ignore_id_pattern_columns)
+
+    def check_frame(df: pl.DataFrame, name: str) -> None:
+        report.problems.extend(_identifier_problems(df, name, ignore=ignore))
+        if small_cell != "off":
+            found = [f"{name}: {m}" for m in small_cell_violations(df, min_cell)]
+            (report.problems if small_cell == "fail" else report.warnings).extend(found)
+
     for path in sorted(p for p in results_dir.rglob("*") if p.is_file()):
         rel = path.relative_to(results_dir).as_posix()
         suffix = path.suffix.lower()
         report.checked.append(path)
         try:
             if suffix in TABULAR_SEPARATORS:
-                df = pl.read_csv(
-                    path, separator=TABULAR_SEPARATORS[suffix], infer_schema_length=10_000
+                check_frame(
+                    pl.read_csv(
+                        path, separator=TABULAR_SEPARATORS[suffix], infer_schema_length=10_000
+                    ),
+                    rel,
                 )
-                report.problems += _frame_problems(df, rel, min_cell=min_cell, ignore=ignore)
             elif suffix == ".parquet":
-                report.problems += _frame_problems(
-                    pl.read_parquet(path), rel, min_cell=min_cell, ignore=ignore
-                )
+                check_frame(pl.read_parquet(path), rel)
             elif suffix in TEXT_SUFFIXES or suffix in SCANNED_REVIEW_SUFFIXES:
                 if PARTICIPANT_ID.search(path.read_text(errors="replace")):
                     report.problems.append(f"{rel}: contains participant-ID-like values")
-                if suffix == ".txt":
-                    report.problems += _txt_table_problems(
-                        path, rel, min_cell=min_cell, ignore=ignore
-                    )
+                if suffix == ".txt" and (df := _read_txt_table(path)) is not None:
+                    check_frame(df, rel)
                 if suffix in SCANNED_REVIEW_SUFFIXES:
                     report.manual_review.append(path)
             elif suffix in MANUAL_REVIEW_SUFFIXES:
