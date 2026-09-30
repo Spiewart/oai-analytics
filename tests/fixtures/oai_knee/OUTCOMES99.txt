@@ -1,0 +1,11 @@
+id|V99ERKBLRP|V99ELKBLRP|V99ERKRPCF|V99ELKRPCF|V99ERKRPSN|V99ELKRPSN|V99ERKDAYS|V99ELKDAYS
+1000001|0: No|0: No| | | | | | 
+1000002|0: No|0: No| | | | | | 
+1000003|0: No|0: No| | | | | | 
+1000004|0: No|1: Yes| | | | | | 
+1000005|0: No|0: No| | | | | | 
+1000006|0: No|0: No| | | | | | 
+1000007|0: No|0: No| | | | | | 
+1000008|0: No|0: No|0: Replacement adjudcated,failed to confirm| | | |900| 
+1000009|0: No|0: No| |3: Replacement adjudicated, confirmed| | | |900
+1000010|0: No|0: No| | |1: Yes, replacement seen on FU xray| |2000| 
