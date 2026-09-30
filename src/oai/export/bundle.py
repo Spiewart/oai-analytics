@@ -23,6 +23,7 @@ from typing import Any
 import polars as pl
 
 from oai import __version__
+from oai.assumptions import DEFAULT_LABEL
 from oai.config import Settings
 from oai.errors import OAIError
 from oai.manifest import Analysis
@@ -157,7 +158,7 @@ def export_analysis(
 
     if run_local and "local" in analysis.stages:
         run_analysis(analysis, settings, stage="local")
-    frame_path = frame_dir(analysis, settings, os.environ) / analysis.export.frame
+    frame_path = frame_dir(analysis, settings, os.environ, DEFAULT_LABEL) / analysis.export.frame
     if not frame_path.is_file():
         raise ExportError(f"Frame {frame_path} not found; run the local steps first")
     frame = pl.read_parquet(frame_path)

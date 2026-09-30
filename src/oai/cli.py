@@ -10,6 +10,7 @@ from typing import Annotated
 import typer
 
 from oai import __version__
+from oai.assumptions import parse_override
 from oai.catalog import catalog_for
 from oai.config import get_settings
 from oai.errors import OAIError
@@ -75,12 +76,28 @@ def run(
         str | None, typer.Option(help="Only run steps of this stage (local|enclave).")
     ] = None,
     step: Annotated[str | None, typer.Option(help="Only run this step id.")] = None,
+    variant: Annotated[
+        str | None, typer.Option(help="Named variant from the analysis's assumptions.toml.")
+    ] = None,
+    set_: Annotated[
+        list[str] | None,
+        typer.Option("--set", help="Override an assumption, key=value (repeatable)."),
+    ] = None,
 ) -> None:
     """Run an analysis's steps in declared order."""
     with user_errors():
+        overrides = dict(parse_override(text) for text in set_ or [])
         settings = get_settings()
         analysis = find_analysis(name, settings.analyses_dir)
-        results = run_analysis(analysis, settings, stage=stage, step_id=step, echo=typer.echo)
+        results = run_analysis(
+            analysis,
+            settings,
+            stage=stage,
+            step_id=step,
+            variant=variant,
+            overrides=overrides,
+            echo=typer.echo,
+        )
         typer.echo(f"{len(results)} step(s) completed: {', '.join(r.step_id for r in results)}")
 
 

@@ -17,6 +17,7 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from pathlib import Path
 
+from oai.assumptions import DEFAULT_LABEL, Resolved, load_assumptions
 from oai.config import Settings
 from oai.errors import OAIError
 from oai.manifest import STAGES, Analysis, Step
@@ -49,20 +50,41 @@ def select_steps(
     return steps
 
 
-def frame_dir(analysis: Analysis, settings: Settings, env: Mapping[str, str]) -> Path:
+def frame_dir(
+    analysis: Analysis, settings: Settings, env: Mapping[str, str], label: str = DEFAULT_LABEL
+) -> Path:
+    """Where a run's frames live; an explicit OAI_FRAME_DIR (a bundle) is used as-is."""
     override = env.get("OAI_FRAME_DIR")
-    return Path(override) if override else settings.work_dir / analysis.name
+    return Path(override) if override else settings.work_dir / analysis.name / label
+
+
+def resolve_assumptions(
+    analysis: Analysis, variant: str | None = None, overrides: Mapping[str, object] | None = None
+) -> Resolved:
+    return load_assumptions(analysis.root).resolve(analysis.name, variant, overrides)
 
 
 def step_env(
-    analysis: Analysis, settings: Settings, base_env: Mapping[str, str] | None = None
+    analysis: Analysis,
+    settings: Settings,
+    base_env: Mapping[str, str] | None = None,
+    *,
+    resolved: Resolved | None = None,
 ) -> dict[str, str]:
     env = dict(os.environ if base_env is None else base_env)
-    frames = frame_dir(analysis, settings, env)
-    results = settings.results_dir / analysis.name
+    resolved = resolved or resolve_assumptions(analysis)
+    frames = frame_dir(analysis, settings, env, resolved.label)
+    results = settings.results_dir / analysis.name / resolved.label
     frames.mkdir(parents=True, exist_ok=True)
     results.mkdir(parents=True, exist_ok=True)
-    env.update(OAI_ANALYSIS=analysis.name, OAI_FRAME_DIR=str(frames), OAI_RESULTS_DIR=str(results))
+    resolved.write(results)
+    env.update(
+        OAI_ANALYSIS=analysis.name,
+        OAI_FRAME_DIR=str(frames),
+        OAI_RESULTS_DIR=str(results),
+        OAI_ASSUMPTIONS=str(resolved.write(frames)),
+        OAI_RUN_LABEL=resolved.label,
+    )
     r_profile = settings.repo_root / "r" / "step-profile.R" if settings.repo_root else None
     if r_profile is not None and r_profile.is_file():
         env.setdefault("OAI_R_DIR", str(r_profile.parent))
@@ -86,21 +108,22 @@ def run_analysis(
     *,
     stage: str | None = None,
     step_id: str | None = None,
+    variant: str | None = None,
+    overrides: Mapping[str, object] | None = None,
     base_env: Mapping[str, str] | None = None,
     echo: Callable[[str], None] = print,
 ) -> list[StepResult]:
     steps = select_steps(analysis, stage=stage, step_id=step_id)
+    resolved = resolve_assumptions(analysis, variant, overrides)  # fail before running anything
     if any(s.stage == "enclave" for s in steps) and settings.geno_dir is None:
         raise RunnerError(
             "Enclave steps require OAI_GENO_DIR; they only run inside the secure enclave."
         )
-    commands = [
-        (step, step_command(step, analysis)) for step in steps
-    ]  # fail before running anything
-    env = step_env(analysis, settings, base_env)
+    commands = [(step, step_command(step, analysis)) for step in steps]
+    env = step_env(analysis, settings, base_env, resolved=resolved)
     results: list[StepResult] = []
     for step, cmd in commands:
-        echo(f"==> {analysis.name}:{step.id} ({step.lang}, {step.stage})")
+        echo(f"==> {analysis.name}:{step.id} [{resolved.label}] ({step.lang}, {step.stage})")
         proc = subprocess.run(cmd, cwd=analysis.root, env=env)
         results.append(StepResult(step.id, proc.returncode))
         if proc.returncode != 0:

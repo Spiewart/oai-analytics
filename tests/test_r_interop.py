@@ -65,4 +65,6 @@ def test_runner_r_step_sees_oaimodels(tmp_path):
         repo_root=REPO,
     )
     run_analysis(load_analysis(root), settings, echo=lambda _: None)
-    assert (tmp_path / "results" / "rstep" / "covs.txt").read_text().strip() == "age0,sex,bmi0,PC1"
+    assert (
+        tmp_path / "results" / "rstep" / "default" / "covs.txt"
+    ).read_text().strip() == "age0,sex,bmi0,PC1"
