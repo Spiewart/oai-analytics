@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator
 from contextlib import contextmanager
+from pathlib import Path
 from typing import Annotated
 
 import typer
@@ -12,6 +13,7 @@ from oai import __version__
 from oai.catalog import catalog_for
 from oai.config import get_settings
 from oai.errors import OAIError
+from oai.export.egress import EgressError, check_egress
 from oai.manifest import find_analysis, list_analyses
 from oai.runner import run_analysis
 
@@ -78,3 +80,31 @@ def run(
         analysis = find_analysis(name, settings.analyses_dir)
         results = run_analysis(analysis, settings, stage=stage, step_id=step, echo=typer.echo)
         typer.echo(f"{len(results)} step(s) completed: {', '.join(r.step_id for r in results)}")
+
+
+@app.command("check-egress")
+def check_egress_cmd(
+    results_dir: Annotated[Path, typer.Argument(help="Directory of results to be released.")],
+    min_cell: Annotated[int | None, typer.Option(help="Override [egress] min_cell.")] = None,
+) -> None:
+    """Verify a results directory holds only aggregate, non-identifying outputs."""
+    with user_errors():
+        cfg = get_settings().project.get("egress", {})
+        threshold = min_cell if min_cell is not None else cfg.get("min_cell")
+        if threshold is None:
+            raise EgressError("No [egress] min_cell in config/oai.toml and no --min-cell given")
+        report = check_egress(
+            results_dir,
+            min_cell=int(threshold),
+            ignore_id_pattern_columns=cfg.get("ignore_id_pattern_columns", []),
+        )
+    for problem in report.problems:
+        typer.secho(f"FAIL   {problem}", err=True, fg=typer.colors.RED)
+    for path in report.manual_review:
+        typer.echo(f"REVIEW {path}")
+    typer.echo(
+        f"{len(report.checked)} file(s) checked; {len(report.problems)} problem(s); "
+        f"{len(report.manual_review)} need manual review"
+    )
+    if not report.ok:
+        raise typer.Exit(1)

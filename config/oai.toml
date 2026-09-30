@@ -27,3 +27,10 @@ V11 = { verified = false }
 V12 = { verified = false }
 V13 = { verified = false }
 V14 = { verified = false }
+
+# Rules applied by `oai check-egress` before anything leaves the enclave.
+[egress]
+# Smallest non-zero count allowed in outgoing results (small-cell suppression).
+min_cell = 11
+# Columns whose values legitimately look like 7-digit numbers (e.g. GWAS base-pair positions).
+ignore_id_pattern_columns = ["POS", "BP", "position"]
