@@ -77,12 +77,15 @@ def step_env(
     results = settings.results_dir / analysis.name / resolved.label
     frames.mkdir(parents=True, exist_ok=True)
     results.mkdir(parents=True, exist_ok=True)
-    resolved.write(results)
+    resolved.write(frames)
+    # Point steps at the results copy: results are always per label, while an explicit
+    # OAI_FRAME_DIR (a bundle) is shared by every run.
+    assumptions_path = resolved.write(results)
     env.update(
         OAI_ANALYSIS=analysis.name,
         OAI_FRAME_DIR=str(frames),
         OAI_RESULTS_DIR=str(results),
-        OAI_ASSUMPTIONS=str(resolved.write(frames)),
+        OAI_ASSUMPTIONS=str(assumptions_path),
         OAI_RUN_LABEL=resolved.label,
     )
     r_profile = settings.repo_root / "r" / "step-profile.R" if settings.repo_root else None

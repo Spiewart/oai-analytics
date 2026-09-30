@@ -1,4 +1,5 @@
 import textwrap
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -193,3 +194,19 @@ def test_cli_run_with_variant_and_set(labelled, tmp_path, monkeypatch):
     assert (tmp_path / "results" / "toy" / "indep" / "seen.txt").is_file()
     bad = CliRunner().invoke(app, ["run", "toy", "--stage", "local", "--set", "model.corstr=3"])
     assert bad.exit_code == 1 and "expects str" in bad.output
+
+
+def test_assumptions_env_points_at_per_label_results_copy(labelled, tmp_path):
+    # With an explicit OAI_FRAME_DIR (a bundle) frames are shared across labels, so steps
+    # must read the per-label results copy of the resolved assumptions.
+    (labelled.root / "a.py").write_text(
+        "import os, pathlib\n"
+        "pathlib.Path(os.environ['OAI_RESULTS_DIR'], 'where.txt').write_text(os.environ['OAI_ASSUMPTIONS'])\n"
+    )
+    env = {"OAI_FRAME_DIR": str(tmp_path / "bundle-data"), "PATH": ""}
+    settings = make_settings(tmp_path)
+    run_analysis(
+        labelled, settings, stage="local", variant="indep", base_env=env, echo=lambda _: None
+    )
+    results = tmp_path / "results" / "toy" / "indep"
+    assert Path((results / "where.txt").read_text()).parent == results.resolve()

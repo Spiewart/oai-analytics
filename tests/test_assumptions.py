@@ -209,3 +209,40 @@ def test_cli_assumptions_without_file(tmp_path, monkeypatch):
     monkeypatch.setenv("OAI_ANALYSES_DIR", str(tmp_path))
     result = CliRunner().invoke(app, ["assumptions", "bare"])
     assert result.exit_code == 1 and "has no assumptions.toml" in result.output
+
+
+CHOICES_TOML = TOML + textwrap.dedent(
+    """
+    [model.kl_covariate]
+    value = "factor"
+    status = "open"
+    source = "not stated"
+    choices = ["factor", "numeric"]
+    """
+)
+
+
+def test_choices_are_enforced_for_overrides_and_variants(tmp_path):
+    a = load_assumptions(write(tmp_path, CHOICES_TOML))
+    assert a.items["model.kl_covariate"].choices == ("factor", "numeric")
+    assert (
+        a.resolve("demo", None, {"model.kl_covariate": "numeric"})["model.kl_covariate"]
+        == "numeric"
+    )
+    with pytest.raises(AssumptionsError, match="must be one of factor, numeric"):
+        a.resolve("demo", None, {"model.kl_covariate": "factr"})
+    typo = CHOICES_TOML + '[variants.typo]\nset = { "model.kl_covariate" = "factr" }\n'
+    with pytest.raises(AssumptionsError, match="must be one of"):
+        load_assumptions(write(tmp_path, typo))
+
+
+def test_default_must_be_one_of_its_choices(tmp_path):
+    with pytest.raises(AssumptionsError, match="not one of its choices"):
+        load_assumptions(
+            write(tmp_path, CHOICES_TOML.replace('value = "factor"', 'value = "other"'))
+        )
+
+
+def test_ledger_shows_choices(tmp_path):
+    text = render_ledger("demo", load_assumptions(write(tmp_path, CHOICES_TOML)))
+    assert "`factor` (choices: factor, numeric)" in text

@@ -25,7 +25,7 @@ RESOLVED_FILE = "assumptions.resolved.json"
 LEDGER_FILE = "ASSUMPTIONS.md"
 STATUSES = ("confirmed", "assumed", "open")
 DEFAULT_LABEL = "default"
-_FIELDS = {"value", "status", "source", "rationale", "alternatives"}
+_FIELDS = {"value", "status", "source", "rationale", "alternatives", "choices"}
 
 
 class AssumptionsError(OAIError):
@@ -39,7 +39,8 @@ class Assumption:
     status: str
     source: str
     rationale: str = ""
-    alternatives: tuple[Any, ...] = ()
+    alternatives: tuple[Any, ...] = ()  # documentation only
+    choices: tuple[Any, ...] = ()  # enforced: every resolved value must be one of these
 
 
 @dataclass(frozen=True)
@@ -123,11 +124,14 @@ class Assumptions:
     def check(self, key: str, value: Any, where: str) -> None:
         if key not in self.items:
             raise AssumptionsError(f"{where}: unknown assumption {key!r}")
-        default = self.items[key].value
-        if not _same_type(default, value):
+        item = self.items[key]
+        if not _same_type(item.value, value):
             raise AssumptionsError(
-                f"{where}: {key} expects {type(default).__name__}, got {type(value).__name__} ({value!r})"
+                f"{where}: {key} expects {type(item.value).__name__}, got {type(value).__name__} ({value!r})"
             )
+        if item.choices and value not in item.choices:
+            allowed = ", ".join(str(c) for c in item.choices)
+            raise AssumptionsError(f"{where}: {key} must be one of {allowed}, not {value!r}")
 
     def resolve(
         self, analysis: str, variant: str | None = None, overrides: Mapping[str, Any] | None = None
@@ -162,6 +166,11 @@ def _parse_item(key: str, entry: dict[str, Any], where: Path) -> Assumption:
     source = entry.get("source")
     if not isinstance(source, str) or not source.strip():
         raise AssumptionsError(f"{where}: {key}: 'source' is required")
+    choices = tuple(entry.get("choices", []))
+    if choices and entry["value"] not in choices:
+        raise AssumptionsError(
+            f"{where}: {key}: default {entry['value']!r} is not one of its choices"
+        )
     return Assumption(
         key,
         entry["value"],
@@ -169,6 +178,7 @@ def _parse_item(key: str, entry: dict[str, Any], where: Path) -> Assumption:
         source,
         entry.get("rationale", ""),
         tuple(entry.get("alternatives", [])),
+        choices,
     )
 
 
@@ -235,6 +245,13 @@ def _cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
+def _value_cell(a: Assumption) -> str:
+    cell = f"`{_cell(_fmt(a.value))}`"
+    if a.choices:
+        cell += " (choices: " + ", ".join(_cell(_fmt(c)) for c in a.choices) + ")"
+    return cell
+
+
 def render_ledger(name: str, assumptions: Assumptions) -> str:
     """Markdown ledger grouped by status; written to ASSUMPTIONS.md by `oai assumptions --write`."""
     items = list(assumptions.items.values())
@@ -258,7 +275,7 @@ def render_ledger(name: str, assumptions: Assumptions) -> str:
             "|---|---|---|---|",
         ]
         lines += [
-            f"| `{a.key}` | `{_cell(_fmt(a.value))}` | {_cell(a.source)} | {_cell(a.rationale)} |"
+            f"| `{a.key}` | {_value_cell(a)} | {_cell(a.source)} | {_cell(a.rationale)} |"
             for a in rows
         ]
     if assumptions.variants:

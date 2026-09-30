@@ -41,6 +41,7 @@ status = "assumed"                     # confirmed | assumed | open
 source = "Lo 2022 p.1662"              # where the choice comes from
 rationale = "Only age-50+ walking item in AllClinical10"   # optional
 alternatives = []                      # optional, documentation only
+choices = ["a", "b"]                   # optional, enforced for variants and --set (added in final review)
 
 [variants.missing_as_walkers]
 description = "Supplementary Table 3: missing walking data imputed as walkers"

@@ -126,6 +126,13 @@ def build(A: Resolved) -> Built:
         .filter(~pl.col("replaced_at_baseline").fill_null(False) & (pl.col("KL") >= min_kl))
         .select(*KNEE_KEYS, pl.col("KL").alias("kl0"), pl.col("JSM").alias("jsm0"))
     )
+    # Analysis knees are always native. cohort.roa_counts_replaced_knees only widens the
+    # person-level radiographic-OA step: a knee replaced at baseline (which has no reading)
+    # counts as OA there.
+    roa_ids = oa["ID"]
+    if A["cohort.roa_counts_replaced_knees"]:
+        replaced_ids = at_baseline.filter(pl.col("replaced_at_baseline"))["ID"]
+        roa_ids = pl.concat([roa_ids, replaced_ids])
     followup = with_fallback(
         *[xray_readings([v], project=project) for v in fu_visits], value_cols=["KL", "JSM"]
     ).select(*KNEE_KEYS, pl.col("KL").alias("klf"), pl.col("JSM").alias("jsmf"), "source_visit")
@@ -146,7 +153,7 @@ def build(A: Resolved) -> Built:
     rules = {
         "age50": pl.col("age") >= A["cohort.min_age"],
         "baseline_xray": pl.col("ID").is_in(baseline["ID"].unique().implode()),
-        "roa": pl.col("ID").is_in(oa["ID"].unique().implode()),
+        "roa": pl.col("ID").is_in(roa_ids.unique().implode()),
         "before_survey": ~(pl.col("visit96") < survey_start).fill_null(False),
         "no_visit96": pl.col("visit96").is_not_null(),
         "no_survey": pl.col("answered"),
@@ -163,9 +170,15 @@ def build(A: Resolved) -> Built:
             survey_excluded.append(excluded)
 
     missing_as = WALKER_VALUES[A["exposure.missing_walking_as"]]
+    no_amount = pl.all_horizontal([pl.col(f"amount_{n}").is_null() for n in AMOUNT_ITEMS])
+    yes_value = (
+        pl.when(no_amount)
+        .then(pl.lit(WALKER_VALUES[A["exposure.yes_without_amount_as"]], dtype=pl.Boolean))
+        .otherwise(True)
+    )
     respondents = current.with_columns(
         pl.when(pl.col("walk_item") == 1)
-        .then(True)
+        .then(yes_value)
         .when(pl.col("walk_item") == 0)
         .then(False)
         .otherwise(pl.lit(missing_as, dtype=pl.Boolean))

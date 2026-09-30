@@ -1,7 +1,9 @@
 import tomllib
 from pathlib import Path
 
-from oai.assumptions import load_assumptions
+import pytest
+
+from oai.assumptions import AssumptionsError, load_assumptions
 from oai.manifest import load_analysis
 
 ANALYSIS = Path(__file__).resolve().parents[1] / "analyses" / "lo2022_walking"
@@ -16,6 +18,9 @@ def test_manifest_and_assumptions_load():
         "missing_as_walkers",
         "replacement_not_worsening",
         "corstr_independence",
+        "roa_counts_replaced_knees",
+        "walker_requires_amount",
+        "published_counts",
     }
     assert loaded.items["model.corstr"].status == "open"
 
@@ -35,3 +40,21 @@ def test_published_targets_are_well_formed():
             assert isinstance(value, (int, float)) or set(value) == {"or", "lo", "hi", "sig"}, (
                 metric
             )
+
+
+@pytest.mark.parametrize(
+    "key, typo",
+    [
+        ("model.kl_covariate", "factr"),
+        ("model.corstr", "exchangable"),
+        ("outcomes.replaced_knee_pain", "kep"),
+        ("outcomes.replacement_window", "calendar_48m"),
+        ("cohort.impute_missing_walking", "walkers"),
+        ("exposure.missing_walking_as", "nonwalker"),
+        ("alignment.source", "cook"),
+        ("alignment.pick", "first"),
+    ],
+)
+def test_enumerated_assumptions_reject_typos(key, typo):
+    with pytest.raises(AssumptionsError, match="must be one of"):
+        load_assumptions(ANALYSIS).resolve("lo2022_walking", None, {key: typo})

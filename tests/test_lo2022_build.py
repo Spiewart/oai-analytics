@@ -36,9 +36,9 @@ def test_flow_matches_synthetic_design():
     flow = {r["step"]: r for r in b.flow.iter_rows(named=True)}
     assert [s for s in flow] == list(lo2022.FLOW_STEPS)
     assert {s: flow[s]["persons"] for s in flow} == {
-        "all": 10,
-        "age50": 9,
-        "baseline_xray": 8,
+        "all": 11,
+        "age50": 10,
+        "baseline_xray": 9,
         "roa": 7,
         "before_survey": 6,
         "no_visit96": 5,
@@ -161,3 +161,41 @@ def test_table3_metrics():
         1,
     )
     assert m["t3.new_pain.neutral.nonwalkers.n"] == 0  # 1000010 R has blank baseline pain
+
+
+def test_roa_can_count_knees_replaced_at_baseline():
+    # 1000011's only OA knee and 1000004's left knee were replaced at baseline (no readings).
+    # 1000011's 96-month visit predates the survey; 1000004 has no native OA knee, so it
+    # leaves at the follow-up step.
+    default = {r["step"]: r for r in built().flow.iter_rows(named=True)}
+    counted = {
+        r["step"]: r
+        for r in built(None, **{"cohort.roa_counts_replaced_knees": True}).flow.iter_rows(
+            named=True
+        )
+    }
+    assert (default["roa"]["persons"], counted["roa"]["persons"]) == (7, 9)
+    assert (
+        default["before_survey"]["excluded_persons"],
+        counted["before_survey"]["excluded_persons"],
+    ) == (1, 2)
+    assert (
+        default["no_followup"]["excluded_persons"],
+        counted["no_followup"]["excluded_persons"],
+    ) == (1, 2)
+    assert default["no_followup"]["persons"] == counted["no_followup"]["persons"] == 3
+    assert (
+        1000011
+        not in built(None, **{"cohort.roa_counts_replaced_knees": True}).knees["ID"].to_list()
+    )
+
+
+def test_walkers_without_amount_answers_can_be_reclassified():
+    # With the 19-34 screener as exposure, 1000009 is a "yes" walker with no age-50+ amounts.
+    base = {"exposure.walker_item": "V10WLKAR2"}
+    assert knee(built(None, **base).knees, 1000009, "R")["walker"] is True
+    recoded = built(None, **base, **{"exposure.yes_without_amount_as": "non-walker"}).knees
+    assert knee(recoded, 1000009, "R")["walker"] is False
+    assert knee(recoded, 1000001, "R")["walker"] is True  # has amount answers
+    dropped = built(None, **base, **{"exposure.yes_without_amount_as": "exclude"}).knees
+    assert 1000009 not in dropped["ID"].to_list()

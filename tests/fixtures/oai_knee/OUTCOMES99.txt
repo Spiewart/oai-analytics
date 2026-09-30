@@ -9,3 +9,4 @@ id|V99ERKBLRP|V99ELKBLRP|V99ERKRPCF|V99ELKRPCF|V99ERKRPSN|V99ELKRPSN|V99ERKDAYS|
 1000008|0: No|0: No|0: Replacement adjudcated,failed to confirm| | | |900| 
 1000009|0: No|0: No| |3: Replacement adjudicated, confirmed| | | |900
 1000010|0: No|0: No| | |1: Yes, replacement seen on FU xray| |2000| 
+1000011|1: Yes|0: No| | | | | | 

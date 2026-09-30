@@ -12,6 +12,7 @@ status = "assumed"                 # confirmed | assumed | open
 source = "Lo 2022 p.1662"          # where the choice comes from (required)
 rationale = "Visit-date cutoff"    # optional
 alternatives = ["none"]            # optional, documentation only
+# choices = ["a", "b"]             # optional, ENFORCED: variants and --set must pick one
 
 [variants.missing_as_walkers]      # named override set for a sensitivity analysis
 description = "Supplementary Table 3"
@@ -21,6 +22,9 @@ set = { "cohort.impute_missing_walking" = "walker" }
 - **confirmed:** stated by the source (paper, protocol, data documentation).
 - **assumed:** our reading, ideally checked against a published number.
 - **open:** not stated anywhere; a sensitivity variant should cover it.
+
+Give enumerated settings `choices`, so a typo such as `--set model.corstr=exchangable`
+fails before any step runs instead of silently taking an `else` branch.
 
 ## Running with variants and overrides
 
