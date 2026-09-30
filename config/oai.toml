@@ -1,0 +1,7 @@
+# Project configuration for oai-analytics. Non-secret, committed.
+# Machine-specific paths belong in .env (see .env.example); [paths] below is a
+# last-resort fallback and is normally left commented out.
+
+# [paths]
+# data_dir = "/path/to/OAI Complete Data_ASCII"
+# work_dir = "/path/to/oai-work"
