@@ -12,7 +12,8 @@ from oai import __version__
 from oai.catalog import catalog_for
 from oai.config import get_settings
 from oai.errors import OAIError
-from oai.manifest import list_analyses
+from oai.manifest import find_analysis, list_analyses
+from oai.runner import run_analysis
 
 app = typer.Typer(help="OAI analytics command line.", no_args_is_help=True)
 
@@ -61,3 +62,19 @@ def analyses() -> None:
     with user_errors():
         for a in list_analyses(get_settings().analyses_dir):
             typer.echo(f"{a.name:<28} [{','.join(sorted(a.stages))}] {a.description}")
+
+
+@app.command()
+def run(
+    name: Annotated[str, typer.Argument(help="Analysis folder name under analyses/.")],
+    stage: Annotated[
+        str | None, typer.Option(help="Only run steps of this stage (local|enclave).")
+    ] = None,
+    step: Annotated[str | None, typer.Option(help="Only run this step id.")] = None,
+) -> None:
+    """Run an analysis's steps in declared order."""
+    with user_errors():
+        settings = get_settings()
+        analysis = find_analysis(name, settings.analyses_dir)
+        results = run_analysis(analysis, settings, stage=stage, step_id=step, echo=typer.echo)
+        typer.echo(f"{len(results)} step(s) completed: {', '.join(r.step_id for r in results)}")
