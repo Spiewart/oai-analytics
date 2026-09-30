@@ -11,6 +11,7 @@ from pathlib import Path
 
 import pytest
 
+from oai import catalog as oai_catalog
 from oai import config as oai_config
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -20,6 +21,7 @@ REPO_ROOT = Path(__file__).resolve().parents[1]
 
 def _clear_caches() -> None:
     oai_config.get_settings.cache_clear()
+    oai_catalog.catalog_for.cache_clear()
 
 
 @pytest.fixture(autouse=True)

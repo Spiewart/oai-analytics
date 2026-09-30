@@ -1,0 +1,4 @@
+ID|VERSION|P02SEX|P02RACE|V00COHORT|V00SITE
+1000001|2.1|2: Female|1: White or Caucasian|1: Progression|A
+1000002|2.1|1: Male|2: Black or African American|2: Incidence|B
+1000003|2.1|2: Female|1: White or Caucasian|2: Incidence|C
