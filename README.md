@@ -36,6 +36,8 @@ Settings resolve in this order: environment → `.env` → `[paths]` in `config/
 | `oai catalog` | List tables × visits found in `OAI_DATA_DIR` |
 | `oai analyses` | List analyses and validate their `analysis.toml` |
 | `oai run NAME [--stage local\|enclave] [--step ID]` | Run an analysis's steps in order |
+| `oai run NAME --variant V` / `--set key=value` | Run with a named sensitivity variant or ad-hoc overrides ([docs/assumptions.md](docs/assumptions.md)) |
+| `oai assumptions NAME [--write]` | Show or write an analysis's assumptions ledger |
 | `oai export NAME` | Build an enclave bundle (`OAI_WORK_DIR/bundles/NAME-<utc>.tar.gz`) |
 | `oai missing TABLE [VISIT] [--csv FILE]` | Show each missing-value code per column: label, count and what it became |
 | `oai check-egress DIR` | Fail on identifiers or individual-level data; warn on small cells ([docs/egress.md](docs/egress.md)) |

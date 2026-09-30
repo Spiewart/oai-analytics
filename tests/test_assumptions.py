@@ -2,6 +2,7 @@ import json
 import textwrap
 
 import pytest
+from typer.testing import CliRunner
 
 from oai.assumptions import (
     AssumptionsError,
@@ -9,7 +10,9 @@ from oai.assumptions import (
     current,
     load_assumptions,
     parse_override,
+    render_ledger,
 )
+from oai.cli import app
 
 TOML = textwrap.dedent(
     """
@@ -165,3 +168,44 @@ def test_current_requires_env(monkeypatch):
 def test_unknown_key_lookup_is_a_user_error(tmp_path):
     with pytest.raises(AssumptionsError, match="no assumption"):
         load_assumptions(write(tmp_path)).resolve("demo")["nope"]
+
+
+def test_render_ledger_groups_by_status(tmp_path):
+    text = render_ledger("demo", load_assumptions(write(tmp_path)))
+    assert text.startswith("# Assumptions: demo\n")
+    assert "2 confirmed · 1 assumed · 1 open" in text
+    assert "## Confirmed (2)" in text and "## Open (1)" in text
+    assert "| `cohort.survey_start` | `2012-09-12` | p.1662 | visit date cutoff |" in text
+    assert "| `alignment.varus_max` | `-2.0` | p.1662 |  |" in text
+    assert "## Variants" in text and "`model.corstr = independence`" in text
+
+
+def test_render_ledger_escapes_pipes(tmp_path):
+    text = TOML.replace('source = "p.1661"', 'source = "a | b"')
+    assert "a \\| b" in render_ledger("demo", load_assumptions(write(tmp_path, text)))
+
+
+def test_cli_assumptions_prints_and_writes(tmp_path, monkeypatch):
+    root = write(tmp_path)
+    (root / "analysis.toml").write_text(
+        'name = "demo"\n[[steps]]\nid = "a"\nlang = "python"\nentry = "a.py"\n'
+    )
+    (root / "a.py").write_text("")
+    monkeypatch.setenv("OAI_ANALYSES_DIR", str(tmp_path))
+    shown = CliRunner().invoke(app, ["assumptions", "demo"])
+    assert shown.exit_code == 0 and "## Open (1)" in shown.stdout
+    written = CliRunner().invoke(app, ["assumptions", "demo", "--write"])
+    assert written.exit_code == 0
+    assert (root / "ASSUMPTIONS.md").read_text() == render_ledger("demo", load_assumptions(root))
+
+
+def test_cli_assumptions_without_file(tmp_path, monkeypatch):
+    root = tmp_path / "bare"
+    root.mkdir()
+    (root / "analysis.toml").write_text(
+        'name = "bare"\n[[steps]]\nid = "a"\nlang = "python"\nentry = "a.py"\n'
+    )
+    (root / "a.py").write_text("")
+    monkeypatch.setenv("OAI_ANALYSES_DIR", str(tmp_path))
+    result = CliRunner().invoke(app, ["assumptions", "bare"])
+    assert result.exit_code == 1 and "has no assumptions.toml" in result.output

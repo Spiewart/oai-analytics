@@ -10,7 +10,13 @@ from typing import Annotated
 import typer
 
 from oai import __version__
-from oai.assumptions import parse_override
+from oai.assumptions import (
+    LEDGER_FILE,
+    AssumptionsError,
+    load_assumptions,
+    parse_override,
+    render_ledger,
+)
 from oai.catalog import catalog_for
 from oai.config import get_settings
 from oai.errors import OAIError
@@ -187,3 +193,25 @@ def missing(
     if csv is not None:
         summary.write_csv(csv)
         typer.echo(f"Wrote {csv}")
+
+
+@app.command("assumptions")
+def assumptions_cmd(
+    name: Annotated[str, typer.Argument(help="Analysis folder name under analyses/.")],
+    write: Annotated[
+        bool, typer.Option(help="Write ASSUMPTIONS.md next to assumptions.toml.")
+    ] = False,
+) -> None:
+    """Show (or write) an analysis's assumptions ledger."""
+    with user_errors():
+        analysis = find_analysis(name, get_settings().analyses_dir)
+        loaded = load_assumptions(analysis.root)
+        if loaded.path is None:
+            raise AssumptionsError(f"{name} has no assumptions.toml")
+        text = render_ledger(name, loaded)
+        if write:
+            out = analysis.root / LEDGER_FILE
+            out.write_text(text)
+            typer.echo(f"Wrote {out}")
+        else:
+            typer.echo(text)
