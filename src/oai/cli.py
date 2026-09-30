@@ -13,6 +13,7 @@ from oai import __version__
 from oai.catalog import catalog_for
 from oai.config import get_settings
 from oai.errors import OAIError
+from oai.export.bundle import export_analysis
 from oai.export.egress import EgressError, check_egress
 from oai.manifest import find_analysis, list_analyses
 from oai.runner import run_analysis
@@ -108,3 +109,37 @@ def check_egress_cmd(
     )
     if not report.ok:
         raise typer.Exit(1)
+
+
+@app.command()
+def export(
+    name: Annotated[str, typer.Argument(help="Analysis with an [export] section.")],
+    out: Annotated[
+        Path | None, typer.Option(help="Output directory (default OAI_WORK_DIR/bundles).")
+    ] = None,
+    allow_dirty: Annotated[
+        bool, typer.Option(help="Export from a tree with uncommitted changes.")
+    ] = False,
+    skip_local: Annotated[
+        bool, typer.Option(help="Reuse the existing frame; don't rerun local steps.")
+    ] = False,
+    vendor: Annotated[
+        bool, typer.Option(help="Vendor offline dependencies (not implemented yet).")
+    ] = False,
+) -> None:
+    """Bundle an analysis's enclave stage with its phenotype frame."""
+    with user_errors():
+        settings = get_settings()
+        analysis = find_analysis(name, settings.analyses_dir)
+        result = export_analysis(
+            analysis,
+            settings,
+            out_dir=out,
+            allow_dirty=allow_dirty,
+            run_local=not skip_local,
+            vendor=vendor,
+        )
+        frame = result.manifest["frame"]
+        typer.echo(f"Bundle: {result.path}")
+        typer.echo(f"Frame: {frame['rows']} rows x {len(frame['columns'])} columns")
+        typer.echo(f"Logged to {settings.work_dir / 'export_log.jsonl'}")
