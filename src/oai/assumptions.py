@@ -1,0 +1,227 @@
+"""Per-analysis assumptions: a documented, configurable ledger of analytic choices.
+
+Each analysis may keep `assumptions.toml` next to its `analysis.toml`. An assumption is
+any table with a `value`; its key is the dotted table path (e.g. "cohort.min_age").
+`[variants.<name>]` tables name override sets for sensitivity analyses. The runner
+resolves a variant plus `--set` overrides into `assumptions.resolved.json`, which steps
+read with `current()` (Python) or `oaimodels::assumptions()` (R). See docs/assumptions.md.
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import tomllib
+from collections.abc import Mapping
+from dataclasses import dataclass, field
+from pathlib import Path
+from typing import Any
+
+from oai.errors import OAIError
+
+ASSUMPTIONS_FILE = "assumptions.toml"
+RESOLVED_FILE = "assumptions.resolved.json"
+LEDGER_FILE = "ASSUMPTIONS.md"
+STATUSES = ("confirmed", "assumed", "open")
+DEFAULT_LABEL = "default"
+_FIELDS = {"value", "status", "source", "rationale", "alternatives"}
+
+
+class AssumptionsError(OAIError):
+    """assumptions.toml is invalid, or a variant/override does not fit it."""
+
+
+@dataclass(frozen=True)
+class Assumption:
+    key: str
+    value: Any
+    status: str
+    source: str
+    rationale: str = ""
+    alternatives: tuple[Any, ...] = ()
+
+
+@dataclass(frozen=True)
+class Variant:
+    name: str
+    description: str
+    set: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class Resolved:
+    analysis: str
+    label: str
+    variant: str | None
+    overrides: Mapping[str, Any]
+    values: Mapping[str, Any]
+    origins: Mapping[str, str]
+    items: Mapping[str, Assumption]
+
+    def __getitem__(self, key: str) -> Any:
+        try:
+            return self.values[key]
+        except KeyError:
+            raise AssumptionsError(f"{self.analysis}: no assumption {key!r}") from None
+
+    def to_json(self) -> dict[str, Any]:
+        return {
+            "analysis": self.analysis,
+            "label": self.label,
+            "variant": self.variant,
+            "overrides": dict(self.overrides),
+            "assumptions": {
+                key: {
+                    "value": self.values[key],
+                    "status": item.status,
+                    "source": item.source,
+                    "origin": self.origins[key],
+                }
+                for key, item in self.items.items()
+            },
+        }
+
+    def write(self, directory: Path) -> Path:
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / RESOLVED_FILE
+        path.write_text(json.dumps(self.to_json(), indent=2))
+        return path
+
+    @classmethod
+    def read(cls, path: Path) -> Resolved:
+        data = json.loads(path.read_text())
+        entries = data["assumptions"]
+        return cls(
+            analysis=data["analysis"],
+            label=data["label"],
+            variant=data["variant"],
+            overrides=data["overrides"],
+            values={key: e["value"] for key, e in entries.items()},
+            origins={key: e["origin"] for key, e in entries.items()},
+            items={
+                key: Assumption(key, e["value"], e["status"], e["source"])
+                for key, e in entries.items()
+            },
+        )
+
+
+def _same_type(default: Any, value: Any) -> bool:
+    if isinstance(default, bool) or isinstance(value, bool):
+        return isinstance(default, bool) and isinstance(value, bool)
+    if isinstance(default, float):
+        return isinstance(value, (int, float))
+    return type(default) is type(value)
+
+
+@dataclass(frozen=True)
+class Assumptions:
+    path: Path | None
+    items: Mapping[str, Assumption] = field(default_factory=dict)
+    variants: Mapping[str, Variant] = field(default_factory=dict)
+
+    def check(self, key: str, value: Any, where: str) -> None:
+        if key not in self.items:
+            raise AssumptionsError(f"{where}: unknown assumption {key!r}")
+        default = self.items[key].value
+        if not _same_type(default, value):
+            raise AssumptionsError(
+                f"{where}: {key} expects {type(default).__name__}, got {type(value).__name__} ({value!r})"
+            )
+
+    def resolve(
+        self, analysis: str, variant: str | None = None, overrides: Mapping[str, Any] | None = None
+    ) -> Resolved:
+        overrides = dict(overrides or {})
+        values = {key: item.value for key, item in self.items.items()}
+        origins = dict.fromkeys(values, "default")
+        if variant is not None:
+            if variant not in self.variants:
+                available = ", ".join(sorted(self.variants)) or "(none)"
+                raise AssumptionsError(
+                    f"{analysis}: unknown variant {variant!r}; available: {available}"
+                )
+            for key, value in self.variants[variant].set.items():
+                values[key], origins[key] = value, "variant"
+        for key, value in overrides.items():
+            self.check(key, value, f"--set {key}")
+            values[key], origins[key] = value, "override"
+        label = variant or DEFAULT_LABEL
+        if overrides:
+            digest = hashlib.sha256(json.dumps(overrides, sort_keys=True).encode()).hexdigest()[:8]
+            label = f"{label}+custom-{digest}"
+        return Resolved(analysis, label, variant, overrides, values, origins, self.items)
+
+
+def _parse_item(key: str, entry: dict[str, Any], where: Path) -> Assumption:
+    unknown = set(entry) - _FIELDS
+    if unknown:
+        raise AssumptionsError(f"{where}: {key}: unknown field(s) {sorted(unknown)}")
+    if entry.get("status") not in STATUSES:
+        raise AssumptionsError(f"{where}: {key}: status must be one of {', '.join(STATUSES)}")
+    source = entry.get("source")
+    if not isinstance(source, str) or not source.strip():
+        raise AssumptionsError(f"{where}: {key}: 'source' is required")
+    return Assumption(
+        key,
+        entry["value"],
+        entry["status"],
+        source,
+        entry.get("rationale", ""),
+        tuple(entry.get("alternatives", [])),
+    )
+
+
+def _walk(table: dict[str, Any], prefix: str, where: Path, out: dict[str, Assumption]) -> None:
+    for name, entry in table.items():
+        key = f"{prefix}.{name}" if prefix else name
+        if not isinstance(entry, dict):
+            raise AssumptionsError(
+                f"{where}: {key!r} must be a table with value, status and source"
+            )
+        if "value" in entry:
+            out[key] = _parse_item(key, entry, where)
+        else:
+            _walk(entry, key, where, out)
+
+
+def load_assumptions(analysis_root: Path) -> Assumptions:
+    path = analysis_root / ASSUMPTIONS_FILE
+    if not path.is_file():
+        return Assumptions(path=None)
+    try:
+        data = tomllib.loads(path.read_text())
+    except tomllib.TOMLDecodeError as exc:
+        raise AssumptionsError(f"{path}: invalid TOML: {exc}") from None
+    raw_variants = data.pop("variants", {})
+    items: dict[str, Assumption] = {}
+    _walk(data, "", path, items)
+    base = Assumptions(path=path, items=items)
+    variants: dict[str, Variant] = {}
+    for name, spec in raw_variants.items():
+        if not isinstance(spec, dict) or not isinstance(spec.get("set"), dict):
+            raise AssumptionsError(f"{path}: variant {name!r} needs a 'set' table")
+        for key, value in spec["set"].items():
+            base.check(key, value, f"{path}: variant {name!r}")
+        variants[name] = Variant(name, spec.get("description", ""), spec["set"])
+    return Assumptions(path=path, items=items, variants=variants)
+
+
+def parse_override(text: str) -> tuple[str, Any]:
+    """Parse `key=value`; the value is a TOML literal (7, true, "x", [1, 2]) or a bare string."""
+    key, sep, raw = text.partition("=")
+    if not sep or not key.strip():
+        raise AssumptionsError(f"--set expects key=value, got {text!r}")
+    try:
+        value = tomllib.loads(f"v = {raw.strip()}")["v"]
+    except tomllib.TOMLDecodeError:
+        value = raw.strip()
+    return key.strip(), value
+
+
+def current() -> Resolved:
+    """The resolved assumptions of the running step (set by `oai run`)."""
+    path = os.environ.get("OAI_ASSUMPTIONS")
+    if not path:
+        raise AssumptionsError("OAI_ASSUMPTIONS is not set; run this step via `oai run`")
+    return Resolved.read(Path(path))
