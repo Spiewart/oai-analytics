@@ -39,7 +39,7 @@ markers = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-extend-exclude = ["docs"]  # ruff formats Markdown code blocks; leave docs untouched
+extend-exclude = ["docs", "*.md"]  # ruff formats Markdown code blocks; leave prose files untouched
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]

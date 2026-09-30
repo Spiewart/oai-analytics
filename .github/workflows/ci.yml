@@ -1,0 +1,40 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: uv sync --locked
+      - run: uv run ruff check
+      - run: uv run ruff format --check
+      - run: uv run python scripts/check_no_data.py
+      - run: uv run pytest
+
+  r:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: r
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.5.2"
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-renv@v2
+        with:
+          working-directory: r
+      - run: Rscript -e 'testthat::test_local("oaimodels", stop_on_failure = TRUE)'
