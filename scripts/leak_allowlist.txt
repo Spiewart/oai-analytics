@@ -1,0 +1,6 @@
+# Leak-guard exemptions: "<rule> <glob>" with repo-relative fnmatch globs.
+# rule: header (skip the 'ID|' first-line check) | id (skip the participant-ID scan) | all
+# uv.lock records wheel sizes in bytes, which can be 7-digit numbers starting with 9.
+id uv.lock
+# Synthetic fixtures mimic OAI headers; their IDs (1000001...) are still scanned.
+header tests/fixtures/*
