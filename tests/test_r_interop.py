@@ -68,3 +68,27 @@ def test_runner_r_step_sees_oaimodels(tmp_path):
     assert (
         tmp_path / "results" / "rstep" / "default" / "covs.txt"
     ).read_text().strip() == "age0,sex,bmi0,PC1"
+
+
+def test_runner_r_step_reads_assumptions(tmp_path):
+    root = tmp_path / "analyses" / "rassume"
+    root.mkdir(parents=True)
+    (root / "analysis.toml").write_text(
+        'name = "rassume"\n[[steps]]\nid = "m"\nlang = "r"\nstage = "local"\nentry = "m.R"\n'
+    )
+    (root / "assumptions.toml").write_text(
+        '[model.corstr]\nvalue = "exchangeable"\nstatus = "open"\nsource = "t"\n'
+    )
+    (root / "m.R").write_text(
+        'writeLines(oaimodels::assumptions()[["model.corstr"]], '
+        'file.path(Sys.getenv("OAI_RESULTS_DIR"), "corstr.txt"))\n'
+    )
+    settings = load_settings(
+        env={"OAI_WORK_DIR": str(tmp_path / "work"), "OAI_RESULTS_DIR": str(tmp_path / "results")},
+        repo_root=REPO,
+    )
+    run_analysis(
+        load_analysis(root), settings, overrides={"model.corstr": "ar1"}, echo=lambda _: None
+    )
+    [out] = (tmp_path / "results" / "rassume").glob("*/corstr.txt")
+    assert out.read_text().strip() == "ar1"
