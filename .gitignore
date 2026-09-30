@@ -1,0 +1,40 @@
+# Local configuration (may contain paths to controlled data)
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+dist/
+build/
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+
+# R
+r/renv/library/
+r/renv/staging/
+r/renv/local/
+.Rhistory
+.Rproj.user/
+*.Rcheck/
+oaimodels_*.tar.gz
+
+# Data: never commit (enforced by scripts/check_no_data.py)
+*.parquet
+*.feather
+*.sas7bdat
+*.rds
+*.RData
+*.rdata
+*.txt
+!docs/**/*.txt
+!tests/fixtures/**/*.txt
+!scripts/leak_allowlist.txt
+work/
+results/
+bundles/
+*.tar.gz
+
+# OS
+.DS_Store

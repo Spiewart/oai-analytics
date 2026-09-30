@@ -1,0 +1,46 @@
+[project]
+name = "oai-analytics"
+version = "0.1.0"
+description = "Analytic suite for Osteoarthritis Initiative (OAI) data"
+readme = "README.md"
+license = "MIT"
+requires-python = ">=3.11"
+dependencies = [
+    "polars>=1.30",
+    "python-dotenv>=1.0",
+    "typer>=0.12",
+]
+
+[project.scripts]
+oai = "oai.cli:app"
+
+[dependency-groups]
+dev = [
+    "pre-commit>=3.7",
+    "pytest>=8",
+    "ruff>=0.6",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/oai"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-m 'not realdata and not slow'"
+markers = [
+    "realdata: needs OAI_DATA_DIR pointing at a real OAI release (run with -m realdata)",
+    "slow: builds real wheels / R packages (run with -m slow)",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+extend-exclude = ["docs"]  # ruff formats Markdown code blocks; leave docs untouched
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B"]
+ignore = ["E501"]  # the formatter owns line length
