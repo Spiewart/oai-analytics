@@ -1,0 +1,254 @@
+# Published values: Lo et al. 2022 (Arthritis Rheumatol 74:1660-7) and Supplementary
+# Tables 1-3. Integers are counts, floats are means, inline tables are odds ratios
+# {or, lo, hi, sig} (sig = bold/footnoted as significant). Graded by oai.replication.
+
+[related]  # metric prefix -> assumptions that bear on it (longest prefix wins)
+"flow.age50" = ["cohort.min_age"]
+"flow.baseline_xray" = ["cohort.reading_project"]
+"flow.roa" = ["cohort.reading_project", "knees.min_kl"]
+"flow.before_survey" = ["cohort.survey_start"]
+"flow.no_visit96" = ["cohort.survey_start"]
+"flow.no_survey" = ["cohort.survey_completed_items"]
+"flow.no_followup" = ["cohort.reading_project", "outcomes.followup_visits"]
+"flow.knees" = ["cohort.reading_project", "outcomes.followup_visits", "knees.min_kl"]
+"flow.fallback36" = ["outcomes.followup_visits"]
+"s1.before_survey" = ["cohort.survey_start"]
+"s1.no_visit96" = ["cohort.survey_start"]
+"s1.no_survey" = ["cohort.survey_completed_items"]
+"s1.no_followup" = ["cohort.reading_project", "outcomes.followup_visits"]
+"t1" = ["exposure.walker_item", "exposure.missing_walking_as"]
+"t1.walk_days_min" = ["exposure.category_midpoints"]
+"t1.walk_days_p25" = ["exposure.category_midpoints"]
+"t1.walk_days_median" = ["exposure.category_midpoints"]
+"t1.walk_days_p75" = ["exposure.category_midpoints"]
+"t1.walk_days_max" = ["exposure.category_midpoints"]
+"t1.pain0" = ["outcomes.pain_baseline_items", "exposure.walker_item"]
+"t1.pain48" = ["outcomes.pain_followup_items", "outcomes.followup_visits", "exposure.walker_item"]
+"t1.replaced48" = ["outcomes.replacement_window", "exposure.walker_item"]
+"t1.align_knees" = ["alignment.source", "alignment.pick"]
+"t1.varus" = ["alignment.source", "alignment.pick"]
+"t1.neutral" = ["alignment.source", "alignment.pick"]
+"t1.valgus" = ["alignment.source", "alignment.pick"]
+"t2.new_pain" = ["outcomes.pain_baseline_items", "outcomes.pain_followup_items", "exposure.walker_item", "model.corstr"]
+"t2.improved_pain" = ["outcomes.pain_baseline_items", "outcomes.pain_followup_items", "exposure.walker_item", "model.corstr"]
+"t2.kl_worse" = ["outcomes.replacement_is_structural_worsening", "exposure.walker_item", "model.corstr", "model.kl_covariate"]
+"t2.jsn_worse" = ["outcomes.replacement_is_structural_worsening", "exposure.walker_item", "model.corstr", "model.kl_covariate"]
+"t3" = ["alignment.source", "alignment.pick", "exposure.walker_item"]
+
+[default]
+"flow.all.persons" = 4796
+"flow.age50.persons" = 4247
+"flow.baseline_xray.persons" = 3980
+"flow.roa.persons" = 2356
+"flow.before_survey.excluded_persons" = 417
+"flow.before_survey.excluded_knees" = 644
+"flow.before_survey.persons" = 1939
+"flow.no_visit96.excluded_persons" = 346
+"flow.no_visit96.excluded_knees" = 553
+"flow.no_visit96.persons" = 1593
+"flow.no_survey.excluded_persons" = 337
+"flow.no_survey.excluded_knees" = 513
+"flow.no_survey.persons" = 1256
+"flow.no_followup.excluded_persons" = 44
+"flow.no_followup.excluded_knees" = 73
+"flow.no_followup.persons" = 1212
+"flow.knees" = 1808
+"flow.fallback36.persons" = 151
+"s1.before_survey.male" = 130
+"s1.before_survey.age_mean" = 63.5
+"s1.before_survey.bmi_mean" = 29.4
+"s1.no_visit96.male" = 148
+"s1.no_visit96.age_mean" = 65.5
+"s1.no_visit96.bmi_mean" = 30.0
+"s1.no_survey.male" = 137
+"s1.no_survey.age_mean" = 65.5
+"s1.no_survey.bmi_mean" = 29.6
+"s1.no_followup.male" = 14
+"s1.no_followup.age_mean" = 63.7
+"s1.no_followup.bmi_mean" = 30.4
+"t1.persons.nonwalkers" = 325
+"t1.persons.walkers" = 887
+"t1.persons.all" = 1212
+"t1.age_mean.nonwalkers" = 64.5
+"t1.age_mean.walkers" = 62.7
+"t1.age_mean.all" = 63.2
+"t1.male.nonwalkers" = 167
+"t1.male.walkers" = 381
+"t1.male.all" = 548
+"t1.bmi_mean.nonwalkers" = 30.2
+"t1.bmi_mean.walkers" = 29.2
+"t1.bmi_mean.all" = 29.4
+"t1.walk_days_min.walkers" = 13
+"t1.walk_days_p25.walkers" = 337
+"t1.walk_days_median.walkers" = 845
+"t1.walk_days_p75.walkers" = 1417
+"t1.walk_days_max.walkers" = 2100
+"t1.knees.nonwalkers" = 503
+"t1.knees.walkers" = 1305
+"t1.knees.all" = 1808
+"t1.kl2.nonwalkers" = 284
+"t1.kl2.walkers" = 869
+"t1.kl2.all" = 1153
+"t1.kl3.nonwalkers" = 175
+"t1.kl3.walkers" = 354
+"t1.kl3.all" = 529
+"t1.kl4.nonwalkers" = 44
+"t1.kl4.walkers" = 82
+"t1.kl4.all" = 126
+"t1.jsm0.nonwalkers" = 151
+"t1.jsm0.walkers" = 487
+"t1.jsm0.all" = 638
+"t1.jsm1.nonwalkers" = 173
+"t1.jsm1.walkers" = 475
+"t1.jsm1.all" = 648
+"t1.jsm2.nonwalkers" = 144
+"t1.jsm2.walkers" = 293
+"t1.jsm2.all" = 437
+"t1.jsm3.nonwalkers" = 35
+"t1.jsm3.walkers" = 50
+"t1.jsm3.all" = 85
+"t1.pain0.nonwalkers" = 223
+"t1.pain0.walkers" = 453
+"t1.pain0.all" = 676
+"t1.align_knees.nonwalkers" = 418
+"t1.align_knees.walkers" = 1066
+"t1.align_knees.all" = 1484
+"t1.varus.nonwalkers" = 227
+"t1.varus.walkers" = 480
+"t1.varus.all" = 707
+"t1.neutral.nonwalkers" = 129
+"t1.neutral.walkers" = 407
+"t1.neutral.all" = 536
+"t1.valgus.nonwalkers" = 62
+"t1.valgus.walkers" = 179
+"t1.valgus.all" = 241
+"t1.pain48.nonwalkers" = 233
+"t1.pain48.walkers" = 496
+"t1.pain48.all" = 729
+"t1.replaced48.nonwalkers" = 27
+"t1.replaced48.walkers" = 50
+"t1.replaced48.all" = 77
+"t2.new_pain.nonwalkers.events" = 103
+"t2.new_pain.nonwalkers.n" = 280
+"t2.new_pain.walkers.events" = 223
+"t2.new_pain.walkers.n" = 852
+"t2.new_pain.or_unadj" = { or = 0.6, lo = 0.4, hi = 0.8, sig = true }
+"t2.new_pain.or_adj" = { or = 0.6, lo = 0.4, hi = 0.8, sig = true }
+"t2.kl_worse.nonwalkers.events" = 105
+"t2.kl_worse.nonwalkers.n" = 503
+"t2.kl_worse.walkers.events" = 234
+"t2.kl_worse.walkers.n" = 1305
+"t2.kl_worse.or_unadj" = { or = 0.8, lo = 0.6, hi = 1.1, sig = false }
+"t2.kl_worse.or_adj" = { or = 0.8, lo = 0.6, hi = 1.1, sig = false }
+"t2.jsn_worse.nonwalkers.events" = 137
+"t2.jsn_worse.nonwalkers.n" = 503
+"t2.jsn_worse.walkers.events" = 281
+"t2.jsn_worse.walkers.n" = 1305
+"t2.jsn_worse.or_unadj" = { or = 0.7, lo = 0.6, hi = 1.0, sig = true }
+"t2.jsn_worse.or_adj" = { or = 0.8, lo = 0.6, hi = 1.0, sig = true }
+"t2.improved_pain.nonwalkers.events" = 93
+"t2.improved_pain.nonwalkers.n" = 223
+"t2.improved_pain.walkers.events" = 180
+"t2.improved_pain.walkers.n" = 453
+"t2.improved_pain.or_unadj" = { or = 0.9, lo = 0.7, hi = 1.3, sig = false }
+"t2.improved_pain.or_adj" = { or = 0.8, lo = 0.6, hi = 1.2, sig = false }
+"t3.new_pain.varus.nonwalkers.events" = 47
+"t3.new_pain.varus.nonwalkers.n" = 120
+"t3.new_pain.varus.walkers.events" = 82
+"t3.new_pain.varus.walkers.n" = 290
+"t3.new_pain.neutral.nonwalkers.events" = 28
+"t3.new_pain.neutral.nonwalkers.n" = 77
+"t3.new_pain.neutral.walkers.events" = 60
+"t3.new_pain.neutral.walkers.n" = 266
+"t3.new_pain.valgus.nonwalkers.events" = 9
+"t3.new_pain.valgus.nonwalkers.n" = 31
+"t3.new_pain.valgus.walkers.events" = 40
+"t3.new_pain.valgus.walkers.n" = 122
+"t3.kl_worse.varus.nonwalkers.events" = 59
+"t3.kl_worse.varus.nonwalkers.n" = 227
+"t3.kl_worse.varus.walkers.events" = 97
+"t3.kl_worse.varus.walkers.n" = 480
+"t3.kl_worse.neutral.nonwalkers.events" = 13
+"t3.kl_worse.neutral.nonwalkers.n" = 129
+"t3.kl_worse.neutral.walkers.events" = 58
+"t3.kl_worse.neutral.walkers.n" = 407
+"t3.kl_worse.valgus.nonwalkers.events" = 9
+"t3.kl_worse.valgus.nonwalkers.n" = 62
+"t3.kl_worse.valgus.walkers.events" = 35
+"t3.kl_worse.valgus.walkers.n" = 179
+"t3.jsn_worse.varus.nonwalkers.events" = 88
+"t3.jsn_worse.varus.nonwalkers.n" = 227
+"t3.jsn_worse.varus.walkers.events" = 149
+"t3.jsn_worse.varus.walkers.n" = 480
+"t3.jsn_worse.neutral.nonwalkers.events" = 14
+"t3.jsn_worse.neutral.nonwalkers.n" = 129
+"t3.jsn_worse.neutral.walkers.events" = 69
+"t3.jsn_worse.neutral.walkers.n" = 407
+"t3.jsn_worse.valgus.nonwalkers.events" = 3
+"t3.jsn_worse.valgus.nonwalkers.n" = 62
+"t3.jsn_worse.valgus.walkers.events" = 16
+"t3.jsn_worse.valgus.walkers.n" = 179
+"t3.improved_pain.varus.nonwalkers.events" = 43
+"t3.improved_pain.varus.nonwalkers.n" = 107
+"t3.improved_pain.varus.walkers.events" = 74
+"t3.improved_pain.varus.walkers.n" = 190
+"t3.improved_pain.neutral.nonwalkers.events" = 20
+"t3.improved_pain.neutral.nonwalkers.n" = 52
+"t3.improved_pain.neutral.walkers.events" = 66
+"t3.improved_pain.neutral.walkers.n" = 141
+"t3.improved_pain.valgus.nonwalkers.events" = 15
+"t3.improved_pain.valgus.nonwalkers.n" = 31
+"t3.improved_pain.valgus.walkers.events" = 20
+"t3.improved_pain.valgus.walkers.n" = 57
+
+[missing_as_nonwalkers]
+"t2.new_pain.nonwalkers.events" = 324
+"t2.new_pain.nonwalkers.n" = 1004
+"t2.new_pain.walkers.events" = 223
+"t2.new_pain.walkers.n" = 852
+"t2.new_pain.or_unadj" = { or = 0.7, lo = 0.6, hi = 0.9, sig = true }
+"t2.new_pain.or_adj" = { or = 0.8, lo = 0.6, hi = 0.9, sig = true }
+"t2.kl_worse.nonwalkers.events" = 427
+"t2.kl_worse.nonwalkers.n" = 1909
+"t2.kl_worse.walkers.events" = 234
+"t2.kl_worse.walkers.n" = 1305
+"t2.kl_worse.or_unadj" = { or = 0.8, lo = 0.6, hi = 0.9, sig = true }
+"t2.kl_worse.or_adj" = { or = 0.8, lo = 0.7, hi = 1.0, sig = true }
+"t2.jsn_worse.nonwalkers.events" = 522
+"t2.jsn_worse.nonwalkers.n" = 1909
+"t2.jsn_worse.walkers.events" = 281
+"t2.jsn_worse.walkers.n" = 1305
+"t2.jsn_worse.or_unadj" = { or = 0.7, lo = 0.6, hi = 0.9, sig = true }
+"t2.jsn_worse.or_adj" = { or = 0.8, lo = 0.7, hi = 1.0, sig = true }
+"t2.improved_pain.nonwalkers.events" = 338
+"t2.improved_pain.nonwalkers.n" = 896
+"t2.improved_pain.walkers.events" = 180
+"t2.improved_pain.walkers.n" = 453
+"t2.improved_pain.or_unadj" = { or = 1.1, lo = 0.8, hi = 1.4, sig = false }
+"t2.improved_pain.or_adj" = { or = 1.0, lo = 0.8, hi = 1.3, sig = false }
+
+[missing_as_walkers]
+"t2.new_pain.nonwalkers.events" = 103
+"t2.new_pain.nonwalkers.n" = 280
+"t2.new_pain.walkers.events" = 444
+"t2.new_pain.walkers.n" = 1576
+"t2.new_pain.or_unadj" = { or = 0.7, lo = 0.5, hi = 0.9, sig = true }
+"t2.new_pain.or_adj" = { or = 0.7, lo = 0.5, hi = 0.9, sig = true }
+"t2.kl_worse.nonwalkers.events" = 105
+"t2.kl_worse.nonwalkers.n" = 503
+"t2.kl_worse.walkers.events" = 556
+"t2.kl_worse.walkers.n" = 2711
+"t2.kl_worse.or_unadj" = { or = 1.0, lo = 0.8, hi = 1.3, sig = false }
+"t2.kl_worse.or_adj" = { or = 1.0, lo = 0.8, hi = 1.2, sig = false }
+"t2.jsn_worse.nonwalkers.events" = 137
+"t2.jsn_worse.nonwalkers.n" = 503
+"t2.jsn_worse.walkers.events" = 666
+"t2.jsn_worse.walkers.n" = 2711
+"t2.jsn_worse.or_unadj" = { or = 0.9, lo = 0.7, hi = 1.1, sig = false }
+"t2.jsn_worse.or_adj" = { or = 0.9, lo = 0.7, hi = 1.1, sig = false }
+"t2.improved_pain.nonwalkers.events" = 93
+"t2.improved_pain.nonwalkers.n" = 223
+"t2.improved_pain.walkers.events" = 425
+"t2.improved_pain.walkers.n" = 1126
+"t2.improved_pain.or_unadj" = { or = 0.9, lo = 0.6, hi = 1.2, sig = false }
+"t2.improved_pain.or_adj" = { or = 0.9, lo = 0.6, hi = 1.2, sig = false }

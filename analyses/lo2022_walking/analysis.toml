@@ -1,0 +1,36 @@
+name = "lo2022_walking"
+description = "Replication of Lo et al. 2022: walking for exercise and knee OA progression (OAI)."
+
+[inputs]
+tables = [
+    "enrollees", "allclinical:00", "allclinical:05", "allclinical:06", "allclinical:10",
+    "kxr_sq_bu:00", "kxr_sq_bu:05", "kxr_sq_bu:06", "outcomes:99",
+    "flxr_kneealign_cooke:01", "flxr_kneealign_cooke:03",
+    "flxr_kneealign_cooke:05", "flxr_kneealign_cooke:06",
+]
+
+[[steps]]
+id = "cohort"
+lang = "python"
+stage = "local"
+entry = "build_frame.py"
+
+[[steps]]
+id = "models"
+lang = "r"
+stage = "local"
+entry = "models.R"
+needs = ["cohort"]
+
+[[steps]]
+id = "compare"
+lang = "python"
+stage = "local"
+entry = "compare.py"
+needs = ["models"]
+
+[outputs]
+aggregate = [
+    "flow.csv", "table1.csv", "table2.csv", "table3.csv", "comparison.csv",
+    "metrics_*.csv", "assumptions.resolved.json",
+]

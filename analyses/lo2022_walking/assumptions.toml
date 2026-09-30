@@ -1,0 +1,153 @@
+# Assumptions for the Lo et al. 2022 replication (Arthritis Rheumatol 74:1660-7).
+# confirmed = stated in the paper/supplement; assumed = our reading, checked against a
+# published count where possible; open = not stated. Regenerate the ledger with
+# `oai assumptions lo2022_walking --write`.
+
+[cohort.min_age]
+value = 50
+status = "confirmed"
+source = "Lo 2022 p.1661 (inclusion criteria)"
+
+[cohort.reading_project]
+value = 15
+status = "assumed"
+source = "Lo 2022 ref 11 (Project 15 reliability); reproduces the 3,980 baseline x-rays exactly"
+rationale = "Project 15 is the central BU reading covering baseline to 48 months for nearly all knees"
+alternatives = [37, 43]
+
+[cohort.survey_start]
+value = "2012-09-12"
+status = "assumed"
+source = "Lo 2022 p.1662: survey data acquired Sept 12, 2012 to Oct 31, 2014"
+rationale = "Participants whose 96-month visit (V10FVDATE) came earlier were never offered the survey; check against S1 (417 persons, 644 knees)"
+
+[cohort.survey_completed_items]
+value = ["V10WLKAR1", "V10WLKAR2", "V10WLKAR3", "V10WLKAR4"]
+status = "assumed"
+source = "AllClinical10 Q39-Q48 walking screeners, asked of every respondent"
+rationale = "Answering any walking screener means the survey was completed; check against S1 (337 persons, 513 knees)"
+
+[cohort.impute_missing_walking]
+value = "none"
+status = "confirmed"
+source = "Lo 2022 p.1663: the primary analysis excludes survey non-respondents"
+alternatives = ["non-walker", "walker"]
+
+[knees.min_kl]
+value = 2
+status = "confirmed"
+source = "Lo 2022 p.1661; Table 1 (KL 2-4 only)"
+
+[exposure.walker_item]
+value = "V10WLKAR4"
+status = "assumed"
+source = "AllClinical10 Q48; Lo 2022 p.1662 describes the screener as 'walk for exercise at least 10 times'"
+rationale = "Only age-50+ walking item in the release; its wording adds 'for at least 20 minutes within a given day'"
+
+[exposure.missing_walking_as]
+value = "non-walker"
+status = "confirmed"
+source = "Lo 2022 p.1662 (n = 17 respondents with missing walking data coded as non-walkers)"
+alternatives = ["walker", "exclude"]
+
+[exposure.category_midpoints]
+value = { years = [3.0, 8.0, 15.5, 20.0], months = [2.5, 6.5, 10.5], times = [2.0, 6.0, 10.0] }
+status = "open"
+source = "Lo 2022 p.1662: 'using the median value for the answers'"
+rationale = "Codes 1-4 (years 1-5, 6-10, 11-20, >20), 1-3 (months 1-4, 5-8, 9-12), 1-3 (times 1-3, 4-8, 9+); 20 x 10.5 x 10 reproduces the published max of 2,100, but the published min of 13 is unexplained"
+
+[outcomes.followup_visits]
+value = ["06", "05"]
+status = "confirmed"
+source = "Lo 2022 p.1662: 48-month data, with 36-month data carried forward when missing"
+
+[outcomes.pain_baseline_items]
+value = "P01KP{side}12CV"
+status = "assumed"
+source = "Lo 2022 p.1661 question wording matches screening-visit Q15a/Q18a"
+rationale = "Check against 676 of 1,808 knees with baseline frequent pain"
+alternatives = ["P02KPN{side}CV"]
+
+[outcomes.pain_followup_items]
+value = "V{visit}KP{side}12CV"
+status = "assumed"
+source = "Lo 2022 p.1661; AllClinical follow-up interview Q6a/Q8a"
+rationale = "Check against 729 of 1,808 knees with frequent pain at 48 months"
+
+[outcomes.replacement_is_structural_worsening]
+value = true
+status = "assumed"
+source = "Lo 2022 p.1663: KL4 and JSN3 knees were kept because an interval replacement would count as worsening"
+
+[outcomes.replaced_knee_pain]
+value = "keep"
+status = "open"
+source = "Not stated"
+alternatives = ["exclude"]
+
+[outcomes.replacement_window]
+value = "followup_visit_days"
+status = "assumed"
+source = "Lo 2022 Table 1: replacements over the 48-month follow-up (77 of 1,808 knees)"
+rationale = "A replacement counts if its day is on or before the participant's follow-up visit day (V06VISDYS, else V05VISDYS, else nominal 48 months)"
+
+[alignment.source]
+value = "cooke"
+status = "assumed"
+source = "Lo 2022 refs 13-14 (Sled, Cooke); film counts by visit match p.1662"
+alternatives = ["duryea"]
+
+[alignment.visits]
+value = ["01", "03", "05", "06"]
+status = "confirmed"
+source = "Lo 2022 p.1662: long-limb films obtained at months 12, 24, 36 and 48"
+
+[alignment.pick]
+value = "earliest"
+status = "assumed"
+source = "Lo 2022 p.1662 (one film per knee; timing varied)"
+rationale = "Check against 1,484 knees with films"
+alternatives = ["latest"]
+
+[alignment.varus_max]
+value = -2.0
+status = "confirmed"
+source = "Lo 2022 p.1662"
+
+[alignment.valgus_min]
+value = 2.0
+status = "confirmed"
+source = "Lo 2022 p.1662"
+
+[model.covariates]
+value = ["age", "sex", "kl0"]
+status = "confirmed"
+source = "Lo 2022 Table 2 footnote"
+
+[model.corstr]
+value = "exchangeable"
+status = "open"
+source = "Not stated (GEE, Lo 2022 p.1662)"
+alternatives = ["independence"]
+
+[model.kl_covariate]
+value = "factor"
+status = "open"
+source = "Not stated"
+alternatives = ["numeric"]
+
+[variants.missing_as_nonwalkers]
+description = "Supplementary Table 2: survey non-respondents imputed as non-walkers"
+set = { "cohort.impute_missing_walking" = "non-walker" }
+
+[variants.missing_as_walkers]
+description = "Supplementary Table 3: survey non-respondents imputed as walkers"
+set = { "cohort.impute_missing_walking" = "walker" }
+
+[variants.replacement_not_worsening]
+description = "Sensitivity: an interval replacement does not count as structural worsening"
+set = { "outcomes.replacement_is_structural_worsening" = false }
+
+[variants.corstr_independence]
+description = "Sensitivity: independence working correlation"
+set = { "model.corstr" = "independence" }
