@@ -125,3 +125,39 @@ def test_imputation_variants_add_survey_nonrespondents_with_followup():
         assert knee(k, 1000006, "R")["walker"] is expected
         assert k["ID"].n_unique() == 4
     assert 1000006 not in built().knees["ID"].to_list()
+
+
+def metrics(df):
+    return dict(df.iter_rows())
+
+
+def test_flow_metrics_keys_and_values():
+    m = metrics(lo2022.flow_metrics(built()))
+    assert m["flow.no_followup.persons"] == 3
+    assert m["flow.before_survey.excluded_persons"] == 1
+    assert m["s1.no_visit96.male"] == 1
+    assert m["flow.knees"] == 4
+    assert m["flow.fallback36.persons"] == 1
+
+
+def test_table1_metrics():
+    m = metrics(lo2022.table1(built()))
+    assert (m["t1.persons.walkers"], m["t1.persons.nonwalkers"], m["t1.persons.all"]) == (1, 2, 3)
+    assert m["t1.age_mean.all"] == pytest.approx((61 + 68 + 59) / 3)
+    assert (m["t1.male.walkers"], m["t1.male.all"]) == (1, 2)
+    assert (m["t1.knees.nonwalkers"], m["t1.knees.all"]) == (3, 4)
+    assert (m["t1.kl2.all"], m["t1.kl3.all"], m["t1.kl4.all"]) == (2, 1, 1)
+    assert (m["t1.jsm1.walkers"], m["t1.jsm3.nonwalkers"]) == (1, 1)
+    assert (m["t1.pain0.all"], m["t1.pain48.all"], m["t1.replaced48.nonwalkers"]) == (1, 2, 1)
+    assert (m["t1.align_knees.all"], m["t1.varus.walkers"], m["t1.valgus.nonwalkers"]) == (3, 1, 1)
+    assert m["t1.walk_days_max.walkers"] == 2100.0
+
+
+def test_table3_metrics():
+    m = metrics(lo2022.table3(built()))
+    assert (m["t3.kl_worse.varus.walkers.events"], m["t3.kl_worse.varus.walkers.n"]) == (1, 1)
+    assert (m["t3.kl_worse.valgus.nonwalkers.events"], m["t3.kl_worse.valgus.nonwalkers.n"]) == (
+        0,
+        1,
+    )
+    assert m["t3.new_pain.neutral.nonwalkers.n"] == 0  # 1000010 R has blank baseline pain

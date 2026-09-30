@@ -244,3 +244,86 @@ def build(A: Resolved) -> Built:
     )
     fallback_visit = fu_visits[-1] if len(fu_visits) > 1 else None
     return Built(knees=frame, flow=pl.DataFrame(flow), fallback_visit=fallback_visit)
+
+
+def _metrics(rows: list[tuple[str, float | int | None]]) -> pl.DataFrame:
+    return pl.DataFrame(
+        [{"metric": key, "value": None if value is None else float(value)} for key, value in rows],
+        schema={"metric": pl.String, "value": pl.Float64},
+    )
+
+
+def _by_group(df: pl.DataFrame) -> dict[str, pl.DataFrame]:
+    return {
+        "walkers": df.filter(pl.col("walker")),
+        "nonwalkers": df.filter(~pl.col("walker")),
+        "all": df,
+    }
+
+
+def flow_metrics(built: Built) -> pl.DataFrame:
+    rows: list[tuple[str, float | int | None]] = []
+    for r in built.flow.iter_rows(named=True):
+        step = r["step"]
+        rows.append((f"flow.{step}.persons", r["persons"]))
+        if step != "all":
+            rows += [
+                (f"flow.{step}.excluded_persons", r["excluded_persons"]),
+                (f"flow.{step}.excluded_knees", r["excluded_knees"]),
+            ]
+        if step in S1_STEPS:
+            rows += [
+                (f"s1.{step}.male", r["male"]),
+                (f"s1.{step}.age_mean", r["age_mean"]),
+                (f"s1.{step}.bmi_mean", r["bmi_mean"]),
+            ]
+    fallback = built.knees.filter(pl.col("source_visit") == built.fallback_visit)
+    rows += [
+        ("flow.knees", built.knees.height),
+        ("flow.fallback36.persons", fallback["ID"].n_unique()),
+    ]
+    return _metrics(rows)
+
+
+def table1(built: Built) -> pl.DataFrame:
+    rows: list[tuple[str, float | int | None]] = []
+    persons = built.knees.unique("ID", keep="first", maintain_order=True)
+    for group, p in _by_group(persons).items():
+        rows += [
+            (f"t1.persons.{group}", p.height),
+            (f"t1.age_mean.{group}", p["age"].mean()),
+            (f"t1.male.{group}", (p["sex"] == 1).sum()),
+            (f"t1.bmi_mean.{group}", p["bmi"].mean()),
+        ]
+    days = persons.filter(pl.col("walker"))["walk_times"].drop_nulls()
+    for stat, q in (("min", 0.0), ("p25", 0.25), ("median", 0.5), ("p75", 0.75), ("max", 1.0)):
+        rows.append(
+            (f"t1.walk_days_{stat}.walkers", days.quantile(q, "linear") if len(days) else None)
+        )
+    for group, k in _by_group(built.knees).items():
+        rows.append((f"t1.knees.{group}", k.height))
+        rows += [(f"t1.kl{v}.{group}", (k["kl0"] == v).sum()) for v in (2, 3, 4)]
+        rows += [(f"t1.jsm{v}.{group}", (k["jsm0"] == v).sum()) for v in (0, 1, 2, 3)]
+        rows += [
+            (f"t1.pain0.{group}", k["pain0"].sum()),
+            (f"t1.align_knees.{group}", k["alignment"].is_not_null().sum()),
+            (f"t1.pain48.{group}", k["painf"].sum()),
+            (f"t1.replaced48.{group}", k["replaced"].sum()),
+        ]
+        rows += [(f"t1.{cat}.{group}", (k["alignment"] == cat).sum()) for cat in ALIGNMENTS]
+    return _metrics(rows)
+
+
+def table3(built: Built) -> pl.DataFrame:
+    rows: list[tuple[str, float | int | None]] = []
+    for outcome in OUTCOMES:
+        for cat in ALIGNMENTS:
+            for group, k in _by_group(built.knees).items():
+                if group == "all":
+                    continue
+                cell = k.filter((pl.col("alignment") == cat) & pl.col(outcome).is_not_null())
+                rows += [
+                    (f"t3.{outcome}.{cat}.{group}.events", cell[outcome].sum()),
+                    (f"t3.{outcome}.{cat}.{group}.n", cell.height),
+                ]
+    return _metrics(rows)
