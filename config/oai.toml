@@ -5,3 +5,25 @@
 # [paths]
 # data_dir = "/path/to/OAI Complete Data_ASCII"
 # work_dir = "/path/to/oai-work"
+
+# Visit-code map (docs/reference/oai-dataset-table-structure.md). V02/V04/V07/V09 are
+# telephone contacts. V11-V14 exist in this release (extended follow-up) but their
+# nominal months are unconfirmed: check AllClinical13_ReleaseComments_Yr14.pdf and
+# AllClinical14_ReleaseComments_Y16.pdf in OAI_DATA_DIR, then add month/contact and
+# set verified = true. Until then time comes from V##VISDYS (present from V03 on).
+[visits]
+V00 = { month = 0, contact = "clinic", verified = true }
+V01 = { month = 12, contact = "clinic", verified = true }
+V02 = { month = 18, contact = "phone", verified = true }
+V03 = { month = 24, contact = "clinic", verified = true }
+V04 = { month = 30, contact = "phone", verified = true }
+V05 = { month = 36, contact = "clinic", verified = true }
+V06 = { month = 48, contact = "clinic", verified = true }
+V07 = { month = 60, contact = "phone", verified = true }
+V08 = { month = 72, contact = "clinic", verified = true }
+V09 = { month = 84, contact = "phone", verified = true }
+V10 = { month = 96, contact = "clinic", verified = true }
+V11 = { verified = false }
+V12 = { verified = false }
+V13 = { verified = false }
+V14 = { verified = false }
