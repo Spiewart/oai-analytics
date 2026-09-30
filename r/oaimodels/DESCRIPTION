@@ -1,0 +1,13 @@
+Package: oaimodels
+Title: Shared Model Helpers for OAI Analytics
+Version: 0.1.0
+Author: oai-analytics contributors
+Maintainer: oai-analytics contributors <oai-analytics@users.noreply.github.com>
+Description: Loads analysis frames written by the Python side and wraps the
+    mixed, cumulative-link, GEE and Cox models specified in the OAI analysis plan.
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.2)
+Imports: nanoparquet
+Suggests: testthat (>= 3.0.0), lme4, ordinal, geepack, survival
+Config/testthat/edition: 3

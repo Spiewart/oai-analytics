@@ -1,0 +1,6 @@
+export(read_frame)
+export(default_covariates)
+export(fit_progression_lmm)
+export(fit_kl_clmm)
+export(fit_progressor_gee)
+export(fit_tkr_cox)

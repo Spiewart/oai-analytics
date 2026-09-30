@@ -63,6 +63,10 @@ def step_env(
     frames.mkdir(parents=True, exist_ok=True)
     results.mkdir(parents=True, exist_ok=True)
     env.update(OAI_ANALYSIS=analysis.name, OAI_FRAME_DIR=str(frames), OAI_RESULTS_DIR=str(results))
+    r_profile = settings.repo_root / "r" / "step-profile.R" if settings.repo_root else None
+    if r_profile is not None and r_profile.is_file():
+        env.setdefault("OAI_R_DIR", str(r_profile.parent))
+        env.setdefault("R_PROFILE_USER", str(r_profile))
     return env
 
 
