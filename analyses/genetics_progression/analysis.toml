@@ -1,0 +1,25 @@
+name = "genetics_progression"
+description = "Per-genotype progression models (dbGaP GeCKO phs000955): candidate loci, PRS, LSKAT."
+
+[inputs]
+tables = ["enrollees", "allclinical:00", "kxr_sq_bu:*", "kxr_qjsw_duryea:*", "outcomes:99"]
+
+[[steps]]
+id = "frame"
+lang = "python"
+stage = "local"
+entry = "build_frame.py"
+
+[[steps]]
+id = "models"
+lang = "r"
+stage = "enclave"
+entry = "models.R"
+needs = ["frame"]
+
+[export]
+frame = "frame.parquet"
+columns = ["ID", "SIDE", "visit", "time_years", "age0", "sex", "bmi0"]
+
+[outputs]
+aggregate = ["*.csv", "*.png"]

@@ -1,0 +1,14 @@
+name = "progression_definitions"
+description = "Derive radiographic, symptomatic and hard-endpoint progression definitions per the crosswalk."
+
+[inputs]
+tables = ["enrollees", "kxr_sq_bu:*", "kxr_qjsw_duryea:*", "allclinical:*", "outcomes:99"]
+
+[[steps]]
+id = "endpoints"
+lang = "python"
+stage = "local"
+entry = "derive_endpoints.py"
+
+[outputs]
+aggregate = ["*.csv"]

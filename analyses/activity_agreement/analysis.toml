@@ -1,0 +1,26 @@
+name = "activity_agreement"
+description = "Self-reported activity (PASE, 96-mo walking) vs. ActiGraph accelerometry: agreement/validation (Aims 1-3)."
+
+[inputs]
+tables = [
+    "enrollees",
+    "allclinical:00", "allclinical:01", "allclinical:03", "allclinical:05",
+    "allclinical:06", "allclinical:10",
+    "accelerometry:06", "acceldatabyday:06",
+]
+
+[[steps]]
+id = "frame"
+lang = "python"
+stage = "local"
+entry = "build_frame.py"
+
+[[steps]]
+id = "agreement"
+lang = "r"
+stage = "local"
+entry = "agreement.R"
+needs = ["frame"]
+
+[outputs]
+aggregate = ["*.csv", "*.png"]
