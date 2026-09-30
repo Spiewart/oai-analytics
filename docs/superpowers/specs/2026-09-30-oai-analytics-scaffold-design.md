@@ -305,8 +305,9 @@ Exit code non-zero on failure with a per-file report.
 ## 13. Success criteria
 
 - `uv run pytest` and R testthat pass; CI green on GitHub.
-- With `OAI_DATA_DIR` set, `oai catalog` lists all 158 tables with no
-  collisions, and realdata smoke tests pass.
+- With `OAI_DATA_DIR` set, `oai catalog` lists every data file (156 files /
+  43 tables in the current release; the two `_Formats` files are excluded) with
+  no collisions, and realdata smoke tests pass.
 - `oai export` on a toy analysis produces a bundle whose manifest checksums
   verify, and `oai check-egress` rejects a planted ID column.
 - `scripts/check_no_data.py` passes on the repo and fails on a planted
