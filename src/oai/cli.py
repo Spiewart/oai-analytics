@@ -12,6 +12,7 @@ from oai import __version__
 from oai.catalog import catalog_for
 from oai.config import get_settings
 from oai.errors import OAIError
+from oai.manifest import list_analyses
 
 app = typer.Typer(help="OAI analytics command line.", no_args_is_help=True)
 
@@ -52,3 +53,11 @@ def catalog() -> None:
             visits = cat.visits(table)
             typer.echo(f"{table:<32} {' '.join(visits) if visits else '(no visit)'}")
         typer.echo(f"\n{len(cat)} files, {len(cat.tables())} tables in {settings.data_dir}")
+
+
+@app.command()
+def analyses() -> None:
+    """List analyses and validate their manifests."""
+    with user_errors():
+        for a in list_analyses(get_settings().analyses_dir):
+            typer.echo(f"{a.name:<28} [{','.join(sorted(a.stages))}] {a.description}")
