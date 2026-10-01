@@ -50,22 +50,31 @@ quiet_nonunique <- function(expr) {
   })
 }
 
-#' Median (quantile 0.5) regression coefficient for one term, with a 95% CI
-median_regression <- function(formula, data, term) {
+#' Median (quantile 0.5) regression coefficient for one term, with a 95% CI (estimate +/- 1.96 SE)
+#'
+#' `se = "nid"` (default) is quantreg's sandwich estimate; it warns ("non-positive fis") on
+#' zero-inflated outcomes. `se = "boot"` is a seeded pairs (xy) bootstrap with `reps` resamples.
+median_regression <- function(formula, data, term, se = c("nid", "boot"), reps = 1000, seed = 1) {
+  se <- match.arg(se)
   if (!requireNamespace("quantreg", quietly = TRUE)) {
     stop("median_regression() needs the quantreg package", call. = FALSE)
   }
   # Non-unique medians are expected with discrete covariates; the returned estimate is one
   # valid solution.
   fit <- quiet_nonunique(quantreg::rq(formula, tau = 0.5, data = data))
-  s <- quiet_nonunique(summary(fit, se = "nid"))$coefficients
+  if (se == "boot") {
+    set.seed(seed)
+    s <- quiet_nonunique(summary(fit, se = "boot", bsmethod = "xy", R = reps))$coefficients
+  } else {
+    s <- quiet_nonunique(summary(fit, se = "nid"))$coefficients
+  }
   if (!term %in% rownames(s)) {
     stop("term ", term, " is not in the model (", paste(rownames(s), collapse = ", "), ")",
          call. = FALSE)
   }
   est <- s[term, "Value"]
-  se <- s[term, "Std. Error"]
-  c(estimate = est, lo = est - 1.96 * se, hi = est + 1.96 * se)
+  err <- s[term, "Std. Error"]
+  c(estimate = est, lo = est - 1.96 * err, hi = est + 1.96 * err)
 }
 
 #' Spearman rho with a Bonett-Wright 95% CI

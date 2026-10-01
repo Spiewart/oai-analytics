@@ -24,6 +24,25 @@ test_that("median_regression returns the median difference", {
   expect_no_warning(median_regression(y ~ group, d, "group"))
 })
 
+test_that("median_regression se = 'boot' is reproducible, warning-free and brackets the estimate", {
+  skip_if_not_installed("quantreg")
+  d <- data.frame(y = c(rep(c(1, 2, 3), 10), rep(c(4, 5, 6), 10)), group = rep(c(0, 1), each = 30))
+  est <- median_regression(y ~ group, d, "group", se = "boot", reps = 200, seed = 1)
+  expect_equal(est[["estimate"]], 3, tolerance = 1e-6)
+  expect_true(est[["lo"]] <= 3 && est[["hi"]] >= 3)
+  expect_no_warning(median_regression(y ~ group, d, "group", se = "boot", reps = 200, seed = 1))
+  expect_identical(est, median_regression(y ~ group, d, "group", se = "boot", reps = 200, seed = 1))
+  expect_error(median_regression(y ~ group, d, "group", se = "iid"), "should be one of")
+})
+
+test_that("median_regression se = 'boot' is warning-free on a zero-inflated outcome", {
+  skip_if_not_installed("quantreg")
+  set.seed(3)
+  z <- data.frame(y = c(rep(0, 80), stats::rexp(20)), g = rep(c(0, 1), 50), a = stats::rnorm(100))
+  expect_no_warning(median_regression(y ~ g + a, z, "g", se = "boot", reps = 200, seed = 1))
+  expect_no_warning(median_regression(y ~ g + a, z, "g", se = "boot", reps = 200, seed = 1))
+})
+
 test_that("spearman_ci, deattenuate and wave_reliability", {
   s <- spearman_ci(c(1, 2, 3, 4, 5, 6), c(2, 1, 4, 3, 6, 5))
   expect_equal(s[["rho"]], stats::cor(c(1, 2, 3, 4, 5, 6), c(2, 1, 4, 3, 6, 5), method = "spearman"))

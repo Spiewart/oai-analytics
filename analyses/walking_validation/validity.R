@@ -23,7 +23,8 @@ for (sample in names(samples)) {
     w <- d[[m]][d$walker]
     nw <- d[[m]][!d$walker]
     hl <- oaimodels::hodges_lehmann(w, nw)
-    adj <- oaimodels::median_regression(stats::as.formula(paste(m, "~ walker +", adjust)), d, "walkerTRUE")
+    adj <- oaimodels::median_regression(stats::as.formula(paste(m, "~ walker +", adjust)), d, "walkerTRUE",
+                                       se = "boot", reps = reps, seed = seed)
     known[[length(known) + 1]] <- data.frame(
       sample = sample, measure = m, n_walkers = sum(!is.na(w)), n_nonwalkers = sum(!is.na(nw)),
       median_walkers = q(w, 0.5), q25_walkers = q(w, 0.25), q75_walkers = q(w, 0.75),
@@ -37,8 +38,8 @@ for (sample in names(samples)) {
     dd <- d[!is.na(level), ]
     dd$amount_level <- factor(dd$amount_level, levels = levels_amount)
     form <- stats::as.formula(paste(m, "~ amount_level +", adjust))
-    lower <- oaimodels::median_regression(form, dd, "amount_levellower")
-    upper <- oaimodels::median_regression(form, dd, "amount_levelupper")
+    lower <- oaimodels::median_regression(form, dd, "amount_levellower", se = "boot", reps = reps, seed = seed)
+    upper <- oaimodels::median_regression(form, dd, "amount_levelupper", se = "boot", reps = reps, seed = seed)
     dose[[length(dose) + 1]] <- data.frame(
       sample = sample, measure = m,
       median_none = q(d[[m]][level %in% "none"], 0.5), median_lower = q(d[[m]][level %in% "lower"], 0.5),
