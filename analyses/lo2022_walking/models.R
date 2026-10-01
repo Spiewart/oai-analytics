@@ -12,12 +12,7 @@ covariates <- sub("^kl0$", kl_term, base_covariates)
 formulas <- list(or_unadj = "walker", or_adj = paste(c("walker", covariates), collapse = " + "))
 
 fit_or <- function(d, rhs) {
-  model <- geepack::geeglm(stats::as.formula(paste("y ~", rhs)), id = ID, data = d,
-                           family = stats::binomial, corstr = A[["model.corstr"]])
-  est <- summary(model)$coefficients["walkerTRUE", ]
-  b <- est[["Estimate"]]
-  se <- est[["Std.err"]]
-  c(or = exp(b), lo = exp(b - 1.96 * se), hi = exp(b + 1.96 * se))
+  oaimodels::fit_knee_gee(d, rhs, corstr = A[["model.corstr"]])[c("or", "lo", "hi")]
 }
 
 metrics <- list()
