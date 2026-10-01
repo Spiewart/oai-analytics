@@ -55,8 +55,21 @@ BUILD_FRAME = textwrap.dedent(
 
 
 def _git(repo, *args):
+    # Unsigned: temp-repo commits must not depend on the user's signing setup (e.g. a locked
+    # 1Password agent) and must not touch their global git config.
     subprocess.run(
-        ["git", "-c", "user.name=t", "-c", "user.email=t@example.com", *args],
+        [
+            "git",
+            "-c",
+            "user.name=t",
+            "-c",
+            "user.email=t@example.com",
+            "-c",
+            "commit.gpgsign=false",
+            "-c",
+            "tag.gpgsign=false",
+            *args,
+        ],
         cwd=repo,
         check=True,
         capture_output=True,

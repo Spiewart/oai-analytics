@@ -258,7 +258,18 @@ def test_checkout_state_reports_commit_and_uncommitted_changes(tmp_path):
     git("init", "-q")
     (repo / "f.txt").write_text("x")
     git("add", "f.txt")
-    git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "init")
+    # Unsigned: independent of the user's signing setup (e.g. a locked 1Password agent).
+    git(
+        "-c",
+        "user.name=t",
+        "-c",
+        "user.email=t@example.com",
+        "-c",
+        "commit.gpgsign=false",
+        "commit",
+        "-qm",
+        "init",
+    )
     commit, dirty = runner.checkout_state(repo)
     assert re.fullmatch(r"[0-9a-f]{40}", commit) and dirty is False
     (repo / "f.txt").write_text("y")
