@@ -1,0 +1,68 @@
+test_that("hodges_lehmann and rank_biserial measure a shift", {
+  hl <- hodges_lehmann(1:10 + 5, 1:10)
+  expect_equal(hl[["estimate"]], 5, tolerance = 1e-6)
+  expect_true(hl[["lo"]] < 5 && hl[["hi"]] > 5)
+  expect_equal(rank_biserial(11:20, 1:10), 1)
+  expect_equal(rank_biserial(1:10, 1:10), 0)
+})
+
+test_that("jonckheere detects an increasing trend and not a decreasing one", {
+  g <- factor(rep(c("none", "lower", "upper"), each = 3), levels = c("none", "lower", "upper"))
+  up <- jonckheere(1:9, g, permutations = 999, seed = 1)
+  down <- jonckheere(9:1, g, permutations = 999, seed = 1)
+  expect_equal(up[["statistic"]], 27)
+  expect_lt(up[["p"]], 0.05)
+  expect_gt(down[["p"]], 0.9)
+})
+
+test_that("median_regression returns the median difference", {
+  skip_if_not_installed("quantreg")
+  d <- data.frame(y = c(rep(c(1, 2, 3), 10), rep(c(4, 5, 6), 10)), group = rep(c(0, 1), each = 30))
+  est <- median_regression(y ~ group, d, "group")
+  expect_equal(est[["estimate"]], 3, tolerance = 1e-6)
+  expect_error(median_regression(y ~ group, d, "other"), "other")
+})
+
+test_that("spearman_ci, deattenuate and wave_reliability", {
+  s <- spearman_ci(c(1, 2, 3, 4, 5, 6), c(2, 1, 4, 3, 6, 5))
+  expect_equal(s[["rho"]], stats::cor(c(1, 2, 3, 4, 5, 6), c(2, 1, 4, 3, 6, 5), method = "spearman"))
+  expect_equal(s[["n"]], 6)
+  expect_true(s[["lo"]] < s[["rho"]] && s[["hi"]] > s[["rho"]])
+  expect_equal(deattenuate(0.3, reliability_y = 0.36), 0.5)
+  expect_equal(deattenuate(0.9, reliability_y = 0.25), 1)
+  expect_equal(wave_reliability(0.6, 1), 2 * 0.6 / 1.6)
+  expect_equal(wave_reliability(0.6, 0), 0.6)
+})
+
+test_that("wilson and classification", {
+  w <- wilson(5, 10)
+  expect_equal(unname(w), c(0.5, 0.2366, 0.7634), tolerance = 1e-4)
+  test <- c(TRUE, TRUE, TRUE, FALSE, TRUE, FALSE, FALSE, FALSE)
+  ref <- c(TRUE, TRUE, TRUE, TRUE, FALSE, FALSE, FALSE, FALSE)
+  cl <- classification(test, ref)
+  expect_equal(cl$measure, c("se", "sp", "ppv", "npv"))
+  expect_equal(cl$estimate, c(3 / 4, 3 / 4, 3 / 4, 3 / 4))
+  expect_equal(cl$k, c(3, 3, 3, 3))
+  expect_equal(cl$n, c(4, 4, 4, 4))
+})
+
+test_that("classification handles empty cells", {
+  cl <- classification(c(TRUE, TRUE), c(TRUE, TRUE))
+  expect_true(is.na(cl$estimate[cl$measure == "sp"]))
+  expect_equal(cl$n[cl$measure == "sp"], 0)
+  s <- classification_by_stratum(c(TRUE, TRUE, FALSE), c(TRUE, TRUE, TRUE), c("a", "b", "b"))
+  expect_true(all(is.na(s$estimate[s$measure == "sp"])))
+})
+
+test_that("auc_ci and classification_by_stratum", {
+  a <- auc_ci(c(1, 2, 3, 4), c(FALSE, FALSE, TRUE, TRUE), reps = 200, seed = 1)
+  expect_equal(a[["estimate"]], 1)
+  set.seed(2)
+  ref <- rep(c(TRUE, FALSE), 100)
+  stratum <- rep(c("a", "b"), each = 100)
+  test <- ifelse(stratum == "a", ref, stats::runif(200) < 0.5)
+  s <- classification_by_stratum(test, ref, stratum)
+  expect_setequal(unique(s$stratum), c("a", "b"))
+  expect_equal(s$estimate[s$measure == "se" & s$stratum == "a"], 1)
+  expect_lt(s$p_differs[s$measure == "se"][1], 0.001)
+})
