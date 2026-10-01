@@ -4,10 +4,12 @@ from __future__ import annotations
 
 import re
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Literal, NoReturn
 
+from oai.assumptions import DEFAULT_LABEL, load_assumptions
 from oai.catalog import INPUT_SPEC
 from oai.errors import OAIError
 
@@ -37,6 +39,13 @@ class ExportSpec:
 
 
 @dataclass(frozen=True)
+class ReportSpec:
+    entry: str  # a .qmd file directly in the analysis folder
+    runs: tuple[str, ...]  # run labels the report reads: "default" and/or variant names
+    assets: tuple[str, ...] = ()  # files copied next to the entry before rendering
+
+
+@dataclass(frozen=True)
 class Analysis:
     name: str
     description: str
@@ -45,6 +54,7 @@ class Analysis:
     steps: tuple[Step, ...]
     export: ExportSpec | None
     aggregate_outputs: tuple[str, ...]
+    report: ReportSpec | None = None
 
     @property
     def languages(self) -> set[str]:
@@ -117,7 +127,41 @@ def _parse(data: dict[str, Any], root: Path, where: Path) -> Analysis:
         fail("has stage='enclave' steps and must declare [export]")
 
     outputs = tuple(data.get("outputs", {}).get("aggregate", []))
-    return Analysis(name, data.get("description", ""), root, inputs, tuple(steps), export, outputs)
+    report = _parse_report(data["report"], root, fail) if "report" in data else None
+    return Analysis(
+        name, data.get("description", ""), root, inputs, tuple(steps), export, outputs, report
+    )
+
+
+def _plain_file(root: Path, name: object) -> bool:
+    """A bare file name (no directories) that exists directly in root."""
+    return isinstance(name, str) and name == Path(name).name and (root / name).is_file()
+
+
+def _parse_report(raw: Any, root: Path, fail: Callable[[str], NoReturn]) -> ReportSpec:
+    if not isinstance(raw, dict):
+        fail("[report] must be a table")
+    entry = raw.get("entry")
+    if not _plain_file(root, entry) or not str(entry).endswith(".qmd"):
+        fail(f"[report] entry {entry!r} must be a .qmd file directly in {root}")
+    runs = raw.get("runs")
+    if not isinstance(runs, list) or not runs or not all(isinstance(r, str) for r in runs):
+        fail("[report] runs must be a non-empty list of run labels")
+    if len(set(runs)) != len(runs):
+        fail("[report] runs has duplicates")
+    variants = load_assumptions(root).variants
+    unknown = [r for r in runs if r != DEFAULT_LABEL and r not in variants]
+    if unknown:
+        fail(
+            f"[report] runs {', '.join(unknown)} are not 'default' or a variant in assumptions.toml"
+        )
+    assets = raw.get("assets", [])
+    if not isinstance(assets, list):
+        fail("[report] assets must be a list of file names")
+    for asset in assets:
+        if not _plain_file(root, asset):
+            fail(f"[report] asset {asset!r} must be a file directly in {root}")
+    return ReportSpec(str(entry), tuple(runs), tuple(assets))
 
 
 def list_analyses(analyses_dir: Path) -> list[Analysis]:

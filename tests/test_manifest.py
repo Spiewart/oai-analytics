@@ -1,10 +1,17 @@
+import re
 import textwrap
 
 import pytest
 from typer.testing import CliRunner
 
 from oai.cli import app
-from oai.manifest import ManifestError, find_analysis, list_analyses, load_analysis
+from oai.manifest import (
+    ManifestError,
+    ReportSpec,
+    find_analysis,
+    list_analyses,
+    load_analysis,
+)
 
 VALID = textwrap.dedent(
     """
@@ -104,3 +111,67 @@ def test_cli_analyses(tmp_path, monkeypatch):
     result = CliRunner().invoke(app, ["analyses"])
     assert result.exit_code == 0, result.output
     assert "demo" in result.stdout and "[enclave,local]" in result.stdout
+
+
+REPORT_MANIFEST = textwrap.dedent(
+    """
+    name = "demo"
+
+    [[steps]]
+    id = "frame"
+    lang = "python"
+    entry = "frame.py"
+
+    [report]
+    entry = "report.qmd"
+    runs = ["default", "alt"]
+    assets = ["notes.md"]
+    """
+)
+REPORT_ASSUMPTIONS = textwrap.dedent(
+    """
+    [cohort.min_age]
+    value = 50
+    status = "confirmed"
+    source = "test"
+
+    [variants.alt]
+    description = "older"
+    set = { "cohort.min_age" = 60 }
+    """
+)
+
+
+def write_report_analysis(tmp_path, manifest=REPORT_MANIFEST):
+    root = write_analysis(tmp_path, manifest, files=("frame.py", "report.qmd", "notes.md"))
+    (root / "assumptions.toml").write_text(REPORT_ASSUMPTIONS)
+    return root
+
+
+def test_report_section_parsed(tmp_path):
+    analysis = load_analysis(write_report_analysis(tmp_path))
+    assert analysis.report == ReportSpec("report.qmd", ("default", "alt"), ("notes.md",))
+
+
+def test_report_section_is_optional(tmp_path):
+    assert load_analysis(write_analysis(tmp_path, VALID)).report is None
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        ('entry = "report.qmd"', 'entry = "missing.qmd"', "entry 'missing.qmd'"),
+        ('entry = "report.qmd"', 'entry = "notes.md"', "must be a .qmd file"),
+        ('entry = "report.qmd"', 'entry = "../demo/report.qmd"', "directly in"),
+        ('runs = ["default", "alt"]', "runs = []", "non-empty list"),
+        ('runs = ["default", "alt"]', 'runs = ["default", "default"]', "duplicates"),
+        ('runs = ["default", "alt"]', 'runs = ["default", "nope"]', "runs nope are not"),
+        ('assets = ["notes.md"]', 'assets = ["missing.md"]', "asset 'missing.md'"),
+        ('assets = ["notes.md"]', 'assets = ["../demo/notes.md"]', "asset '../demo/notes.md'"),
+        ('assets = ["notes.md"]', 'assets = "notes.md"', "assets must be a list"),
+    ],
+)
+def test_invalid_report_sections(tmp_path, old, new, message):
+    root = write_report_analysis(tmp_path, REPORT_MANIFEST.replace(old, new))
+    with pytest.raises(ManifestError, match=re.escape(message)):
+        load_analysis(root)
