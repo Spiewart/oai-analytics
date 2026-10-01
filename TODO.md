@@ -32,6 +32,11 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 - **Explain the remaining non-walker shortfall (301 vs 325)** — <!-- skip --> Needs the real release, which worker worktrees don't have. The gap matches the overall person shortfall (1,188 vs 1,212). The next suspect is the survey-completion definition (`cohort.survey_completed_items`): the no-survey step excludes 354 participants against 337 published.
 
+### Walking validation (`analyses/walking_validation`)
+
+- **Request OAI GT1M step data for walking_validation** — <!-- skip --> Steps are not in the public release or in NDA's accelerometry structures (counts only). Lo et al. 2015 (Arthritis Rheumatol 67:2897-904) used OAI step counts with the OAI accelerometry investigators at Northwestern; ask for per-minute steps (for cadence) at 48 and 72 months. When received, place them outside the repo, alongside the release (see the data-root item under Tooling), and add a steps criterion to `oai.derive.accel` and a ledger variant.
+- **Report the device-reference bias analysis as unstable, or replace it** — <!-- skip --> Every probabilistic bias analysis cell exceeded the pre-specified 10% discard threshold (37–99% discarded), because the item's device-based specificity (~0.26) puts Se + Sp near 1. Decide with the co-authors whether the paper keeps the PBA as a pre-specified sensitivity analysis or uses only the tipping-point grid, and whether a better reference (step-based cadence) is needed first.
+
 ### Analyst questions (resolve when each project starts)
 
 - **Nominal months for visits V11–V14** — <!-- skip --> Confirm from `AllClinical13_ReleaseComments_Yr14.pdf` / `AllClinical14_ReleaseComments_Y16.pdf`, then fill in `[visits]` in `config/oai.toml`. Low impact: those visits have `V##VISDYS`.
@@ -67,3 +72,4 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 ### Tooling
 
 - **Install the TODO worker in this repo** — <!-- skip --> Port `claude-todo-worker` from knee_acoustic_emissions: `.claude/daily-worker/{config.sh,prompt.md,run.sh}`, the `update-todo-patches` hook, and a launchd plist. Deferred by the owner (2026-09-30) until there is enough worker-eligible work here.
+- **One data root with presence checks** — <!-- skip --> Replace the per-source .env variables with OAI_DATA_ROOT holding release/ and external/<source>/, plus an `oai data check` command that reports which declared inputs are present. Needs a short design approved by the owner first. A separate ancillary ASCII folder checked so far is byte-identical to files already in the release.

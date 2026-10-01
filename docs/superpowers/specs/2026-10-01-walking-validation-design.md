@@ -1,7 +1,7 @@
 # Walking Validation Study — Design
 
 **Date:** 2026-10-01
-**Status:** Draft for review
+**Status:** Implemented (see §15 Amendments)
 **Builds on:**
 - `2026-09-30-assumptions-and-lo2022-replication-design.md`
 - `2026-09-30-reporting-module-and-lo2022-comparison-design.md`

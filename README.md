@@ -64,6 +64,7 @@ Coded cells (`1: Right`) load as their code, with labels in the codebook. Missin
 | `progression_definitions` | local | [crosswalk](docs/reference/oai-progression-definition-crosswalk.md) |
 | `genetics_progression` | local → enclave | [analysis plan §10–12](docs/reference/oai-activity-agreement-analysis-plan.md) |
 | `lo2022_walking` | local | Replication of Lo et al. 2022 ([README](analyses/lo2022_walking/README.md)) |
+| `walking_validation` | local | [spec](docs/superpowers/specs/2026-10-01-walking-validation-design.md) |
 
 Each folder's `analysis.toml` declares its input tables, ordered steps (`lang = python|r`, `stage = local|enclave`), the columns it exports and its aggregate outputs.
 
