@@ -233,6 +233,12 @@ Odds ratios (95% CI) for walkers versus non-walkers, from GEE logistic models wi
 ```{r gaps}
 walkers <- function(run) run$metrics[["t1.persons.walkers"]]
 roa_persons <- function(run) run$metrics[["flow.roa.persons"]]
+nonwalkers <- function(run) run$metrics[["t1.persons.nonwalkers"]]
+step_persons <- function(run, step) run$flow$persons[run$flow$step == step]
+roa_steps <- c("roa", "before_survey", "no_visit96")
+roa_trail <- paste(vapply(roa_steps, function(step) sprintf(
+  "%s [%s]", fmt(step_persons(roa, step)), fmt(published_value(d, sprintf("flow.%s.persons", step)))
+), character(1)), collapse = ", ")
 replicated <- function(label) verdict_counts(runs[[label]]$comparison)[["replicated"]]
 gap_runs <- c("default", "walker_requires_amount", "roa_counts_replaced_knees", "published_counts")
 gap_table <- rbind(
@@ -251,9 +257,9 @@ oaireport::compare_table(gap_table, widths = c(4, 1.2, 1.8, 1.4))
 
 Two coding choices that the paper does not state account for the walker count and for the count at the radiographic-OA step (table above). A shortfall of `r fmt(published_value(d, "t1.persons.all") - wra$metrics[["t1.persons.all"]])` participants in the final cohort (`r fmt(wra$metrics[["t1.persons.all"]])` against `r fmt(published_value(d, "t1.persons.all"))` published) remains unexplained.
 
-**1. Walkers who answered "yes" but gave no amount.** `r fmt(walkers(d) - walkers(wra))` participants answered yes to walking for exercise (V10WLKAR4) but left years, months per year and times per month blank. The primary analysis counts them as walkers: `r fmt(walkers(d))` walkers against `r fmt(published_value(d, "t1.persons.walkers"))` published. Coding them as non-walkers gives `r fmt(walkers(wra))` walkers, and the number of replicated results changes from `r replicated("default")` to `r replicated("walker_requires_amount")`. *Question for the authors:* **[placeholder: to be written by the study team]**
+**1. Walkers who answered "yes" but gave no amount.** `r fmt(walkers(d) - walkers(wra))` participants answered yes to walking for exercise (V10WLKAR4) but left years, months per year and times per month blank. The primary analysis counts them as walkers: `r fmt(walkers(d))` walkers against `r fmt(published_value(d, "t1.persons.walkers"))` published. Coding them as non-walkers gives `r fmt(walkers(wra))` walkers, and the number of replicated results changes from `r replicated("default")` to `r replicated("walker_requires_amount")`. *Question for the authors:* were participants who answered yes but left all three amount items blank classified as non-walkers, or excluded from the analysis? Classifying them as non-walkers reproduces the published walker count and raises the non-walker count from `r fmt(nonwalkers(d))` to `r fmt(nonwalkers(wra))` (published `r fmt(published_value(d, "t1.persons.nonwalkers"))`); excluding them would also give `r fmt(walkers(wra))` walkers but would leave `r fmt(nonwalkers(d))` non-walkers.
 
-**2. Knees replaced before baseline, at the radiographic-OA step.** Counting participants whose only OA knee had been replaced at baseline gives `r fmt(roa_persons(roa))` participants at that step (published `r fmt(published_value(d, "flow.roa.persons"))`, primary `r fmt(roa_persons(d))`). The number of replicated results changes from `r replicated("default")` to `r replicated("roa_counts_replaced_knees")`. The Methods describe a native knee. *Question for the authors:* **[placeholder: to be written by the study team]**
+**2. Knees replaced before baseline, at the radiographic-OA step.** Counting participants whose only OA knee had been replaced at baseline gives `r fmt(roa_persons(roa))` participants at that step (published `r fmt(published_value(d, "flow.roa.persons"))`, primary `r fmt(roa_persons(d))`). The number of replicated results changes from `r replicated("default")` to `r replicated("roa_counts_replaced_knees")`. The Methods describe a native knee. *Question for the authors:* at the radiographic-OA step, were participants included when their only knee meeting the OA criteria had been replaced before baseline? Including them reproduces the published counts at that step and the next two (ours [published]: `r roa_trail`). They then leave the cohort at the follow-up step, so the analysed cohort is `r fmt(step_persons(roa, "no_followup"))` participants either way.
 
 # Sensitivity analyses
 
