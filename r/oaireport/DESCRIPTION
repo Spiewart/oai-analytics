@@ -1,0 +1,14 @@
+Package: oaireport
+Title: Publication Figures and Reports for OAI Analytics
+Version: 0.1.0
+Author: oai-analytics contributors
+Maintainer: oai-analytics contributors <oai-analytics@users.noreply.github.com>
+Description: ACR-style ggplot2 theme, figure export at journal column widths, forest
+    plots, cohort flow diagrams, verdict tables and a results loader for analysis
+    reports rendered with `oai report` (renv profile "report").
+License: MIT + file LICENSE
+Encoding: UTF-8
+Depends: R (>= 4.4)
+Imports: ggplot2, grDevices, grid, jsonlite, ragg, stats, systemfonts, tinytable, utils
+Suggests: testthat (>= 3.0.0), withr
+Config/testthat/edition: 3

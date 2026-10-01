@@ -1,5 +1,6 @@
 """Python -> Parquet -> R round trips through oaimodels (skipped when r/ isn't restored)."""
 
+import os
 import shutil
 import subprocess
 import textwrap
@@ -92,3 +93,35 @@ def test_runner_r_step_reads_assumptions(tmp_path):
     )
     [out] = (tmp_path / "results" / "rassume").glob("*/corstr.txt")
     assert out.read_text().strip() == "ar1"
+
+
+def _report_profile_ready() -> bool:
+    if shutil.which("Rscript") is None:
+        return False
+    probe = subprocess.run(
+        ["Rscript", "-e", "library(ggplot2); library(tinytable); library(knitr)"],
+        cwd=R_DIR,
+        capture_output=True,
+        env={**os.environ, "RENV_PROFILE": "report"},
+    )
+    return probe.returncode == 0
+
+
+@pytest.mark.skipif(not _report_profile_ready(), reason="the r/ report profile is not restored")
+@pytest.mark.parametrize(("profile", "loaded"), [("report", "TRUE"), ("", "FALSE")])
+def test_step_profile_loads_oaireport_only_in_report_profile(tmp_path, profile, loaded):
+    env = {
+        **os.environ,
+        "OAI_R_DIR": str(R_DIR),
+        "R_PROFILE_USER": str(R_DIR / "step-profile.R"),
+        "RENV_PROFILE": profile,
+    }
+    out = subprocess.run(
+        ["Rscript", "-e", 'cat("oaireport" %in% loadedNamespaces())'],
+        cwd=tmp_path,
+        env=env,
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    assert out.stdout.strip().endswith(loaded)
