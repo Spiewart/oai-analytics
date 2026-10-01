@@ -1,0 +1,18 @@
+# walking_validation
+
+Validity of the 96-month walking-for-exercise item, the exposure in Lo et al. 2022 (Arthritis
+Rheumatol 74:1660-7), against the OAI accelerometer waves at 48 and 72 months. Includes a
+record-level probabilistic bias analysis of the paper's odds ratios.
+Spec: [docs/superpowers/specs/2026-10-01-walking-validation-design.md](../../docs/superpowers/specs/2026-10-01-walking-validation-design.md).
+
+| Step | Lang | Output |
+|---|---|---|
+| `device` | Python | device measures per person and wave (frame); agreement with the release (`device_reproduction.csv`) |
+| `cohort` | Python | validation frame, Lo 2022 subset and knee frame (frames); `flow.csv`; Lo Table 2 copies |
+| `validity` | R | known groups, dose-response, convergent ranking, Se/Sp, strata, PASE benchmark |
+| `bias` | R | probabilistic bias analysis, tipping-point grid, summary-level correction |
+| `compare` | Python | `comparison.csv`: device reproduction and sample sizes against `expected.toml` |
+
+Needs the replication's frame for the matching exposure coding:
+`oai run lo2022_walking --variant walker_requires_amount` (primary) or `oai run lo2022_walking`
+(variant `exposure_replication_coding`). R steps run under the `report` renv profile (`[r]`).

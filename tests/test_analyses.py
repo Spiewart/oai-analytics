@@ -18,6 +18,7 @@ def test_expected_analyses_exist():
         "genetics_progression",
         "lo2022_walking",
         "progression_definitions",
+        "walking_validation",
     ]
 
 

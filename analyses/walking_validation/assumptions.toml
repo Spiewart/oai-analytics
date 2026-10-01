@@ -1,0 +1,157 @@
+# Assumptions for the walking validation study.
+# Spec: docs/superpowers/specs/2026-10-01-walking-validation-design.md
+
+[device.nonwear_minutes]
+value = 90
+status = "confirmed"
+source = "AccelData_Descrip.pdf (non-wear >90 zero minutes); >= 90 within each calendar day reproduces the release's by-day files"
+rationale = "Validated for knee-OA wear patterns; 60 is the NHANES rule"
+alternatives = [60]
+
+[device.interrupt_minutes]
+value = 2
+status = "confirmed"
+source = "AccelData_Descrip.pdf: interruptions of up to 2 consecutive minutes"
+
+[device.interrupt_ceiling]
+value = 100
+status = "confirmed"
+source = "AccelData_Descrip.pdf: interruptions have counts < 100"
+
+[device.valid_day_hours]
+value = 10.0
+status = "confirmed"
+source = "AccelData_Descrip.pdf: valid day = >= 10 wear hours"
+
+[device.max_valid_days]
+value = 7
+status = "confirmed"
+source = "AccelData_Descrip.pdf: only the first 7 valid days are used"
+
+[device.min_valid_days]
+value = 4
+status = "confirmed"
+source = "Accelerometry_Descrip.pdf: 4-7 valid days"
+
+[device.mv_cutpoint]
+value = 2020
+status = "confirmed"
+source = "Troiano 2008 cutpoint, as in the release"
+
+[device.purposeful_bout_minutes]
+value = 10
+status = "assumed"
+source = "Spec 5: purposeful walking proxy = minutes in >= 10-minute MV bouts"
+
+[device.wave_combination]
+value = "mean"
+status = "assumed"
+source = "Spec 4: habitual activity = mean over a person's valid waves"
+choices = ["mean", "06", "08"]
+
+[reference.walker_rule]
+value = "bout_days"
+status = "assumed"
+source = "Spec 5: device habitual walker = >= 2 bout-days per valid week"
+choices = ["bout_days", "any_bout", "bout_minutes"]
+
+[reference.min_bout_days_per_week]
+value = 2.0
+status = "assumed"
+source = "Spec 5"
+
+[reference.min_bout_minutes_per_week]
+value = 150.0
+status = "assumed"
+source = "Spec 5 variant: DHHS 2008 aerobic guideline volume"
+
+[exposure.yes_without_amount_as]
+value = "non-walker"
+status = "open"
+source = "Reproduces the published 887 walkers (lo2022_walking walker_requires_amount); question for the original authors in TODO.md"
+choices = ["walker", "non-walker", "exclude"]
+
+[exposure.category_midpoints]
+value = { years = [3.0, 8.0, 15.5, 20.0], months = [2.5, 6.5, 10.5], times = [2.0, 6.0, 10.0] }
+status = "open"
+source = "As lo2022_walking exposure.category_midpoints"
+
+[strata.reading_project]
+value = 15
+status = "assumed"
+source = "As lo2022_walking cohort.reading_project (baseline KL for strata)"
+
+[strata.pain_baseline_item]
+value = "P01KP{side}12CV"
+status = "assumed"
+source = "As lo2022_walking outcomes.pain_baseline_items"
+
+[pase.walking_scoring]
+value = { days = [0.0, 1.5, 3.5, 6.0], hours = [0.5, 1.5, 3.0, 5.0], weight = 20.0 }
+status = "assumed"
+source = "Washburn et al. 1993 PASE scoring for item 2 (walking outside the home)"
+
+[validity.bootstrap_reps]
+value = 1000
+status = "assumed"
+source = "AUC percentile bootstrap"
+
+[validity.jt_permutations]
+value = 2000
+status = "assumed"
+source = "Jonckheere-Terpstra permutation p-value"
+
+[bias.lo2022_label]
+value = "walker_requires_amount"
+status = "assumed"
+source = "The lo2022_walking run whose exposure coding matches exposure.yes_without_amount_as"
+choices = ["walker_requires_amount", "default"]
+
+[bias.iterations]
+value = 2000
+status = "assumed"
+source = "Spec 7"
+
+[bias.tipping_iterations]
+value = 200
+status = "assumed"
+source = "Spec 7"
+
+[bias.tipping_step]
+value = 0.05
+status = "assumed"
+source = "Spec 7: sensitivity 0.60-1.00 x specificity 0.40-1.00"
+
+[bias.seed]
+value = 20261001
+status = "assumed"
+source = "Fixed seed; iteration i uses seed + i, so results do not depend on core count"
+
+[bias.max_discard_share]
+value = 0.10
+status = "assumed"
+source = "Spec 12: cells discarding more than this share of draws are flagged"
+
+[variants.wave48]
+description = "Device = 48-month wave only"
+set = { "device.wave_combination" = "06" }
+
+[variants.wave72]
+description = "Device = 72-month wave only"
+set = { "device.wave_combination" = "08" }
+
+[variants.walker_any_bout]
+description = "Device walker = any purposeful bout"
+set = { "reference.walker_rule" = "any_bout" }
+
+[variants.walker_150min]
+description = "Device walker = >= 150 purposeful-bout minutes a week"
+set = { "reference.walker_rule" = "bout_minutes" }
+
+[variants.nonwear60]
+description = "NHANES 60-minute non-wear rule"
+set = { "device.nonwear_minutes" = 60 }
+
+[variants.exposure_replication_coding]
+description = "'Yes' with no amount answers coded as a walker (the replication's default coding)"
+set = { "exposure.yes_without_amount_as" = "walker", "bias.lo2022_label" = "default" }

@@ -1,0 +1,52 @@
+name = "walking_validation"
+description = "Validity of the 96-month walking-for-exercise item (Lo 2022 exposure) against OAI accelerometry, with a probabilistic bias analysis of Lo 2022."
+
+[inputs]
+tables = [
+    "enrollees", "allclinical:00", "allclinical:06", "allclinical:08", "allclinical:10",
+    "kxr_sq_bu:00", "accelerometry:06", "accelerometry:08",
+    "acceldatabymin:06", "acceldatabymin:08", "acceldatabyday:06", "acceldatabyday:08",
+]
+
+[r]
+profile = "report"
+
+[[steps]]
+id = "device"
+lang = "python"
+stage = "local"
+entry = "device.py"
+
+[[steps]]
+id = "cohort"
+lang = "python"
+stage = "local"
+entry = "build_cohort.py"
+needs = ["device"]
+
+[[steps]]
+id = "validity"
+lang = "r"
+stage = "local"
+entry = "validity.R"
+needs = ["cohort"]
+
+[[steps]]
+id = "bias"
+lang = "r"
+stage = "local"
+entry = "bias.R"
+needs = ["cohort"]
+
+[[steps]]
+id = "compare"
+lang = "python"
+stage = "local"
+entry = "compare.py"
+needs = ["validity", "bias"]
+
+[outputs]
+aggregate = [
+    "flow.csv", "device_reproduction.csv", "validity_*.csv", "bias_*.csv", "lo2022_*.csv",
+    "comparison.csv", "metrics_*.csv", "assumptions.resolved.json",
+]

@@ -8,3 +8,5 @@ Agreement between OAI self-reported activity (PASE; 96-month walking-for-exercis
 | `agreement` (`agreement.R`) | local | Spearman + deattenuation, Bland–Altman, κ, ROC cutpoint, bias regression |
 
 Status: stub.
+
+The walking-item validation (the Lo 2022 exposure) lives in [walking_validation](../walking_validation/README.md).
