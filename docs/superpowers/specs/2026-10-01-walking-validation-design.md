@@ -216,8 +216,8 @@ Variants: `wave48`, `wave72`, `walker_any_bout`, `walker_150min`, `nonwear60`, `
 | Estimate | n | Approx. 95% CI half-width |
 |---|---|---|
 | Sensitivity, specificity (validation sample) | ~1,566 | ±0.02–0.04 |
-| Sensitivity (Lo subset) | 599 walkers | ±0.03–0.04 |
-| Specificity (Lo subset) | 168 non-walkers | ±0.07 |
+| Sensitivity (Lo subset) | 240 device walkers | ±0.04 |
+| Specificity (Lo subset) | 527 device non-walkers | ±0.04 |
 | Specificity, per outcome stratum | | ±0.10–0.20 |
 | Spearman ρ | ~1,200 walkers | ±0.06 |
 
