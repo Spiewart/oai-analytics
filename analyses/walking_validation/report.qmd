@@ -77,6 +77,17 @@ grid_sentence <- sprintf(
   if (all_exclude) sprintf("all %d", nrow(grid_np)) else sprintf("%d of %d", nrow(grid_np_excludes), nrow(grid_np)),
   num(lowest_sum))
 headline_diff <- pba[pba$outcome == "new_pain" & pba$model == "or_adj" & pba$scenario == "differential", ]
+# Differential rows of both bias analyses (record-level PBA and summary-level correction)
+sl_all <- run$bias_summary_level
+sl_all_flagged <- if ("flagged" %in% names(sl_all)) sl_all$flagged else sl_all$discarded > threshold
+pba_diff_flagged <- pba$flagged[!nondiff]
+sl_diff_flagged <- sl_all_flagged[sl_all$scenario == "differential"]
+differential_text <- if (all(pba_diff_flagged) && all(sl_diff_flagged)) {
+  "The differential analyses below, the record-level probabilistic bias analysis and the summary-level correction, are both flagged"
+} else {
+  sprintf("The differential analyses below are the record-level probabilistic bias analysis (%d of %d rows flagged) and the summary-level correction (%d of %d rows flagged)",
+          sum(pba_diff_flagged), length(pba_diff_flagged), sum(sl_diff_flagged), length(sl_diff_flagged))
+}
 info <- run$run_info
 code_version <- paste0("oai-analytics ", info$oai_version,
                        if (is.null(info$git_commit)) "" else paste0(", commit ", substr(info$git_commit, 1, 7)),
@@ -271,7 +282,7 @@ se_ticks <- sort(unique(tp$se))
 sp_ticks <- sort(unique(tp$sp))
 ```
 
-The grid fixes the item's true sensitivity and specificity, non-differentially and without reference to the device, at Se `r num(min(se_ticks))`–`r num(max(se_ticks))` × Sp `r num(min(sp_ticks))`–`r num(max(sp_ticks))`. Each cell shows the median adjusted odds ratio; shaded cells keep a 95% simulation interval that excludes 1. Non-differential error biases toward the null, so the grid shows how much stronger the association could be, not whether it survives differential error. The only differential analysis is the probabilistic bias analysis below, which is `r if (isTRUE(headline_diff$flagged)) "flagged" else "not flagged"` and keeps the published conclusion for new frequent knee pain (adjusted) in `r pct(headline_diff$conclusion_share)` of its kept draws. The device-based specificity of about `r num(pick("lo_subset", "sp"))` lies left of the grid.
+The grid fixes the item's true sensitivity and specificity, non-differentially and without reference to the device, at Se `r num(min(se_ticks))`–`r num(max(se_ticks))` × Sp `r num(min(sp_ticks))`–`r num(max(sp_ticks))`. Each cell shows the median adjusted odds ratio; shaded cells keep a 95% simulation interval that excludes 1. Non-differential error biases toward the null, so the grid shows how much stronger the association could be, not whether it survives differential error. `r differential_text`; the record-level one keeps the published conclusion for new frequent knee pain (adjusted) in `r pct(headline_diff$conclusion_share)` of its kept draws. The device-based specificity of about `r num(pick("lo_subset", "sp"))` lies left of the grid.
 
 Cells shown "–" are infeasible because every draw was discarded. The grid runs on each outcome's sample from the Lo 2022 cohort and reclassifies within its two outcome groups; a sensitivity below the share answering yes in either group implies a negative number of true non-walkers. In the Lo 2022 participants with device data, the higher group's share is `r pct_range(higher_share)` depending on the outcome (`r pct(yes_share)` overall); the grid's samples also include participants without device data, so these shares only approximate each outcome's exact edge. `r if (all_exclude && below_infeasible) sprintf("For new frequent knee pain the interval excludes 1 in every feasible cell, so the grid has no tipping point there: %s is the lowest feasible Se + Sp (Se %s at the grid's lowest specificity, %s), and every cell below it is infeasible.", num(lowest_sum), num(edge_se), num(min(sp_ticks))) else sprintf("For new frequent knee pain the interval excludes 1 in %d of %d feasible cells.", nrow(grid_np_excludes), nrow(grid_np))`
 
