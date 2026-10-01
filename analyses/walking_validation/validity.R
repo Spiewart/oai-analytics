@@ -2,7 +2,8 @@
 A <- oaimodels::assumptions()
 persons <- oaimodels::read_frame(required = c(
   "ID", "walker", "amount_level", "sessions", "device_walker", "in_lo", "n_waves", "age", "sex",
-  "bmi", "kl_max0", "pain0_any", "purposeful_min", "counts_per_day", "light_min"
+  "bmi", "kl_max0", "pain0_any", "purposeful_min", "counts_per_day", "light_min",
+  "device_walker_06", "device_walker_08"
 ))
 out_dir <- Sys.getenv("OAI_RESULTS_DIR")
 measures <- c("purposeful_min", "counts_per_day", "light_min")
@@ -91,43 +92,59 @@ for (sample in names(samples)) {
 
 # PASE benchmark (spec 6.6): items 1, 3 and 4 for the PASE walking subscore at each visit. A PASE
 # walker has a subscore above the threshold. Long format; lo/hi are NA where a statistic has no CI.
+# With pase.device_pairing = "adjacent_wave", PASE at 48 and 72 months is compared with that wave's
+# own device measures and device walker, in persons valid at that wave, and a single wave's
+# reliability is the between-wave rho itself; PASE at 96 months has no device wave of its own, so it
+# (and every visit under "two_wave_mean") uses the combined measures, as the walking item does.
+pairing <- A[["pase.device_pairing"]]
+if (!pairing %in% c("adjacent_wave", "two_wave_mean")) {
+  stop("unknown pase.device_pairing: ", pairing, call. = FALSE)
+}
 pase <- list()
-pase_row <- function(visit, measure, statistic, estimate, lo, hi, n) {
-  data.frame(visit = visit, measure = measure, statistic = statistic,
+pase_row <- function(visit, device_wave, measure, statistic, estimate, lo, hi, n) {
+  data.frame(visit = visit, device_wave = device_wave, measure = measure, statistic = statistic,
              estimate = estimate, lo = lo, hi = hi, n = n)
 }
 for (visit in c("06", "08", "10")) {
-  p <- persons[[paste0("pase_walking_", visit)]]
-  d <- persons[!is.na(p), ]
-  d$pase_walker <- p[!is.na(p)] > pase_threshold
+  paired <- pairing == "adjacent_wave" && visit %in% c("06", "08")
+  device_wave <- if (paired) visit else "combined"
+  suffix <- if (paired) paste0("_", visit) else ""
+  reference <- paste0("device_walker", suffix)
+  score <- paste0("pase_walking_", visit)
+  d <- persons[!is.na(persons[[score]]) & !is.na(persons[[reference]]), ]
+  p <- d[[score]]
+  d$pase_walker <- p > pase_threshold
   pase_walkers <- d[d$pase_walker, ]
+  visit_row <- function(...) pase_row(visit, device_wave, ...)
   for (m in measures) {
+    col <- paste0(m, suffix)
     # Item 1: known groups
-    w <- d[[m]][d$pase_walker]
-    nw <- d[[m]][!d$pase_walker]
+    w <- d[[col]][d$pase_walker]
+    nw <- d[[col]][!d$pase_walker]
     n_groups <- sum(!is.na(w)) + sum(!is.na(nw))
     hl <- oaimodels::hodges_lehmann(w, nw)
-    form <- stats::as.formula(paste(m, "~ pase_walker +", adjust))
+    form <- stats::as.formula(paste(col, "~ pase_walker +", adjust))
     adj <- oaimodels::median_regression(form, d, "pase_walkerTRUE", se = se_method, reps = reps, seed = seed)
-    pase[[length(pase) + 1]] <- pase_row(visit, m, "hl", hl[["estimate"]], hl[["lo"]], hl[["hi"]], n_groups)
-    pase[[length(pase) + 1]] <- pase_row(visit, m, "rank_biserial", oaimodels::rank_biserial(w, nw),
-                                         NA, NA, n_groups)
-    pase[[length(pase) + 1]] <- pase_row(visit, m, "adj_diff", adj[["estimate"]], adj[["lo"]], adj[["hi"]],
-                                         nrow(stats::model.frame(form, d)))
+    pase[[length(pase) + 1]] <- visit_row(m, "hl", hl[["estimate"]], hl[["lo"]], hl[["hi"]], n_groups)
+    pase[[length(pase) + 1]] <- visit_row(m, "rank_biserial", oaimodels::rank_biserial(w, nw), NA, NA,
+                                          n_groups)
+    pase[[length(pase) + 1]] <- visit_row(m, "adj_diff", adj[["estimate"]], adj[["lo"]], adj[["hi"]],
+                                          nrow(stats::model.frame(form, d)))
     # Item 3: convergent ranking among PASE walkers, deattenuated like the walking item
-    rho <- oaimodels::spearman_ci(pase_walkers[[paste0("pase_walking_", visit)]], pase_walkers[[m]])
-    reliability <- oaimodels::wave_reliability(between_wave(m)$r, mean(pase_walkers$n_waves == 2))
-    pase[[length(pase) + 1]] <- pase_row(visit, m, "rho", rho[["rho"]], rho[["lo"]], rho[["hi"]], rho[["n"]])
-    pase[[length(pase) + 1]] <- pase_row(visit, m, "rho_deattenuated",
-                                         oaimodels::deattenuate(rho[["rho"]], reliability_y = reliability),
-                                         NA, NA, rho[["n"]])
+    rho <- oaimodels::spearman_ci(pase_walkers[[score]], pase_walkers[[col]])
+    share_two_waves <- if (paired) 0 else mean(pase_walkers$n_waves == 2)
+    reliability <- oaimodels::wave_reliability(between_wave(m)$r, share_two_waves)
+    pase[[length(pase) + 1]] <- visit_row(m, "rho", rho[["rho"]], rho[["lo"]], rho[["hi"]], rho[["n"]])
+    pase[[length(pase) + 1]] <- visit_row(m, "rho_deattenuated",
+                                          oaimodels::deattenuate(rho[["rho"]], reliability_y = reliability),
+                                          NA, NA, rho[["n"]])
   }
   # Item 4: classification against the device walker
-  cl <- oaimodels::classification(p > pase_threshold, persons$device_walker)
-  auc <- oaimodels::auc_ci(p, persons$device_walker, reps = reps, seed = seed)
-  pase[[length(pase) + 1]] <- pase_row(visit, "device_walker", cl$measure, cl$estimate, cl$lo, cl$hi, cl$n)
-  pase[[length(pase) + 1]] <- pase_row(visit, "device_walker", "auc", auc[["estimate"]], auc[["lo"]],
-                                       auc[["hi"]], sum(!is.na(p) & !is.na(persons$device_walker)))
+  cl <- oaimodels::classification(p > pase_threshold, d[[reference]])
+  auc <- oaimodels::auc_ci(p, d[[reference]], reps = reps, seed = seed)
+  pase[[length(pase) + 1]] <- visit_row("device_walker", cl$measure, cl$estimate, cl$lo, cl$hi, cl$n)
+  pase[[length(pase) + 1]] <- visit_row("device_walker", "auc", auc[["estimate"]], auc[["lo"]],
+                                        auc[["hi"]], nrow(d))
 }
 
 classification_all <- bind(classes)

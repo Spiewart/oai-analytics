@@ -42,17 +42,27 @@ def combine_waves(device: pl.DataFrame, combination: str) -> pl.DataFrame:
 
 
 def with_device_walker(
-    persons: pl.DataFrame, rule: str, min_bout_days: float, min_bout_minutes: float
+    persons: pl.DataFrame,
+    rule: str,
+    min_bout_days: float,
+    min_bout_minutes: float,
+    wave: str | None = None,
 ) -> pl.DataFrame:
-    """Add device_walker, the reference standard."""
+    """Add device_walker, the reference standard, from the combined measures.
+
+    With `wave` ("06"/"08"), add device_walker_<wave> from that wave's own measures instead
+    (<measure>_<wave>); it is null where the person has no valid wave there.
+    """
+    suffix = "" if wave is None else f"_{wave}"
+    bout_days = pl.col(f"bout_days_per_week{suffix}")
     rules = {
-        "bout_days": pl.col("bout_days_per_week") >= min_bout_days,
-        "any_bout": pl.col("bout_days_per_week") > 0,
-        "bout_minutes": pl.col("purposeful_min") * 7 >= min_bout_minutes,
+        "bout_days": bout_days >= min_bout_days,
+        "any_bout": bout_days > 0,
+        "bout_minutes": pl.col(f"purposeful_min{suffix}") * 7 >= min_bout_minutes,
     }
     if rule not in rules:
         raise ValueError(f"reference.walker_rule must be one of {', '.join(rules)}, not {rule!r}")
-    return persons.with_columns(rules[rule].alias("device_walker"))
+    return persons.with_columns(rules[rule].alias(f"device_walker{suffix}"))
 
 
 def with_amount_level(persons: pl.DataFrame) -> pl.DataFrame:

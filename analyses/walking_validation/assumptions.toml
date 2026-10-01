@@ -122,6 +122,12 @@ value = 0.0
 status = "assumed"
 source = "A PASE walker reports any walking outside the home in the past 7 days (subscore > 0)"
 
+[pase.device_pairing]
+value = "adjacent_wave"
+status = "assumed"
+source = "Spec 6.6: PASE at 48 and 72 months is compared with the device wave of the same visit (its measures, device walker and single-wave reliability); PASE at 96 months has no device wave and uses the combined measures"
+choices = ["adjacent_wave", "two_wave_mean"]
+
 [validity.bootstrap_reps]
 value = 1000
 status = "assumed"

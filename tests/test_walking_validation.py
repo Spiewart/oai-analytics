@@ -62,6 +62,23 @@ def test_device_walker_rules():
         rule("steps")
 
 
+def test_device_walker_per_wave():
+    # The same rule on one wave's own measures; null where the person has no valid wave there
+    df = pl.DataFrame(
+        {
+            "bout_days_per_week_06": [0.0, 3.0, None],
+            "purposeful_min_06": [0.0, 30.0, None],
+            "bout_days_per_week_08": [2.0, 1.0, 0.0],
+            "purposeful_min_08": [25.0, 5.0, 0.0],
+        }
+    )
+    out = with_device_walker(df, "bout_days", 2.0, 150.0, wave="06")
+    assert out["device_walker_06"].to_list() == [False, True, None]
+    assert "device_walker" not in out.columns
+    out = with_device_walker(out, "bout_minutes", 2.0, 150.0, wave="08")
+    assert out["device_walker_08"].to_list() == [True, False, False]
+
+
 def test_amount_level_median_split():
     df = pl.DataFrame(
         {"walker": [False, True, True, True, True], "sessions": [None, 10.0, 20.0, 30.0, None]}

@@ -74,12 +74,16 @@ pain = (
         .alias("pain0_any")
     )
 )
-combined = with_device_walker(
-    combine_waves(pl.read_parquet(frames / "device.parquet"), A["device.wave_combination"]),
-    A["reference.walker_rule"],
-    A["reference.min_bout_days_per_week"],
-    A["reference.min_bout_minutes_per_week"],
-)
+combined = combine_waves(pl.read_parquet(frames / "device.parquet"), A["device.wave_combination"])
+# device_walker from the combined measures; device_walker_06/_08 from each wave's own (PASE pairing)
+for wave in (None, "06", "08"):
+    combined = with_device_walker(
+        combined,
+        A["reference.walker_rule"],
+        A["reference.min_bout_days_per_week"],
+        A["reference.min_bout_minutes_per_week"],
+        wave=wave,
+    )
 
 label = A["bias.lo2022_label"]
 lo_knees, lo_values = read_lo_frame(settings.work_dir, label, A["exposure.yes_without_amount_as"])

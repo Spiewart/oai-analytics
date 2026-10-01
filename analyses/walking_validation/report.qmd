@@ -244,7 +244,18 @@ The Lo 2022 subset's KL strata start at `r kl_first("lo_subset")`, because the c
 
 # PASE walking subscore (benchmark)
 
-The same statistics for the PASE walking item (walking outside the home in the past 7 days) at each visit, as a benchmark for the walking item.
+```{r pase-pairing}
+combination <- assumption("device.wave_combination")
+combined_text <- if (combination == "mean") "the mean over each participant's valid device waves" else
+  sprintf("the %s device wave", sub(" months", "-month", wave(combination)))
+pairing_text <- if (assumption("pase.device_pairing") == "adjacent_wave") {
+  sprintf("PASE at 48 and 72 months is compared with the device wave of the same visit (that wave's measures and device-defined walker, in participants valid at that wave, deattenuated by the single-wave reliability); PASE at 96 months, the walking item's visit, has no device wave, so it is compared with %s, as the walking item is.", combined_text)
+} else {
+  sprintf("PASE at every visit is compared with %s, as the walking item is.", combined_text)
+}
+```
+
+The same statistics for the PASE walking item (walking outside the home in the past 7 days) at each visit, as a benchmark for the walking item. `r pairing_text`
 
 ```{r pase}
 pz <- run$validity_pase
