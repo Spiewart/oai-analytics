@@ -1,0 +1,435 @@
+---
+title: "Lo et al. 2022 replication: result-by-result comparison"
+subtitle: "Walking for exercise and knee osteoarthritis progression in the OAI"
+date: today
+mainfont: Arial
+fontsize: 10pt
+format:
+  typst:
+    papersize: us-letter
+    margin:
+      x: 0.9in
+      y: 0.9in
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: cairo_pdf
+    fig-width: 7
+---
+
+```{r setup}
+runs <- oaireport::load_results()
+d <- runs$default
+wra <- runs$walker_requires_amount
+roa <- runs$roa_counts_replaced_knees
+
+run_names <- c(
+  default = "Primary analysis (every assumption at its default)",
+  walker_requires_amount = "'Yes' walkers with no amount answers coded as non-walkers",
+  roa_counts_replaced_knees = "Knees replaced at baseline count toward radiographic OA",
+  published_counts = "Both count-reproducing choices together",
+  missing_as_nonwalkers = "Survey non-respondents as non-walkers",
+  missing_as_walkers = "Survey non-respondents as walkers",
+  replacement_not_worsening = "Interval replacement not counted as structural worsening",
+  corstr_independence = "Independence working correlation"
+)
+graded_against <- c(
+  missing_as_nonwalkers = "Supplementary Table 2",
+  missing_as_walkers = "Supplementary Table 3"
+)
+run_name <- function(label) if (label %in% names(run_names)) run_names[[label]] else label
+outcome_names <- c(
+  new_pain = "New frequent knee pain",
+  kl_worse = "KL grade worsening",
+  jsn_worse = "Medial JSN worsening",
+  improved_pain = "Resolution of frequent knee pain"
+)
+model_names <- c(or_unadj = "Unadjusted", or_adj = "Adjusted")
+group_names <- c(walkers = "Walkers", nonwalkers = "Non-walkers", all = "All")
+fmt <- function(x, digits = 0) formatC(x, format = "f", digits = digits, big.mark = ",")
+named <- function(key, map) ifelse(key %in% names(map), map[key], key)
+verdict_counts <- function(cmp) {
+  table(factor(cmp$verdict, levels = c("replicated", "drift", "missing")))
+}
+published_value <- function(run, metric) {
+  as.numeric(run$comparison$published[run$comparison$metric == metric])
+}
+
+# Our odds ratios for one run, from its metrics (full precision).
+or_estimates <- function(run, source) {
+  grid <- expand.grid(outcome = names(outcome_names), model = names(model_names),
+                      stringsAsFactors = FALSE)
+  key <- sprintf("t2.%s.%s", grid$outcome, grid$model)
+  m <- run$metrics
+  data.frame(outcome = unname(outcome_names[grid$outcome]), model = unname(model_names[grid$model]),
+             source = source, or = unname(m[key]), lo = unname(m[paste0(key, ".lo")]),
+             hi = unname(m[paste0(key, ".hi")]))
+}
+
+# The published odds ratios this run was graded against, from its comparison.csv.
+published_estimates <- function(run, source = "Published") {
+  cmp <- run$comparison[run$comparison$kind == "or", ]
+  parts <- do.call(rbind, strsplit(sub("^t2\\.", "", cmp$metric), ".", fixed = TRUE))
+  ors <- oaireport::parse_or(cmp$published)
+  data.frame(outcome = unname(outcome_names[parts[, 1]]), model = unname(model_names[parts[, 2]]),
+             source = source, or = ors$or, lo = ors$lo, hi = ors$hi)
+}
+
+in_display_order <- function(est) {
+  est[order(match(est$model, model_names), match(est$outcome, outcome_names)), ]
+}
+
+# One row per metric matching `pattern`: published, then ours and the verdict for each run.
+compare_runs <- function(pattern, labels, run_titles = labels) {
+  base <- runs[[labels[1]]]$comparison
+  rows <- base[grepl(pattern, base$metric), c("metric", "published")]
+  for (i in seq_along(labels)) {
+    cmp <- runs[[labels[i]]]$comparison
+    hit <- match(rows$metric, cmp$metric)
+    rows[[run_titles[i]]] <- cmp$ours[hit]
+    rows[[paste("verdict", run_titles[i])]] <- cmp$verdict[hit]
+  }
+  rownames(rows) <- NULL
+  rows
+}
+
+commit <- d$run_info$git_commit
+code_version <- paste0(
+  "oai-analytics ", d$run_info$oai_version,
+  if (is.null(commit)) "" else paste0(", commit ", substr(commit, 1, 7)),
+  if (isTRUE(d$run_info$git_dirty)) " (with uncommitted changes)" else ""
+)
+```
+
+```{=typst}
+#show table: set text(size: 8.5pt, hyphenate: false)
+#show table: set par(justify: false)
+```
+
+# Summary
+
+We re-ran every published analysis of Lo et al.^[Lo GH, et al. Association Between Walking for Exercise and Symptomatic and Structural Progression in Individuals With Knee Osteoarthritis. *Arthritis Rheumatol* 2022;74:1660–7. doi:10.1002/art.42241.] on the public OAI release with the oai-analytics suite. Every published number was then graded against our value. A count replicates within 3% (or 2), a mean within 0.5, and an odds ratio within 0.1 with the same statistical significance. Code: `r code_version`. The primary run finished `r d$run_info$finished_utc` UTC.
+
+```{r headline}
+t2 <- d$comparison[d$comparison$kind == "or", ]
+pub <- oaireport::parse_or(t2$published)
+ours <- oaireport::parse_or(t2$ours)
+agree <- (pub$or < 1) == (ours$or < 1) & pub$sig == ours$sig
+```
+
+**Headline.** `r sum(agree)` of `r nrow(t2)` published Table 2 odds ratios reproduce in direction and statistical significance. `r sum(t2$verdict == "replicated")` of them also lie within 0.1 of the published estimate. Across all `r nrow(d$comparison)` graded results, the primary analysis replicates `r verdict_counts(d$comparison)[["replicated"]]`.
+
+```{r summary-table}
+summary_rows <- do.call(rbind, lapply(names(runs), function(label) {
+  counts <- verdict_counts(runs[[label]]$comparison)
+  data.frame(
+    Run = label,
+    Description = run_name(label),
+    `Graded against` = if (label %in% names(graded_against)) graded_against[[label]] else "Main paper",
+    Replicated = counts[["replicated"]], Drift = counts[["drift"]], Missing = counts[["missing"]],
+    check.names = FALSE
+  )
+}))
+oaireport::compare_table(summary_rows, widths = c(2.6, 3.4, 1.6, 1, 0.8, 0.8))
+```
+
+# Cohort flow
+
+Our counts, with the published count in brackets where the paper reports one.
+
+```{r flow}
+#| fig-height: 6.4
+flow_labels <- c(
+  all = "OAI participants",
+  age50 = "Age ≥ 50 years",
+  baseline_xray = "Baseline x-ray read in Project 15",
+  roa = "Radiographic knee OA",
+  before_survey = "96-month visit on or after survey start",
+  no_visit96 = "Attended the 96-month visit",
+  no_survey = "Answered the walking survey",
+  no_followup = "48- or 36-month follow-up x-ray"
+)
+counts <- d$comparison[d$comparison$kind == "count", ]
+flow_plot <- oaireport::flow_diagram(
+  d$flow, flow_labels, stats::setNames(as.numeric(counts$published), counts$metric)
+)
+oaireport::save_figure(flow_plot, "flow", "2col", height = 0.8 * nrow(d$flow))
+flow_plot
+```
+
+Analysed knees: `r fmt(d$metrics[["flow.knees"]])` (published `r fmt(published_value(d, "flow.knees"))`). Characteristics of each excluded group (Supplementary Table 1) are in Appendix B.
+
+# Table 1: baseline characteristics
+
+```{r table1}
+t1 <- compare_runs("^t1\\.", c("default", "walker_requires_amount"), c("primary", "amount"))
+t1_names <- c(
+  persons = "Participants", age_mean = "Age, mean (years)", male = "Men",
+  bmi_mean = "BMI, mean (kg/m²)",
+  walk_days_min = "Times walked, minimum", walk_days_p25 = "Times walked, 25th centile",
+  walk_days_median = "Times walked, median", walk_days_p75 = "Times walked, 75th centile",
+  walk_days_max = "Times walked, maximum",
+  knees = "Knees", kl2 = "KL grade 2", kl3 = "KL grade 3", kl4 = "KL grade 4",
+  jsm0 = "Medial JSN grade 0", jsm1 = "Medial JSN grade 1", jsm2 = "Medial JSN grade 2",
+  jsm3 = "Medial JSN grade 3", pain0 = "Frequent knee pain at baseline",
+  align_knees = "Knees with a long-limb film", varus = "Varus", neutral = "Neutral",
+  valgus = "Valgus", pain48 = "Frequent knee pain at 48 months",
+  replaced48 = "Knee replaced by 48 months"
+)
+parts <- do.call(rbind, strsplit(sub("^t1\\.", "", t1$metric), ".", fixed = TRUE))
+t1_table <- data.frame(
+  Characteristic = named(parts[, 1], t1_names), Group = named(parts[, 2], group_names),
+  Published = t1$published, Primary = t1$primary, `verdict primary` = t1$`verdict primary`,
+  `Walker requires amount` = t1$amount, `verdict amount` = t1$`verdict amount`,
+  check.names = FALSE
+)
+oaireport::compare_table(t1_table, widths = c(3, 1.4, 1.1, 1.1, 1.5, 1.4, 1.5), labels = c(
+  "Characteristic", "Group", "Published", "Primary", "Verdict", "Walker requires amount", "Verdict"
+))
+```
+
+"Times walked" is years × months per year × times per month among walkers, using category midpoints (an open assumption; see Appendix D).
+
+# Table 2: walking and knee outcomes
+
+```{r forest-main}
+#| fig-height: 4.2
+sources <- c("Published", "Replication: primary", "Replication: walker requires amount")
+main_est <- in_display_order(rbind(
+  published_estimates(d), or_estimates(d, sources[2]), or_estimates(wra, sources[3])
+))
+main_plot <- oaireport::forest_plot(main_est, facet = "model", sources = sources)
+oaireport::save_figure(main_plot, "forest_table2", "2col", height = 4.2)
+main_plot
+```
+
+```{r table2}
+t2_rows <- compare_runs("^t2\\.[a-z_]+\\.or_", c("default", "walker_requires_amount"),
+                        c("primary", "amount"))
+parts <- do.call(rbind, strsplit(sub("^t2\\.", "", t2_rows$metric), ".", fixed = TRUE))
+oaireport::compare_table(data.frame(
+  Outcome = named(parts[, 1], outcome_names), Model = named(parts[, 2], model_names),
+  Published = t2_rows$published, Primary = t2_rows$primary,
+  `verdict primary` = t2_rows$`verdict primary`, `Walker requires amount` = t2_rows$amount,
+  `verdict amount` = t2_rows$`verdict amount`, check.names = FALSE
+), widths = c(2.6, 1.3, 1.6, 1.6, 1.4, 1.6, 1.4), labels = c(
+  "Outcome", "Model", "Published", "Primary", "Verdict", "Walker requires amount", "Verdict"
+))
+```
+
+Odds ratios (95% CI) for walkers versus non-walkers, from GEE logistic models with knees clustered within participants; \* marks significance.
+
+# What explains the gaps
+
+```{r gaps}
+walkers <- function(run) run$metrics[["t1.persons.walkers"]]
+roa_persons <- function(run) run$metrics[["flow.roa.persons"]]
+replicated <- function(label) verdict_counts(runs[[label]]$comparison)[["replicated"]]
+gap_runs <- c("default", "walker_requires_amount", "roa_counts_replaced_knees", "published_counts")
+gap_table <- rbind(
+  data.frame(Source = "Published", Walkers = fmt(published_value(d, "t1.persons.walkers")),
+             `Radiographic OA step` = fmt(published_value(d, "flow.roa.persons")),
+             Replicated = "", check.names = FALSE),
+  do.call(rbind, lapply(gap_runs, function(label) data.frame(
+    Source = run_name(label), Walkers = fmt(walkers(runs[[label]])),
+    `Radiographic OA step` = fmt(roa_persons(runs[[label]])),
+    Replicated = sprintf("%d of %d", replicated(label), nrow(runs[[label]]$comparison)),
+    check.names = FALSE
+  )))
+)
+oaireport::compare_table(gap_table, widths = c(4, 1.2, 1.8, 1.4))
+```
+
+Two coding choices that the paper does not state explain most of the count differences.
+
+**1. Walkers who answered "yes" but gave no amount.** `r fmt(walkers(d) - walkers(wra))` participants answered yes to walking for exercise (V10WLKAR4) but left years, months per year and times per month blank. The primary analysis counts them as walkers: `r fmt(walkers(d))` walkers against `r fmt(published_value(d, "t1.persons.walkers"))` published. Coding them as non-walkers gives `r fmt(walkers(wra))` walkers, and the number of replicated results changes from `r replicated("default")` to `r replicated("walker_requires_amount")`. *Question for the authors:* **[placeholder: to be written by the study team]**
+
+**2. Knees replaced before baseline, at the radiographic-OA step.** Counting participants whose only OA knee had been replaced at baseline gives `r fmt(roa_persons(roa))` participants at that step (published `r fmt(published_value(d, "flow.roa.persons"))`, primary `r fmt(roa_persons(d))`). The number of replicated results changes from `r replicated("default")` to `r replicated("roa_counts_replaced_knees")`. The Methods describe a native knee. *Question for the authors:* **[placeholder: to be written by the study team]**
+
+# Sensitivity analyses
+
+Each panel compares a supplementary table with the run that reproduces its imputation of survey non-respondents.
+
+```{r sensitivity-helper}
+sensitivity_plot <- function(label) {
+  est <- in_display_order(rbind(
+    published_estimates(runs[[label]]), or_estimates(runs[[label]], "Replication")
+  ))
+  oaireport::forest_plot(est, facet = "model", sources = c("Published", "Replication"))
+}
+```
+
+## Supplementary Table 2: non-respondents as non-walkers
+
+```{r forest-supp2}
+#| fig-height: 4.2
+supp2 <- sensitivity_plot("missing_as_nonwalkers")
+oaireport::save_figure(supp2, "forest_supp2", "2col", height = 4.2)
+supp2
+```
+
+## Supplementary Table 3: non-respondents as walkers
+
+```{r forest-supp3}
+#| fig-height: 4.2
+supp3 <- sensitivity_plot("missing_as_walkers")
+oaireport::save_figure(supp3, "forest_supp3", "2col", height = 4.2)
+supp3
+```
+
+```{=typst}
+#pagebreak()
+```
+
+# Appendix A. Table 3: outcomes by static alignment (primary analysis)
+
+```{r appendix-a}
+t3 <- compare_runs("^t3\\.", "default", "primary")
+parts <- do.call(rbind, strsplit(sub("^t3\\.", "", t3$metric), ".", fixed = TRUE))
+oaireport::compare_table(data.frame(
+  Outcome = named(parts[, 1], outcome_names), Alignment = tools::toTitleCase(parts[, 2]),
+  Group = named(parts[, 3], group_names), Measure = ifelse(parts[, 4] == "n", "Knees", "Events"),
+  Published = t3$published, Primary = t3$primary, verdict = t3$`verdict primary`,
+  check.names = FALSE
+), widths = c(2.6, 1.2, 1.3, 1, 1, 1, 1.4), labels = c(
+  "Outcome", "Alignment", "Group", "Measure", "Published", "Primary", "Verdict"
+))
+```
+
+# Appendix B. Supplementary Table 1: excluded groups (primary analysis)
+
+```{r appendix-b}
+excluded_names <- c(
+  before_survey = "96-month visit before survey start", no_visit96 = "No 96-month visit",
+  no_survey = "No walking survey answers", no_followup = "No 48- or 36-month follow-up"
+)
+measure_names <- c(
+  excluded_persons = "Participants", excluded_knees = "Knees", male = "Men",
+  age_mean = "Age, mean (years)", bmi_mean = "BMI, mean (kg/m²)"
+)
+s1 <- compare_runs("^(s1\\.|flow\\.[a-z0-9_]+\\.excluded_)", "default", "primary")
+parts <- do.call(rbind, strsplit(sub("^(s1|flow)\\.", "", s1$metric), ".", fixed = TRUE))
+s1 <- s1[order(match(parts[, 1], names(excluded_names)), match(parts[, 2], names(measure_names))), ]
+parts <- do.call(rbind, strsplit(sub("^(s1|flow)\\.", "", s1$metric), ".", fixed = TRUE))
+oaireport::compare_table(data.frame(
+  `Excluded group` = named(parts[, 1], excluded_names), Measure = named(parts[, 2], measure_names),
+  Published = s1$published, Primary = s1$primary, verdict = s1$`verdict primary`,
+  check.names = FALSE
+), widths = c(3.2, 2, 1.1, 1.1, 1.4), labels = c(
+  "Excluded group", "Measure", "Published", "Primary", "Verdict"
+))
+```
+
+# Appendix C. Replication grid
+
+Percentage of published results replicated, by results section and run (n = results graded). The two missing-data runs are graded only against their own supplementary tables.
+
+```{r appendix-c-grid}
+#| fig-height: 4
+section_names <- c(flow = "Cohort flow", s1 = "Supp. Table 1", t1 = "Table 1", t2 = "Table 2", t3 = "Table 3")
+grid <- do.call(rbind, lapply(names(runs), function(label) {
+  cmp <- runs[[label]]$comparison
+  section <- sub("\\..*$", "", cmp$metric)
+  share <- tapply(cmp$verdict == "replicated", section, mean)
+  data.frame(run = label, section = names(share), pct = 100 * as.numeric(share),
+             n = as.integer(table(section)[names(share)]))
+}))
+grid$section <- factor(named(grid$section, section_names), levels = section_names)
+grid$run <- factor(grid$run, levels = rev(names(runs)))
+grid_plot <- ggplot2::ggplot(grid, ggplot2::aes(section, run, fill = pct)) +
+  ggplot2::geom_tile(colour = "white", linewidth = 0.8) +
+  ggplot2::geom_text(ggplot2::aes(label = sprintf("%.0f%%\n(n = %d)", pct, n), colour = pct > 60),
+                     size = 2.4, family = oaireport::oai_font(), lineheight = 0.9) +
+  ggplot2::scale_fill_gradient(low = "#cde2fb", high = "#1c5cab", limits = c(0, 100),
+                               name = "% replicated") +
+  ggplot2::scale_colour_manual(values = c(`FALSE` = "grey10", `TRUE` = "white"), guide = "none") +
+  ggplot2::scale_x_discrete(position = "top") +
+  ggplot2::labs(x = NULL, y = NULL) +
+  oaireport::theme_oai() +
+  ggplot2::theme(axis.line = ggplot2::element_blank(), axis.ticks = ggplot2::element_blank(),
+                 legend.title = ggplot2::element_text(size = 7))
+oaireport::save_figure(grid_plot, "replication_grid", "2col", height = 4)
+grid_plot
+```
+
+## Every graded result, by run
+
+The published column shows the main paper's value. Runs R5 and R6 are graded against Supplementary Tables 2 and 3 (see Sensitivity analyses).
+
+```{r appendix-c-key}
+oaireport::compare_table(data.frame(
+  Key = sprintf("R%d", seq_along(runs)), Run = names(runs),
+  Description = vapply(names(runs), run_name, character(1)), check.names = FALSE
+), widths = c(0.6, 2.6, 4.6))
+```
+
+```{r appendix-c-table}
+all_metrics <- unique(unlist(lapply(runs, function(r) r$comparison$metric)))
+wide <- data.frame(Metric = all_metrics,
+                   Published = d$comparison$published[match(all_metrics, d$comparison$metric)])
+for (i in seq_along(runs)) {
+  cmp <- runs[[i]]$comparison
+  wide[[sprintf("verdict R%d", i)]] <- cmp$verdict[match(all_metrics, cmp$metric)]
+}
+oaireport::compare_table(wide, widths = c(3.6, 1.7, rep(0.6, length(runs))), compact = TRUE,
+                         labels = c("Metric", "Published", sprintf("R%d", seq_along(runs))))
+```
+
+# Appendix D. Assumptions ledger
+
+Every analytic choice, its status (confirmed from the paper, assumed, or open) and its source. Generated from `assumptions.toml`.
+
+```{r appendix-d-ledger}
+#| results: asis
+ledger <- readLines("ASSUMPTIONS.md", warn = FALSE)
+ledger <- ledger[!grepl("^# |^<!--", ledger)]
+spans <- gregexpr("`[A-Za-z][A-Za-z0-9_.{}]*`", ledger)
+regmatches(ledger, spans) <- lapply(regmatches(ledger, spans), function(x) {
+  gsub("([._])", "\\1\u200b", gsub("`", "", x))
+})
+cat(ledger, sep = "\n")
+```
+
+## Settings that differ from the primary run
+
+```{r appendix-d-diffs}
+diffs <- do.call(rbind, lapply(names(runs), function(label) {
+  items <- runs[[label]]$assumptions$assumptions
+  changed <- Filter(function(x) !identical(x$origin, "default"), items)
+  if (!length(changed)) return(NULL)
+  data.frame(Run = label, Assumption = names(changed),
+             Value = vapply(changed, function(x) paste(format(unlist(x$value)), collapse = ", "), ""),
+             check.names = FALSE)
+}))
+oaireport::compare_table(diffs, widths = c(2.4, 3.4, 2))
+```
+
+# Appendix E. Methods and provenance
+
+Grading (oai.replication):
+- A count replicates when it is within the larger of 3% and 2.
+- A mean replicates when it is within 0.5.
+- An odds ratio replicates when it is within 0.1 and has the same statistical significance. The published significance flag is used, because rounded bounds such as 0.6–1.0 can hide an upper bound below 1.
+- Otherwise a result is "drift", or "missing" when we could not compute it.
+
+```{r appendix-e-runs}
+oaireport::compare_table(do.call(rbind, lapply(names(runs), function(label) {
+  info <- runs[[label]]$run_info
+  data.frame(Run = label,
+             Commit = if (is.null(info$git_commit)) "–" else substr(info$git_commit, 1, 7),
+             `Uncommitted changes` = if (isTRUE(info$git_dirty)) "yes" else "no",
+             `Finished (UTC)` = info$finished_utc, oai = info$oai_version, check.names = FALSE)
+})), widths = c(2.6, 1, 1.5, 2.4, 0.8))
+```
+
+```{r appendix-e-software}
+packages <- c("oaireport", "oaimodels", "geepack", "ggplot2", "tinytable", "knitr")
+oaireport::compare_table(data.frame(
+  Software = c("R", packages),
+  Version = c(paste(R.version$major, R.version$minor, sep = "."),
+              vapply(packages, function(p) as.character(utils::packageVersion(p)), character(1)))
+), widths = c(2, 2))
+```

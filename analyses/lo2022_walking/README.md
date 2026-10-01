@@ -20,3 +20,12 @@ oai assumptions lo2022_walking                          # what was assumed, and 
 
 Every analytic choice is in [assumptions.toml](assumptions.toml) (rendered as
 [ASSUMPTIONS.md](ASSUMPTIONS.md)). Results stay in `$OAI_RESULTS_DIR` and are not committed.
+
+## Comparison report
+
+`oai report lo2022_walking --run` runs the eight labels listed under `[report]` in
+[analysis.toml](analysis.toml) (as needed) and renders [report.qmd](report.qmd) to
+`$OAI_RESULTS_DIR/lo2022_walking/report/report.pdf`. The report's main body compares each
+published result with ours and explains the gaps; its appendix holds every graded number,
+the assumptions ledger and run provenance. Figures are in `report/figures/` as PDF and
+300 dpi PNG at journal column widths.

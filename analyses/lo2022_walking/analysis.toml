@@ -34,3 +34,12 @@ aggregate = [
     "flow.csv", "table1.csv", "table2.csv", "table3.csv", "comparison.csv",
     "metrics_*.csv", "assumptions.resolved.json",
 ]
+
+[report]
+entry = "report.qmd"
+runs = [
+    "default", "walker_requires_amount", "roa_counts_replaced_knees", "published_counts",
+    "missing_as_nonwalkers", "missing_as_walkers", "replacement_not_worsening",
+    "corstr_independence",
+]
+assets = ["ASSUMPTIONS.md"]
