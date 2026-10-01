@@ -21,6 +21,7 @@ from oai.derive.knee import (
     with_fallback,
     xray_readings,
 )
+from oai.derive.walking import AMOUNT_ITEMS, WALKER_VALUES, walker_status, walking_sessions
 from oai.loader import read_table
 from oai.visits import nominal_month
 
@@ -39,9 +40,7 @@ S1_STEPS = (*SURVEY_STEPS, "no_followup")
 OUTCOMES = ("new_pain", "kl_worse", "jsn_worse", "improved_pain")
 GROUPS = ("walkers", "nonwalkers", "all")
 ALIGNMENTS = ("varus", "neutral", "valgus")
-AMOUNT_ITEMS = {"years": "V10WKYRAR4", "months": "V10WKMOAR4", "times": "V10WKTMAR4"}
 DAYS_PER_MONTH = 365.25 / 12
-WALKER_VALUES = {"non-walker": False, "walker": True, "exclude": None}
 
 
 @dataclass
@@ -109,11 +108,6 @@ def _flow_row(step: str, remaining: pl.DataFrame, excluded: pl.DataFrame, oa: pl
     }
 
 
-def _walk_amount(name: str, midpoints: list[float]) -> pl.Expr:
-    mapping = {code + 1: float(value) for code, value in enumerate(midpoints)}
-    return pl.col(f"amount_{name}").replace_strict(mapping, default=None, return_dtype=pl.Float64)
-
-
 def build(A: Resolved) -> Built:
     project, min_kl = A["cohort.reading_project"], A["knees.min_kl"]
     fu_visits = list(A["outcomes.followup_visits"])
@@ -169,20 +163,11 @@ def build(A: Resolved) -> Built:
         if step in SURVEY_STEPS:
             survey_excluded.append(excluded)
 
-    missing_as = WALKER_VALUES[A["exposure.missing_walking_as"]]
-    no_amount = pl.all_horizontal([pl.col(f"amount_{n}").is_null() for n in AMOUNT_ITEMS])
-    yes_value = (
-        pl.when(no_amount)
-        .then(pl.lit(WALKER_VALUES[A["exposure.yes_without_amount_as"]], dtype=pl.Boolean))
-        .otherwise(True)
-    )
     respondents = current.with_columns(
-        pl.when(pl.col("walk_item") == 1)
-        .then(yes_value)
-        .when(pl.col("walk_item") == 0)
-        .then(False)
-        .otherwise(pl.lit(missing_as, dtype=pl.Boolean))
-        .alias("walker")
+        walker_status(
+            yes_without_amount_as=A["exposure.yes_without_amount_as"],
+            missing_as=A["exposure.missing_walking_as"],
+        )
     )
     cohort = [respondents]
     impute = A["cohort.impute_missing_walking"]
@@ -217,12 +202,7 @@ def build(A: Resolved) -> Built:
     pain_counts = (
         pl.lit(True) if A["outcomes.replaced_knee_pain"] == "keep" else ~pl.col("replaced")
     )
-    midpoints = A["exposure.category_midpoints"]
-    walk_times = (
-        _walk_amount("years", midpoints["years"])
-        * _walk_amount("months", midpoints["months"])
-        * _walk_amount("times", midpoints["times"])
-    )
+    walk_times = walking_sessions(A["exposure.category_midpoints"])
 
     frame = (
         knees.filter("has_followup")

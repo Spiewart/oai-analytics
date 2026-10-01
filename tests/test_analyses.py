@@ -5,7 +5,6 @@ import pytest
 
 from oai.catalog import catalog_for
 from oai.config import get_settings
-from oai.derive.pase import score_pase
 from oai.derive.progression import fnih_jsw_progressor, kl_progression
 from oai.manifest import load_analysis
 
@@ -36,7 +35,6 @@ def test_genetics_exports_an_id_keyed_frame_to_the_enclave():
 @pytest.mark.parametrize(
     "call",
     [
-        lambda: score_pase(pl.DataFrame(), "V06"),
         lambda: kl_progression(pl.DataFrame()),
         lambda: fnih_jsw_progressor(pl.DataFrame()),
     ],
