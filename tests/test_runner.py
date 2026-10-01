@@ -299,3 +299,19 @@ def test_run_info_records_input_table_versions(tmp_path):
 def test_run_info_data_versions_empty_without_data(toy, tmp_path):
     run_analysis(toy, make_settings(tmp_path), stage="local", echo=lambda _: None)
     assert read_run_info(tmp_path)["data_versions"] == {}
+
+
+def test_process_env_sets_renv_profile_for_r_steps_only(tmp_path):
+    root = tmp_path / "analyses" / "prof"
+    root.mkdir(parents=True)
+    (root / "analysis.toml").write_text(
+        'name = "prof"\n\n[r]\nprofile = "report"\n\n'
+        '[[steps]]\nid = "a"\nlang = "python"\nentry = "a.py"\n\n'
+        '[[steps]]\nid = "b"\nlang = "r"\nentry = "b.R"\n'
+    )
+    (root / "a.py").write_text("")
+    (root / "b.R").write_text("")
+    analysis = load_analysis(root)
+    py, r = analysis.steps
+    assert "RENV_PROFILE" not in runner.process_env(py, analysis, {"X": "1"})
+    assert runner.process_env(r, analysis, {"X": "1"}) == {"X": "1", "RENV_PROFILE": "report"}

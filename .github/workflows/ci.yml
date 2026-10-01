@@ -57,4 +57,4 @@ jobs:
           working-directory: r
           profile: '"report"'
           cache-version: report-1
-      - run: Rscript -e 'testthat::test_local("oaireport", stop_on_failure = TRUE)'
+      - run: Rscript -e 'testthat::test_local("oaireport", stop_on_failure = TRUE); testthat::test_local("oaimodels", stop_on_failure = TRUE)'

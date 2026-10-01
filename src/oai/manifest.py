@@ -55,6 +55,7 @@ class Analysis:
     export: ExportSpec | None
     aggregate_outputs: tuple[str, ...]
     report: ReportSpec | None = None
+    r_profile: str | None = None  # renv profile for R steps ([r] profile); local-only
 
     @property
     def languages(self) -> set[str]:
@@ -128,8 +129,17 @@ def _parse(data: dict[str, Any], root: Path, where: Path) -> Analysis:
 
     outputs = tuple(data.get("outputs", {}).get("aggregate", []))
     report = _parse_report(data["report"], root, fail) if "report" in data else None
+    r_profile = _parse_r(data["r"], steps, fail) if "r" in data else None
     return Analysis(
-        name, data.get("description", ""), root, inputs, tuple(steps), export, outputs, report
+        name,
+        data.get("description", ""),
+        root,
+        inputs,
+        tuple(steps),
+        export,
+        outputs,
+        report,
+        r_profile,
     )
 
 
@@ -162,6 +172,15 @@ def _parse_report(raw: Any, root: Path, fail: Callable[[str], NoReturn]) -> Repo
         if not _plain_file(root, asset):
             fail(f"[report] asset {asset!r} must be a file directly in {root}")
     return ReportSpec(str(entry), tuple(runs), tuple(assets))
+
+
+def _parse_r(raw: Any, steps: list[Step], fail: Callable[[str], NoReturn]) -> str:
+    profile = raw.get("profile") if isinstance(raw, dict) else None
+    if not isinstance(profile, str) or not re.match(r"^[a-z][a-z0-9_-]*$", profile):
+        fail('[r] profile must be a lowercase renv profile name, e.g. "report"')
+    if any(s.stage == "enclave" for s in steps):
+        fail("[r] profile is local-only: enclave bundles restore only the default R library")
+    return profile
 
 
 def list_analyses(analyses_dir: Path) -> list[Analysis]:

@@ -125,3 +125,23 @@ def test_step_profile_loads_oaireport_only_in_report_profile(tmp_path, profile, 
         check=True,
     )
     assert out.stdout.strip().endswith(loaded)
+
+
+@pytest.mark.skipif(not _report_profile_ready(), reason="the r/ report profile is not restored")
+def test_r_steps_run_under_the_analysis_r_profile(tmp_path):
+    root = tmp_path / "analyses" / "profiled"
+    root.mkdir(parents=True)
+    (root / "analysis.toml").write_text(
+        'name = "profiled"\n\n[r]\nprofile = "report"\n\n'
+        '[[steps]]\nid = "probe"\nlang = "r"\nentry = "probe.R"\n'
+    )
+    (root / "probe.R").write_text(
+        'writeLines(as.character(requireNamespace("quantreg", quietly = TRUE)), '
+        'file.path(Sys.getenv("OAI_RESULTS_DIR"), "probe.txt"))\n'
+    )
+    settings = load_settings(
+        env={"OAI_WORK_DIR": str(tmp_path / "w"), "OAI_RESULTS_DIR": str(tmp_path / "r")},
+        repo_root=REPO,
+    )
+    run_analysis(load_analysis(root), settings, echo=lambda _: None)
+    assert (tmp_path / "r" / "profiled" / "default" / "probe.txt").read_text().strip() == "TRUE"

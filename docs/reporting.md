@@ -66,3 +66,11 @@ The reporting packages (ggplot2, tinytable, knitr, rmarkdown, ragg, …) live in
 cd r && RENV_PROFILE=report Rscript -e 'renv::restore(prompt = FALSE)'
 cd r && RENV_PROFILE=report Rscript -e 'testthat::test_local("oaireport")'
 ```
+
+The profile also carries local-only analysis packages (e.g. `quantreg`). An analysis whose R
+steps need them declares, in `analysis.toml`:
+
+```toml
+[r]
+profile = "report"   # R steps run with RENV_PROFILE=report; not allowed with enclave steps
+```

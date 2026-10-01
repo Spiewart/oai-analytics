@@ -175,3 +175,32 @@ def test_invalid_report_sections(tmp_path, old, new, message):
     root = write_report_analysis(tmp_path, REPORT_MANIFEST.replace(old, new))
     with pytest.raises(ManifestError, match=re.escape(message)):
         load_analysis(root)
+
+
+R_PROFILE = REPORT_MANIFEST + '\n[r]\nprofile = "report"\n'
+
+
+def test_r_profile_parsed(tmp_path):
+    assert load_analysis(write_report_analysis(tmp_path, R_PROFILE)).r_profile == "report"
+    assert (
+        load_analysis(
+            write_analysis(
+                tmp_path / "other", VALID.replace('stage = "enclave"', 'stage = "local"')
+            )
+        ).r_profile
+        is None
+    )
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        (REPORT_MANIFEST + '\n[r]\nprofile = "Bad Name"\n', "[r] profile"),
+        (VALID + '\n[r]\nprofile = "report"\n', "enclave"),
+    ],
+)
+def test_invalid_r_profile(tmp_path, text, message):
+    root = write_analysis(tmp_path, text, files=("frame.py", "models.R", "report.qmd", "notes.md"))
+    (root / "assumptions.toml").write_text(REPORT_ASSUMPTIONS)
+    with pytest.raises(ManifestError, match=re.escape(message)):
+        load_analysis(root)

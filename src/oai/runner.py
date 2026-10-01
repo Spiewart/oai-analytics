@@ -128,6 +128,14 @@ def r_profile_env(settings: Settings) -> dict[str, str]:
     return {"OAI_R_DIR": str(r_profile.parent), "R_PROFILE_USER": str(r_profile)}
 
 
+def process_env(step: Step, analysis: Analysis, env: Mapping[str, str]) -> dict[str, str]:
+    """One step's environment: R steps get the analysis's renv profile ([r] profile)."""
+    out = dict(env)
+    if step.lang == "r" and analysis.r_profile:
+        out["RENV_PROFILE"] = analysis.r_profile
+    return out
+
+
 def _utc_now() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
 
@@ -214,7 +222,7 @@ def run_analysis(
     results: list[StepResult] = []
     for step, cmd in commands:
         echo(f"==> {analysis.name}:{step.id} [{resolved.label}] ({step.lang}, {step.stage})")
-        proc = subprocess.run(cmd, cwd=analysis.root, env=env)
+        proc = subprocess.run(cmd, cwd=analysis.root, env=process_env(step, analysis, env))
         results.append(StepResult(step.id, proc.returncode))
         if proc.returncode != 0:
             raise RunnerError(f"step {step.id!r} failed with exit code {proc.returncode}")

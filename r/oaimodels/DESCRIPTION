@@ -8,6 +8,6 @@ Description: Loads analysis frames written by the Python side and wraps the
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.4)
-Imports: nanoparquet, jsonlite
-Suggests: testthat (>= 3.0.0), lme4, ordinal, geepack, survival
+Imports: nanoparquet, jsonlite, parallel, stats
+Suggests: testthat (>= 3.0.0), lme4, ordinal, geepack, survival, quantreg
 Config/testthat/edition: 3
