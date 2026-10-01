@@ -1,0 +1,368 @@
+---
+title: "Walking for exercise: validity of the OAI item against accelerometry"
+subtitle: "The Lo et al. 2022 exposure, with a probabilistic bias analysis"
+date: today
+mainfont: Arial
+fontsize: 10pt
+format:
+  typst:
+    papersize: us-letter
+    margin:
+      x: 0.9in
+      y: 0.9in
+    include-in-header:
+      text: |
+        #set text(hyphenate: false)
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: cairo_pdf
+    fig-width: 7
+---
+
+```{r setup}
+run <- oaireport::load_results()$default
+num <- function(x, digits = 2) formatC(x, format = "f", digits = digits, big.mark = ",")
+count <- function(x) formatC(x, format = "d", big.mark = ",")
+pct <- function(x, digits = 0) paste0(num(100 * x, digits), "%")
+pct_range <- function(x) sprintf("%s–%s%%", num(100 * min(x), 0), num(100 * max(x), 0))
+named <- function(key, map) ifelse(key %in% names(map), map[key], key)
+# Odds ratios: "–" when every draw was discarded, "<0.01" for limits that collapse toward 0
+or_text <- function(x) ifelse(is.na(x), "–", ifelse(x < 0.01, "<0.01", num(x)))
+or_interval <- function(or, lo, hi) {
+  ifelse(is.na(or), "–", sprintf("%s (%s–%s)", or_text(or), or_text(lo), or_text(hi)))
+}
+interval <- function(lo, hi, sep = "–") ifelse(is.na(lo), "–", paste0(num(lo), sep, num(hi)))
+flag_mark <- function(flagged) ifelse(flagged, "✓", "")
+# Device measures: counts/day without decimals, minutes/day to 2 decimals
+dnum <- function(x, measure) ifelse(measure == "counts_per_day", num(x, 0), num(x))
+measure_names <- c(purposeful_min = "Purposeful-bout min/day", counts_per_day = "Counts/day",
+                   light_min = "Light min/day")
+outcome_names <- c(new_pain = "New frequent knee pain", kl_worse = "KL grade worsening",
+                   jsn_worse = "Medial JSN worsening", improved_pain = "Resolution of frequent knee pain")
+model_names <- c(or_unadj = "Unadjusted", or_adj = "Adjusted")
+sample_names <- c(validation = "Validation", lo_subset = "Lo 2022 subset")
+wave_names <- c(`06` = "48 months", `08` = "72 months", `10` = "96 months")
+wave <- function(x) named(sprintf("%02d", as.integer(x)), wave_names)
+assumption <- function(key) run$assumptions$assumptions[[key]]$value
+threshold <- assumption("bias.max_discard_share")
+cls <- run$validity_classification
+pick <- function(sample, measure, col = "estimate") cls[[col]][cls$sample == sample & cls$measure == measure]
+youden <- function(sample) pick(sample, "se") + pick(sample, "sp") - 1
+# Share of the Lo subset answering yes: device walkers answering yes plus device non-walkers answering yes
+yes_share <- (pick("lo_subset", "se", "k") + pick("lo_subset", "sp", "n") - pick("lo_subset", "sp", "k")) /
+  (pick("lo_subset", "se", "n") + pick("lo_subset", "sp", "n"))
+pba <- run$bias_pba
+nondiff <- pba$scenario == "non-differential"
+flag_text <- if (all(pba$flagged)) "every estimate" else sprintf("%d of %d estimates", sum(pba$flagged), nrow(pba))
+which_ors <- if (all(pba$flagged)) "its" else "those"
+tp <- run$bias_tipping
+grid_np <- tp[tp$outcome == "new_pain" & !is.na(tp$or), ]
+grid_np_excludes <- grid_np[grid_np$excludes_1, ]
+grid_sentence <- if (nrow(grid_np_excludes) == 0) {
+  sprintf("For new frequent knee pain (adjusted), the interval includes 1 in all %d feasible cells of the tipping-point grid.", nrow(grid_np))
+} else {
+  sprintf(
+    "For new frequent knee pain (adjusted), the interval excludes 1 in %s feasible cells of the tipping-point grid, down to Se + Sp = %s.",
+    if (nrow(grid_np_excludes) == nrow(grid_np)) sprintf("all %d", nrow(grid_np)) else sprintf("%d of %d", nrow(grid_np_excludes), nrow(grid_np)),
+    num(min(grid_np_excludes$se + grid_np_excludes$sp)))
+}
+info <- run$run_info
+code_version <- paste0("oai-analytics ", info$oai_version,
+                       if (is.null(info$git_commit)) "" else paste0(", commit ", substr(info$git_commit, 1, 7)),
+                       if (isTRUE(info$git_dirty)) " (with uncommitted changes)" else "")
+versions <- unlist(info$data_versions)
+data_release <- if (length(versions)) paste(sprintf("%s %s", names(versions), versions), collapse = ", ") else "not recorded"
+```
+
+```{=typst}
+#set text(hyphenate: auto)
+#show table: set text(size: 8.5pt, hyphenate: false)
+#show table: set par(justify: false)
+```
+
+# Summary
+
+The exposure in Lo et al. 2022 is the 96-month survey item "walked for exercise since age 50". We compared it with OAI accelerometry from the 48- and 72-month waves in `r count(run$metrics[["sample.validation.persons"]])` participants, `r count(run$metrics[["sample.lo_subset.persons"]])` of them from the paper's cohort. The device is an imperfect reference: it measures current activity, while the item asks about walking since age 50. Sensitivity and specificity are therefore convergent-validity estimates. Data: the OAI public release; input table versions `r data_release`. Code: `r code_version`.
+
+**Headline.** Against the device-defined habitual walker, the item's sensitivity is `r num(pick("validation", "se"))` (95% CI `r num(pick("validation", "se", "lo"))`–`r num(pick("validation", "se", "hi"))`) and its specificity is `r num(pick("validation", "sp"))` (`r num(pick("validation", "sp", "lo"))`–`r num(pick("validation", "sp", "hi"))`). Se + Sp − 1 (Youden's J) is `r num(youden("validation"))`: the item barely separates device-defined walkers from non-walkers. The probabilistic bias analysis was unstable, discarding `r pct_range(pba$discarded[nondiff])` of draws in the non-differential scenario and `r pct_range(pba$discarded[!nondiff])` in the differential one; `r flag_text` exceeded the pre-specified `r pct(threshold)` discard threshold, so `r which_ors` corrected odds ratios are not interpretable and the tipping-point grid is the primary sensitivity analysis. `r grid_sentence`
+
+# Samples and device processing
+
+```{r samples}
+flow_labels <- c(answered_walking_item = "Answered the walking item (96 months)",
+                 with_valid_device_wave = "With a valid device wave (48 or 72 months)",
+                 lo2022_cohort = "In the Lo 2022 cohort",
+                 lo2022_with_device = "In the Lo 2022 cohort with device data")
+oaireport::compare_table(data.frame(Step = named(run$flow$step, flow_labels),
+                                    Participants = count(run$flow$persons)),
+                         widths = c(4, 1.5))
+```
+
+Our processing of the minute data reproduces the release's own day-level files:
+
+```{r reproduction}
+r <- run$device_reproduction
+oaireport::compare_table(data.frame(
+  Wave = wave(r$wave), `Release days` = count(r$release_days),
+  Matched = count(r$matched_days), `Wear differs` = count(r$wear_mismatch_days),
+  `MV differs` = count(r$mv_mismatch_days), `Bout differs` = count(r$bout_mismatch_days),
+  `Valid persons (ours / release)` = sprintf("%s / %s", count(r$valid_persons), count(r$release_valid_persons)),
+  check.names = FALSE), widths = c(1.4, 1.2, 1, 1.1, 1, 1, 2))
+```
+
+# Known groups and dose–response
+
+```{r known-groups-figure}
+#| fig-height: 3.2
+kg <- run$validity_known_groups
+kg <- kg[kg$sample == "validation", ]
+long <- rbind(
+  data.frame(measure = kg$measure, group = "Walkers", median = kg$median_walkers, q25 = kg$q25_walkers, q75 = kg$q75_walkers),
+  data.frame(measure = kg$measure, group = "Non-walkers", median = kg$median_nonwalkers, q25 = kg$q25_nonwalkers, q75 = kg$q75_nonwalkers)
+)
+long$measure <- factor(named(long$measure, measure_names), levels = measure_names)
+kg_plot <- ggplot2::ggplot(long, ggplot2::aes(x = median, y = group, colour = group)) +
+  ggplot2::geom_pointrange(ggplot2::aes(xmin = q25, xmax = q75), size = 0.3, linewidth = 0.6) +
+  ggplot2::facet_wrap(~measure, scales = "free_x") +
+  ggplot2::scale_x_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE, trim = TRUE)) +
+  ggplot2::scale_colour_manual(values = oaireport::oai_palette[1:2], guide = "none") +
+  ggplot2::labs(x = "Median (interquartile range)", y = NULL) + oaireport::theme_oai()
+oaireport::save_figure(kg_plot, "known_groups", "2col", height = 3.2)
+kg_plot
+```
+
+The figure shows the validation sample. The table below gives both samples, with differences as walkers minus non-walkers.
+
+```{r known-groups-table}
+all_kg <- run$validity_known_groups
+m <- all_kg$measure
+oaireport::compare_table(data.frame(
+  Sample = named(all_kg$sample, sample_names), Measure = named(m, measure_names),
+  `Walkers, median` = dnum(all_kg$median_walkers, m), `Non-walkers, median` = dnum(all_kg$median_nonwalkers, m),
+  `Hodges–Lehmann (95% CI)` = sprintf("%s (%s to %s)", dnum(all_kg$hl, m), dnum(all_kg$hl_lo, m), dnum(all_kg$hl_hi, m)),
+  `Rank-biserial` = num(all_kg$rank_biserial),
+  `Adjusted median difference` = sprintf("%s (%s to %s)", dnum(all_kg$adj_diff, m), dnum(all_kg$adj_lo, m), dnum(all_kg$adj_hi, m)),
+  check.names = FALSE), widths = c(1.3, 2.6, 1, 1.1, 1.9, 0.9, 1.9))
+```
+
+```{r dose-table}
+dz <- run$validity_dose
+m <- dz$measure
+oaireport::compare_table(data.frame(
+  Sample = named(dz$sample, sample_names), Measure = named(m, measure_names), None = dnum(dz$median_none, m),
+  Lower = dnum(dz$median_lower, m), Upper = dnum(dz$median_upper, m),
+  `Trend p (JT)` = formatC(dz$jt_p, format = "g", digits = 2),
+  `Upper vs none, adjusted` = sprintf("%s (%s to %s)", dnum(dz$adj_upper, m), dnum(dz$adj_upper_lo, m), dnum(dz$adj_upper_hi, m)),
+  check.names = FALSE), widths = c(1.4, 2.4, 1, 1, 1, 1.1, 2.2))
+```
+
+Medians by lifetime walking amount: none (non-walkers) and the lower and upper halves among walkers. The trend test is Jonckheere–Terpstra.
+
+# Convergent ranking
+
+```{r convergent}
+cv <- run$validity_convergent
+oaireport::compare_table(data.frame(
+  Sample = named(cv$sample, sample_names), Measure = named(cv$measure, measure_names), n = count(cv$n),
+  `Spearman ρ (95% CI)` = sprintf("%s (%s to %s)", num(cv$rho), num(cv$lo), num(cv$hi)),
+  `Between-wave ρ` = num(cv$between_wave_rho), `Deattenuated ρ` = num(cv$rho_deattenuated),
+  check.names = FALSE), widths = c(1.4, 2, 0.8, 2, 1.2, 1.2))
+```
+
+# Classification and differential misclassification
+
+A device-defined habitual walker averages at least `r num(assumption("reference.min_bout_days_per_week"), 0)` days a week with a purposeful bout (at least `r assumption("device.purposeful_bout_minutes")` minutes of moderate-to-vigorous activity).
+
+```{r classification}
+oaireport::compare_table(data.frame(
+  Sample = named(cls$sample, sample_names), Measure = toupper(cls$measure), Estimate = num(cls$estimate),
+  `95% CI` = interval(cls$lo, cls$hi),
+  `k / n` = ifelse(is.na(cls$k), count(cls$n), sprintf("%s / %s", count(cls$k), count(cls$n))),
+  check.names = FALSE), widths = c(1.4, 1, 1, 1.4, 1.4))
+```
+
+```{r strata-figure}
+#| fig-height: 4.6
+st <- run$validity_strata
+capitalise <- function(x) paste0(toupper(substr(x, 1, 1)), substring(x, 2))
+st$label <- ifelse(st$variable %in% names(outcome_names),
+                   sprintf("%s: %s", named(st$variable, outcome_names), st$stratum),
+                   ifelse(st$variable == "pain", sprintf("%s at baseline", capitalise(st$stratum)),
+                          gsub("-", "–", st$stratum)))
+variable_order <- c("kl", "pain", names(outcome_names))
+st <- st[order(match(st$variable, variable_order)), ]
+st$label <- factor(st$label, levels = rev(unique(st$label)))
+st$sample <- factor(named(st$sample, sample_names), levels = sample_names)
+st$measure <- ifelse(st$measure == "se", "Sensitivity", "Specificity")
+st_plot <- ggplot2::ggplot(st, ggplot2::aes(x = estimate, y = label, colour = sample, shape = sample)) +
+  ggplot2::geom_pointrange(ggplot2::aes(xmin = lo, xmax = hi), size = 0.25, linewidth = 0.5,
+                           position = ggplot2::position_dodge(width = 0.5, reverse = TRUE)) +
+  ggplot2::facet_wrap(~measure) + ggplot2::scale_x_continuous(limits = c(0, 1)) +
+  ggplot2::scale_colour_manual(values = stats::setNames(oaireport::oai_palette[1:2], sample_names)) +
+  ggplot2::labs(x = "Estimate (95% CI)", y = NULL) + oaireport::theme_oai()
+oaireport::save_figure(st_plot, "strata", "2col", height = 4.6)
+st_plot
+```
+
+```{r kl-reference}
+kl <- run$validity_strata[run$validity_strata$variable == "kl", ]
+kl_reference <- function(sample) {
+  ref <- kl$stratum[kl$sample == sample & is.na(kl$difference)][1]
+  others <- unique(kl$stratum[kl$sample == sample & !is.na(kl$difference)])
+  list(ref = gsub("-", "–", ref), others = gsub("-", "–", others))
+}
+kl_val <- kl_reference("validation")
+kl_lo <- kl_reference("lo_subset")
+```
+
+The Lo 2022 subset has no `r kl_val$ref` stratum, because the cohort requires radiographic OA. Its KL difference therefore compares `r paste(kl_lo$others, collapse = " and ")` against `r kl_lo$ref`, while the validation sample compares `r paste(kl_val$others, collapse = " and ")` against `r kl_val$ref`, so the reference differs between samples.
+
+# PASE walking subscore (benchmark)
+
+The same statistics for the PASE walking item (walking outside the home in the past 7 days) at each visit, as a benchmark for the walking item.
+
+```{r pase}
+pz <- run$validity_pase
+statistic_names <- c(hl = "Hodges–Lehmann", rank_biserial = "Rank-biserial", adj_diff = "Adjusted difference",
+                     rho = "Spearman ρ", rho_deattenuated = "Deattenuated ρ")
+statistic <- ifelse(pz$statistic %in% names(statistic_names), statistic_names[pz$statistic], toupper(pz$statistic))
+pase_estimate <- ifelse(pz$statistic %in% c("hl", "adj_diff"), dnum(pz$estimate, pz$measure), num(pz$estimate))
+pase_ci <- ifelse(is.na(pz$lo), "–",
+                  ifelse(pz$statistic %in% c("hl", "adj_diff"),
+                         paste0(dnum(pz$lo, pz$measure), " to ", dnum(pz$hi, pz$measure)),
+                         paste0(num(pz$lo), " to ", num(pz$hi))))
+oaireport::compare_table(data.frame(
+  Visit = wave(pz$visit), Against = named(pz$measure, c(measure_names, device_walker = "Device walker")),
+  Statistic = statistic, Estimate = pase_estimate,
+  `95% CI` = pase_ci, n = count(pz$n), check.names = FALSE),
+  widths = c(1, 2, 1.6, 1.2, 1.9, 0.8))
+```
+
+# Bias analysis of Lo et al. 2022
+
+```{r bias-numbers}
+j_lo <- youden("lo_subset")
+nondiff_or <- pba$or[nondiff]
+smallest <- min(pba$lo_total[nondiff])
+exponent <- floor(log10(smallest))
+smallest_text <- sprintf("%s × 10^−%d^", num(smallest / 10^exponent, 1), -exponent)
+```
+
+The record-level correction divides by Se + Sp − 1, which is only `r num(j_lo)` in the Lo 2022 subset, so small changes in the drawn sensitivity and specificity move the corrected odds ratio a long way. The device is an imperfect reference: it measures current activity, while the item asks about walking since age 50, so part of the low specificity is device error rather than item error. A draw is discarded when it implies a true walker prevalence outside 0–1 in either outcome group, or when Se + Sp ≤ 1. Depending on outcome and model, that happened to `r pct_range(pba$discarded[nondiff])` of non-differential draws and `r pct_range(pba$discarded[!nondiff])` of differential draws, above the pre-specified `r pct(threshold)` threshold for `r flag_text`. The draws that survive are not a random sample of the priors: they sit just past the boundary where one outcome group's implied number of true walkers reaches zero, and near that boundary the corrected odds ratio collapses toward 0. This truncation produces the non-differential estimates of `r num(min(nondiff_or))`–`r num(max(nondiff_or))` and lower limits as small as `r smallest_text`.
+
+## Tipping-point grid (primary)
+
+```{r tipping-numbers}
+se_ticks <- sort(unique(tp$se))
+sp_ticks <- sort(unique(tp$sp))
+```
+
+The grid fixes the item's true sensitivity and specificity, non-differentially and without reference to the device, at Se `r num(min(se_ticks))`–`r num(max(se_ticks))` × Sp `r num(min(sp_ticks))`–`r num(max(sp_ticks))`. Each cell shows the median adjusted odds ratio; shaded cells keep a 95% simulation interval that excludes 1. The device-based specificity of about `r num(pick("lo_subset", "sp"))` lies left of the grid. Cells shown "–" are infeasible because every draw was discarded. About `r pct(yes_share)` of the Lo 2022 subset answered yes, and a sensitivity below the share answering yes implies a negative number of true non-walkers. The share varies a little between outcome samples, so the infeasible rows do too.
+
+```{r tipping}
+#| fig-height: 5.6
+tp$outcome <- factor(named(tp$outcome, outcome_names), levels = outcome_names)
+tp$label <- ifelse(is.na(tp$or), "–", num(tp$or))
+tp$state <- factor(ifelse(is.na(tp$or) | is.na(tp$excludes_1), "infeasible",
+                          ifelse(tp$excludes_1, "excludes", "includes")),
+                   levels = c("excludes", "includes", "infeasible"))
+tip <- ggplot2::ggplot(tp, ggplot2::aes(x = factor(num(sp)), y = factor(num(se)), fill = state)) +
+  ggplot2::geom_tile(colour = "white", linewidth = 0.4) +
+  ggplot2::geom_text(ggplot2::aes(label = label), size = 1.9, family = oaireport::oai_font(), colour = "grey10") +
+  ggplot2::scale_fill_manual(values = c(excludes = "#cde2fb", includes = "grey92", infeasible = "white"),
+                             labels = c(excludes = "Interval excludes 1", includes = "Interval includes 1",
+                                        infeasible = "Infeasible (all draws discarded)"),
+                             drop = FALSE) +
+  ggplot2::guides(fill = ggplot2::guide_legend(override.aes = list(colour = "grey60"))) +
+  ggplot2::facet_wrap(~outcome, ncol = 2) +
+  ggplot2::labs(x = "Specificity", y = "Sensitivity") + oaireport::theme_oai() +
+  ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5))
+oaireport::save_figure(tip, "tipping", "2col", height = 5.6)
+tip
+```
+
+## Probabilistic bias analysis
+
+```{r bias-table}
+oaireport::compare_table(data.frame(
+  Outcome = named(pba$outcome, outcome_names), Model = named(pba$model, model_names), Scenario = pba$scenario,
+  Discarded = pct(pba$discarded, 1), Flagged = flag_mark(pba$flagged),
+  Observed = num(pba$observed_or), `Bias-adjusted (95% SI)` = or_interval(pba$or, pba$lo_total, pba$hi_total),
+  `Conclusion holds` = ifelse(is.na(pba$conclusion_share), "–", pct(pba$conclusion_share)),
+  check.names = FALSE), widths = c(90, 48, 73, 45, 41, 45, 90, 50))
+```
+
+✓ marks estimates that discarded more than `r pct(threshold)` of `r count(pba$n[1])` draws. SI is the 95% simulation interval (systematic plus random error). "Conclusion holds" is the share of kept draws with the published direction and, where the published result was significant, an interval excluding 1.
+
+```{r forest-bias}
+#| fig-height: 4.4
+lo_or <- run$lo2022_t2[run$lo2022_t2$kind == "or", ]
+parts <- do.call(rbind, strsplit(sub("^t2\\.", "", lo_or$metric), ".", fixed = TRUE))
+pub <- oaireport::parse_or(lo_or$published)
+ours <- oaireport::parse_or(lo_or$ours)
+base <- data.frame(outcome = unname(outcome_names[parts[, 1]]), model = unname(model_names[parts[, 2]]))
+est <- rbind(
+  cbind(base, source = "Published", or = pub$or, lo = pub$lo, hi = pub$hi),
+  cbind(base, source = "Replication", or = ours$or, lo = ours$lo, hi = ours$hi),
+  data.frame(outcome = unname(outcome_names[pba$outcome]), model = unname(model_names[pba$model]),
+             source = ifelse(pba$scenario == "differential", "Bias-adjusted (differential)",
+                             "Bias-adjusted (non-differential)"),
+             or = pba$or, lo = pba$lo_total, hi = pba$hi_total)
+)
+est <- est[order(match(est$model, model_names), match(est$outcome, outcome_names)), ]
+sources <- c("Published", "Replication", "Bias-adjusted (non-differential)", "Bias-adjusted (differential)")
+axis_limits <- c(0.01, 100)
+axis_breaks <- c(0.01, 0.1, 1, 10, 100)
+forest <- oaireport::forest_plot(est, facet = "model", sources = sources) +
+  ggplot2::scale_x_log10(breaks = axis_breaks, labels = format(axis_breaks, scientific = FALSE, drop0trailing = TRUE, trim = TRUE)) +
+  ggplot2::coord_cartesian(xlim = axis_limits)
+oaireport::save_figure(forest, "forest_bias", "2col", height = 4.4)
+forest
+```
+
+Each panel shows the published odds ratio, our replication, and the median bias-adjusted odds ratio under each scenario with its 95% simulation interval. Intervals are cut at the axis limits (`r num(axis_limits[1])` and `r num(axis_limits[2], 0)`). `r if (all(pba$flagged)) "Every bias-adjusted estimate is flagged" else sprintf("%d of %d bias-adjusted estimates are flagged", sum(pba$flagged), nrow(pba))`, so these points are shown for completeness, not interpretation.
+
+## Summary-level correction
+
+```{r summary-level}
+sl <- run$bias_summary_level
+sl_flagged <- if ("flagged" %in% names(sl)) sl$flagged else sl$discarded > threshold
+oaireport::compare_table(data.frame(
+  Outcome = named(sl$outcome, outcome_names), Scenario = sl$scenario,
+  Discarded = pct(sl$discarded, 1), Flagged = flag_mark(sl_flagged), `Crude OR` = num(sl$crude_or),
+  `Corrected (95% SI)` = or_interval(sl$or, sl$lo, sl$hi), check.names = FALSE),
+  widths = c(2.6, 1.6, 1.1, 0.9, 1, 2.2))
+```
+
+The summary-level correction above uses the published Table 2 counts and ignores knee clustering. It is the transparent, reproducible-from-the-paper check. `r if (all(sl_flagged)) "It is flagged in every row as well." else sprintf("It is flagged in %d of %d rows.", sum(sl_flagged), nrow(sl))`
+
+# Methods and provenance
+
+```{r priors}
+pr <- run$bias_priors
+oaireport::compare_table(data.frame(
+  Outcome = named(pr$outcome, outcome_names), Scenario = pr$scenario, Stratum = pr$stratum,
+  Sensitivity = sprintf("%s / %s", count(pr$se_k), count(pr$se_n)),
+  Specificity = sprintf("%s / %s", count(pr$sp_k), count(pr$sp_n)), check.names = FALSE),
+  widths = c(2.6, 1.8, 1.2, 1.4, 1.4))
+```
+
+Priors are Beta(k + 1, n − k + 1) from the 2×2 counts above, taken in the Lo et al. 2022 participants with device data and the outcome observed. Reclassification is done within outcome strata, and each iteration refits the replication's own GEE models. Each scenario ran `r count(pba$n[1])` iterations and each tipping-point cell `r count(assumption("bias.tipping_iterations"))`.
+
+The assumptions ledger below lists every analytic choice, its status (confirmed, assumed or open) and its source. It is generated from `assumptions.toml`.
+
+```{r ledger}
+#| results: asis
+ledger <- readLines("ASSUMPTIONS.md", warn = FALSE)
+ledger <- ledger[!grepl("^# |^<!--", ledger)]
+ledger <- gsub("<br>", " `#linebreak()`{=typst} ", ledger, fixed = TRUE)  # raw HTML is dropped in Typst
+spans <- gregexpr("`[A-Za-z][A-Za-z0-9_.{}]*`", ledger)
+regmatches(ledger, spans) <- lapply(regmatches(ledger, spans), function(x) {
+  gsub("([._])", "\\1\u200b", gsub("`", "", x))
+})
+cat(ledger, sep = "\n")
+```

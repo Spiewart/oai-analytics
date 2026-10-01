@@ -50,3 +50,8 @@ aggregate = [
     "flow.csv", "device_reproduction.csv", "validity_*.csv", "bias_*.csv", "lo2022_*.csv",
     "comparison.csv", "metrics_*.csv", "assumptions.resolved.json",
 ]
+
+[report]
+entry = "report.qmd"
+runs = ["default"]
+assets = ["ASSUMPTIONS.md"]
