@@ -38,6 +38,38 @@ test_that("reclassify is the identity at perfect sensitivity and specificity", {
   expect_equal(out, d$persons$observed)
 })
 
+test_that("reclassify keeps perfect-classification draws despite floating-point rounding", {
+  # (p_obs + 1 - 1) / 1 is not exactly p_obs for most proportions, so ppv = p / p_obs can come out
+  # 1 + 2.2e-16: a strict ppv <= 1 check would discard a valid Se = Sp = 1 draw
+  for (n in c(7, 10, 13)) {
+    for (k in 1:(n - 1)) {
+      case <- c(rep(TRUE, k), rep(FALSE, n - k))
+      noncase <- c(rep(TRUE, n - k), rep(FALSE, k + 3))
+      persons <- data.frame(
+        ID = seq_len(length(case) + length(noncase)),
+        observed = c(case, noncase),
+        stratum = rep(c("case", "noncase"), c(length(case), length(noncase)))
+      )
+      out <- reclassify(persons, c(case = 1, noncase = 1), c(case = 1, noncase = 1))
+      expect_false(is.null(out), info = sprintf("n = %d, k = %d", n, k))
+      expect_identical(out, persons$observed)
+    }
+  }
+})
+
+test_that("reclassify still discards impossible probabilities", {
+  persons <- data.frame(ID = 1:10, observed = rep(c(TRUE, FALSE), 5), stratum = "all")
+  # Se + Sp <= 1
+  expect_null(reclassify(persons, c(all = 0.5), c(all = 0.5)))
+  expect_null(reclassify(persons, c(all = 0.4), c(all = 0.3)))
+  # observed prevalence 0.5 < 1 - Sp: negative true prevalence
+  expect_null(reclassify(persons, c(all = 0.9), c(all = 0.3)))
+  # observed prevalence 0.5 > Se: true prevalence above 1
+  expect_null(reclassify(persons, c(all = 0.4), c(all = 0.9)))
+  # a valid draw is reclassified, not discarded
+  expect_length(reclassify(persons, c(all = 0.9), c(all = 0.9)), 10)
+})
+
 test_that("pba with fixed perfect classification returns the observed OR", {
   d <- person_data()
   observed <- glm_fit(d$knees)

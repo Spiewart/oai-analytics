@@ -150,6 +150,12 @@ status = "assumed"
 source = "Spec 7: Beta(k + 1, n - k + 1) from the validation 2x2 counts (uniform prior)"
 choices = ["beta_uniform"]
 
+[bias.prior_population]
+value = "outcome_observed"
+status = "assumed"
+source = "Non-differential priors use Lo-subset persons with the modelled outcome observed, so they equal the pooled differential strata"
+choices = ["outcome_observed"]
+
 [bias.iterations]
 value = 2000
 status = "assumed"

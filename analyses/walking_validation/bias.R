@@ -70,15 +70,25 @@ for (o in outcomes) {
   }
   fit_adj <- function(kn) oaimodels::fit_knee_gee(kn, models[["or_adj"]], corstr = model$corstr)[c("log_or", "se")]
   step <- A[["bias.tipping_step"]]
-  grid <- expand.grid(se = round(seq(0.6, 1, by = step), 6), sp = round(seq(0.4, 1, by = step), 6))
+  ticks <- function(from) sort(unique(round(c(seq(from, 1, by = step), 1), 6)))  # always ends at 1
+  grid <- expand.grid(se = ticks(0.6), sp = ticks(0.4))
+  first_tip <- length(tipping_rows) + 1
   for (g in seq_len(nrow(grid))) {
     draws <- oaimodels::pba(person, k, fit_adj, data.frame(stratum = "all", se = grid$se[g], sp = grid$sp[g]),
                             iterations = A[["bias.tipping_iterations"]], seed = seed, cores = cores)
     s <- oaimodels::summarise_pba(draws)
     tipping_rows[[length(tipping_rows) + 1]] <- data.frame(
       outcome = o, se = grid$se[g], sp = grid$sp[g], or = s$or, lo = s$lo_total, hi = s$hi_total,
-      excludes_1 = !is.na(s$or) & (s$hi_total < 1 | s$lo_total > 1), discarded = s$discarded
+      excludes_1 = if (is.na(s$or)) NA else (s$hi_total < 1 | s$lo_total > 1), discarded = s$discarded
     )
+  }
+  # Perfect classification must reproduce the observed adjusted OR (as the gate above does for pba)
+  tip <- do.call(rbind, tipping_rows[first_tip:length(tipping_rows)])
+  perfect <- tip$or[tip$se == 1 & tip$sp == 1]
+  adjusted_or <- oaimodels::fit_knee_gee(k, models[["or_adj"]], corstr = model$corstr)[["or"]]
+  if (length(perfect) != 1 || is.na(perfect) || abs(perfect - adjusted_or) > 1e-8) {
+    stop("bias step: the Se = 1, Sp = 1 tipping cell does not reproduce the observed adjusted ", o,
+         " odds ratio", call. = FALSE)
   }
   count <- function(group, what) {
     as.numeric(published$published[published$metric == sprintf("t2.%s.%s.%s", o, group, what)])
@@ -108,7 +118,8 @@ for (o in outcomes) {
       or = if (length(kept)) stats::median(kept) else NA_real_,
       lo = if (length(kept)) unname(stats::quantile(kept, 0.025)) else NA_real_,
       hi = if (length(kept)) unname(stats::quantile(kept, 0.975)) else NA_real_,
-      discarded = mean(is.na(ors))
+      discarded = mean(is.na(ors)), n = iterations,
+      flagged = mean(is.na(ors)) > A[["bias.max_discard_share"]]
     )
   }
 }

@@ -30,19 +30,26 @@ correct_or_2x2 <- function(a, b, c, d, se_case, sp_case, se_ctrl = se_case, sp_c
 }
 
 #' One reclassification of persons$observed within persons$stratum; NULL if impossible
-reclassify <- function(persons, se, sp) {
+#'
+#' Probabilities within `tolerance` of 0 or 1 are rounding (Se = Sp = 1 gives ppv = 1 + 2.2e-16
+#' for most proportions) and are clamped into [0, 1]; the true prevalence must lie strictly
+#' inside (0, 1) up to the same tolerance, and Se + Sp <= 1 is always impossible.
+reclassify <- function(persons, se, sp, tolerance = 1e-12) {
   out <- logical(nrow(persons))
   for (s in unique(persons$stratum)) {
     i <- persons$stratum == s
     p_obs <- mean(persons$observed[i])
     pr <- reclass_probs(p_obs, se[[s]], sp[[s]])
     probs <- c(pr$p_true, pr$ppv, pr$fom)
-    if (se[[s]] + sp[[s]] <= 1 || !all(is.finite(probs)) || pr$p_true <= 0 || pr$p_true >= 1 ||
-        any(probs[2:3] < 0 | probs[2:3] > 1)) {
+    if (se[[s]] + sp[[s]] <= 1 || !all(is.finite(probs)) ||
+        pr$p_true <= tolerance || pr$p_true >= 1 - tolerance ||
+        any(probs[2:3] < -tolerance | probs[2:3] > 1 + tolerance)) {
       return(NULL)
     }
+    ppv <- min(max(pr$ppv, 0), 1)
+    fom <- min(max(pr$fom, 0), 1)
     u <- stats::runif(sum(i))
-    out[i] <- ifelse(persons$observed[i], u < pr$ppv, u < pr$fom)
+    out[i] <- ifelse(persons$observed[i], u < ppv, u < fom)
   }
   out
 }
