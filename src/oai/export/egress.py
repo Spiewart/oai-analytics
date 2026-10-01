@@ -32,7 +32,7 @@ ID_COLUMN_NAMES = frozenset(
 # A 9-prefixed 7-digit run not inside a longer number or a decimal fraction. Catches
 # FID_IID joins and "OAI" prefixes; no lookbehind so polars (Rust regex) can use it too.
 PARTICIPANT_ID = re.compile(r"(?:^|[^\d.])9\d{6}(?:\D|$)")
-COUNT_COLUMN = re.compile(r"^(n|count|n_.+|.+_n|.+_count)$", re.IGNORECASE)
+COUNT_COLUMN = re.compile(r"^(n|count|events|n_.+|.+_n|.+_count|.+_events)$", re.IGNORECASE)
 TABULAR_SEPARATORS = {".csv": ",", ".tsv": "\t"}
 TEXT_SUFFIXES = {".json", ".txt", ".md", ".log"}
 MANUAL_REVIEW_SUFFIXES = {".png", ".pdf", ".svg", ".jpg", ".jpeg", ".html"}
@@ -61,13 +61,25 @@ class EgressReport:
 def small_cell_violations(df: pl.DataFrame, min_cell: int) -> list[str]:
     """Return one message per count column holding values in 1..min_cell-1.
 
-    Count columns are those named n, count, n_*, *_n or *_count. Zero is not flagged.
+    Count columns are named n, count, events, n_*, *_n, *_count or *_events; in a long
+    (metric, value) table the metric's last dotted segment is matched. Zero is not flagged.
     Neither OAI/NDA nor dbGaP sets a minimum cell size, and NIH treats aggregate genomic
     summary results as releasable (NOT-OD-19-023), so by default these findings are
     advisory (`[egress] small_cell = "warn"`); set "fail" when a journal or collaborator
     requires suppression. See docs/egress.md.
     """
     messages = []
+    if set(df.columns) == {"metric", "value"} and df.schema["value"].is_numeric():
+        # Long format (metric, value): a metric whose last dotted segment is a count name.
+        last = pl.col("metric").str.split(".").list.last()
+        small = df.filter(
+            last.str.contains(f"(?i){COUNT_COLUMN.pattern}")
+            & (pl.col("value") > 0)
+            & (pl.col("value") < min_cell)
+        )
+        if small.height:
+            messages.append(f"{small.height} count metric(s) with 0 < n < {min_cell} (long format)")
+        return messages
     for col in df.columns:
         if not COUNT_COLUMN.match(col) or not df.schema[col].is_numeric():
             continue

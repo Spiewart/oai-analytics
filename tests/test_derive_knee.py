@@ -104,3 +104,8 @@ def test_knee_alignment_pick_and_blank_films():
 def test_knee_alignment_rejects_unknown_pick():
     with pytest.raises(ValueError, match="pick"):
         knee_alignment(pick="middle")
+
+
+def test_find_col_error_names_the_table():
+    with pytest.raises(KeyError, match="kxr_sq_bu00"):
+        find_col(pl.DataFrame({"ID": [1]}), "SIDE", where="kxr_sq_bu00")

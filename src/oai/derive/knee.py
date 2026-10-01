@@ -7,7 +7,8 @@ Every frame is keyed on ID (Int64) and SIDE ("R"/"L"; the release codes 1 = Righ
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from functools import partial
 
 import polars as pl
 
@@ -17,20 +18,16 @@ SIDE_CODES = {1: "R", 2: "L"}
 KNEE_KEYS = ("ID", "SIDE")
 
 
-def find_col(df: pl.DataFrame, name: str) -> str:
-    """The frame's column matching `name` case-insensitively."""
+def find_col(df: pl.DataFrame, name: str, where: str = "") -> str:
+    """The frame's column matching `name` case-insensitively; `where` names the table in errors."""
     for col in df.columns:
         if col.upper() == name.upper():
             return col
-    raise KeyError(f"column {name!r} not found")
+    raise KeyError(f"column {name!r} not found" + (f" in {where}" if where else ""))
 
 
-def _side(df: pl.DataFrame) -> pl.Expr:
-    return (
-        pl.col(find_col(df, "SIDE"))
-        .replace_strict(SIDE_CODES, return_dtype=pl.String)
-        .alias("SIDE")
-    )
+def _side(col: Callable[[str], str]) -> pl.Expr:
+    return pl.col(col("SIDE")).replace_strict(SIDE_CODES, return_dtype=pl.String).alias("SIDE")
 
 
 def xray_readings(visits: Sequence[str], *, project: int = 15) -> pl.DataFrame:
@@ -42,14 +39,15 @@ def xray_readings(visits: Sequence[str], *, project: int = 15) -> pl.DataFrame:
     frames = []
     for visit in visits:
         df = read_table("kxr_sq_bu", visit)
+        col = partial(find_col, df, where=f"kxr_sq_bu{visit}")
         frames.append(
-            df.filter(pl.col(find_col(df, "READPRJ")) == project)
+            df.filter(pl.col(col("READPRJ")) == project)
             .select(
-                pl.col(find_col(df, "ID")).alias("ID"),
-                _side(df),
+                pl.col(col("ID")).alias("ID"),
+                _side(col),
                 pl.lit(visit).alias("visit"),
-                pl.col(find_col(df, f"V{visit}XRKL")).cast(pl.Float64).alias("KL"),
-                pl.col(find_col(df, f"V{visit}XRJSM")).cast(pl.Float64).alias("JSM"),
+                pl.col(col(f"V{visit}XRKL")).cast(pl.Float64).alias("KL"),
+                pl.col(col(f"V{visit}XRJSM")).cast(pl.Float64).alias("JSM"),
             )
             .unique(["ID", "SIDE", "visit"], keep="first", maintain_order=True)
         )
@@ -93,15 +91,14 @@ def frequent_knee_pain(visit: str, item: str) -> pl.DataFrame:
     Blank answers stay null (neither pain nor no pain).
     """
     df = read_table("allclinical", visit)
+    col = partial(find_col, df, where=f"allclinical{visit}")
     return pl.concat(
         [
             df.select(
-                pl.col(find_col(df, "ID")).alias("ID"),
+                pl.col(col("ID")).alias("ID"),
                 pl.lit(side).alias("SIDE"),
                 pl.lit(visit).alias("visit"),
-                (pl.col(find_col(df, item.format(visit=visit, side=side))) == 1).alias(
-                    "frequent_pain"
-                ),
+                (pl.col(col(item.format(visit=visit, side=side))) == 1).alias("frequent_pain"),
             )
             for side in ("R", "L")
         ]
@@ -111,14 +108,15 @@ def frequent_knee_pain(visit: str, item: str) -> pl.DataFrame:
 def visit_days(visit: str) -> pl.DataFrame:
     """ID, days: days from enrollment to the visit (V##VISDYS)."""
     df = read_table("allclinical", visit)
+    col = partial(find_col, df, where=f"allclinical{visit}")
     return df.select(
-        pl.col(find_col(df, "ID")).alias("ID"),
-        pl.col(find_col(df, f"V{visit}VISDYS")).cast(pl.Float64).alias("days"),
+        pl.col(col("ID")).alias("ID"),
+        pl.col(col(f"V{visit}VISDYS")).cast(pl.Float64).alias("days"),
     )
 
 
-def _outcome(df: pl.DataFrame, knee_code: str, suffix: str) -> pl.Expr:
-    return pl.col(find_col(df, f"V99E{knee_code}{suffix}"))
+def _outcome(col: Callable[[str], str], knee_code: str, suffix: str) -> pl.Expr:
+    return pl.col(col(f"V99E{knee_code}{suffix}"))
 
 
 def knee_replacement(by_days: pl.DataFrame | None = None) -> pl.DataFrame:
@@ -130,19 +128,20 @@ def knee_replacement(by_days: pl.DataFrame | None = None) -> pl.DataFrame:
     `by_days`, is False.
     """
     df = read_table("outcomes", "99")
+    col = partial(find_col, df, where="outcomes99")
     parts = []
     for side, code in (("R", "RK"), ("L", "LK")):
         counted = (
-            _outcome(df, code, "RPCF").is_in(REPLACEMENT_STATUS_COUNTS)
-            | (_outcome(df, code, "RPSN") == 1)
+            _outcome(col, code, "RPCF").is_in(REPLACEMENT_STATUS_COUNTS)
+            | (_outcome(col, code, "RPSN") == 1)
         ).fill_null(False)
         parts.append(
             df.select(
-                pl.col(find_col(df, "ID")).alias("ID"),
+                pl.col(col("ID")).alias("ID"),
                 pl.lit(side).alias("SIDE"),
-                (_outcome(df, code, "BLRP") == 1).fill_null(False).alias("replaced_at_baseline"),
+                (_outcome(col, code, "BLRP") == 1).fill_null(False).alias("replaced_at_baseline"),
                 pl.when(counted)
-                .then(_outcome(df, code, "DAYS").cast(pl.Float64))
+                .then(_outcome(col, code, "DAYS").cast(pl.Float64))
                 .alias("replaced_days"),
                 counted.alias("counted"),
             )
@@ -168,12 +167,13 @@ def knee_alignment(
     frames = []
     for visit in visits:
         df = read_table(f"flxr_kneealign_{source}", visit)
+        col = partial(find_col, df, where=f"flxr_kneealign_{source}{visit}")
         frames.append(
             df.select(
-                pl.col(find_col(df, "ID")).alias("ID"),
-                _side(df),
+                pl.col(col("ID")).alias("ID"),
+                _side(col),
                 pl.lit(visit).alias("visit"),
-                pl.col(find_col(df, column.format(visit=visit))).cast(pl.Float64).alias("hka"),
+                pl.col(col(column.format(visit=visit))).cast(pl.Float64).alias("hka"),
             ).drop_nulls("hka")
         )
     films = pl.concat(frames).sort("visit", descending=pick == "latest", maintain_order=True)

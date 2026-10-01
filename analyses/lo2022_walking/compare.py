@@ -6,13 +6,14 @@ from pathlib import Path
 
 import polars as pl
 
-from oai.assumptions import current
-from oai.replication import grade, summarize
+from oai.assumptions import current, load_assumptions
+from oai.replication import grade, select_section, summarize
 
 A = current()
 results = Path(os.environ["OAI_RESULTS_DIR"])
 published = tomllib.loads(Path("published.toml").read_text())
-section = A.variant if A.variant in published else "default"
+variant_sets = {name: v.set for name, v in load_assumptions(Path.cwd()).variants.items()}
+section = select_section(published, A.variant, A.values, variant_sets)
 ours: dict[str, float] = {}
 for path in sorted(results.glob("metrics_*.csv")):
     for metric, value in pl.read_csv(path, null_values=["NA"]).iter_rows():  # R writes NA

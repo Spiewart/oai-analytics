@@ -152,3 +152,22 @@ def test_decimal_fractions_are_not_ids(tmp_path):
     digits = "9" + "123456"
     (tmp_path / "p.csv").write_text(f"term,p\nx,1.{digits}e-05\ny,0.{digits}\n")
     assert check_egress(tmp_path, min_cell=11).ok
+
+
+def test_long_format_metrics_get_the_small_cell_check(tmp_path):
+    pl.DataFrame(
+        {
+            "metric": ["t3.x.valgus.nonwalkers.events", "t3.x.valgus.nonwalkers.n", "t2.x.or_adj"],
+            "value": [3.0, 62.0, 0.8],
+        }
+    ).write_csv(tmp_path / "metrics_cohort.csv")
+    report = check_egress(tmp_path, min_cell=5)
+    assert report.ok
+    [warning] = report.warnings
+    assert "long format" in warning
+
+
+def test_events_columns_count_as_counts(tmp_path):
+    pl.DataFrame({"outcome": ["a"], "n": [100], "events": [3]}).write_csv(tmp_path / "table2.csv")
+    [warning] = check_egress(tmp_path, min_cell=5).warnings
+    assert "'events'" in warning

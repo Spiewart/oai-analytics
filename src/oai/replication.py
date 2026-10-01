@@ -86,6 +86,26 @@ def grade(
     return pl.DataFrame(rows, schema=SCHEMA)
 
 
+def select_section(
+    published: Mapping[str, Any],
+    variant: str | None,
+    values: Mapping[str, Any],
+    variant_sets: Mapping[str, Mapping[str, Any]],
+) -> str:
+    """Published section to grade a run against.
+
+    The run's own variant if it is graded; otherwise a graded variant whose settings the
+    run's resolved values match (so `--set` runs equivalent to a variant are graded like
+    it); otherwise "default".
+    """
+    if variant in published:
+        return variant
+    for name, settings in variant_sets.items():
+        if name in published and all(values.get(k) == v for k, v in settings.items()):
+            return name
+    return "default"
+
+
 def summarize(table: pl.DataFrame, *, section: str, label: str) -> str:
     counts = {
         v: table.filter(pl.col("verdict") == v).height for v in ("replicated", "drift", "missing")

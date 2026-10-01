@@ -1,10 +1,14 @@
 """Execute an analysis's steps in declared order.
 
-Each step runs as a subprocess in its analysis folder with:
+Each run resolves the analysis's assumptions (variant + `--set` overrides) into a run
+label: "default", "<variant>" or "<base>+custom-<hash>". Steps run as subprocesses in
+the analysis folder with:
   OAI_ANALYSIS     analysis name
-  OAI_FRAME_DIR    where frames are read/written (default OAI_WORK_DIR/<analysis>;
-                   a bundle's run.sh points it at the bundle's data/)
-  OAI_RESULTS_DIR  aggregate outputs for this analysis (<results_dir>/<analysis>)
+  OAI_RUN_LABEL    the run label
+  OAI_FRAME_DIR    frames: OAI_WORK_DIR/<analysis>/<label> (a bundle's run.sh sets it
+                   explicitly to the bundle's data/, which is then used as-is)
+  OAI_RESULTS_DIR  aggregate outputs: <results_dir>/<analysis>/<label>
+  OAI_ASSUMPTIONS  the per-label assumptions.resolved.json in OAI_RESULTS_DIR
 """
 
 from __future__ import annotations

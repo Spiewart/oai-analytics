@@ -7,6 +7,7 @@ from pathlib import Path
 import pytest
 
 from oai.config import get_settings
+from oai.export.egress import check_egress
 from oai.manifest import find_analysis
 from oai.runner import run_analysis
 
@@ -42,3 +43,11 @@ def test_replication_runs_end_to_end():
         "assumptions.resolved.json",
     ):
         assert (out / name).is_file(), name
+    egress = settings.project["egress"]
+    report = check_egress(
+        out,
+        min_cell=egress["min_cell"],
+        small_cell=egress["small_cell"],
+        ignore_id_pattern_columns=egress["ignore_id_pattern_columns"],
+    )
+    assert report.ok, report.problems

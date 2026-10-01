@@ -1,5 +1,6 @@
 import json
 import textwrap
+from datetime import date
 
 import pytest
 from typer.testing import CliRunner
@@ -246,3 +247,34 @@ def test_default_must_be_one_of_its_choices(tmp_path):
 def test_ledger_shows_choices(tmp_path):
     text = render_ledger("demo", load_assumptions(write(tmp_path, CHOICES_TOML)))
     assert "`factor` (choices: factor, numeric)" in text
+
+
+# --- Polish pass ----------------------------------------------------------------
+
+
+def test_toml_dates_are_rejected_with_a_clear_error(tmp_path):
+    text = TOML.replace('value = "2012-09-12"', "value = 2012-09-12")
+    with pytest.raises(AssumptionsError, match="dates must be strings"):
+        load_assumptions(write(tmp_path, text))
+
+
+def test_date_override_for_a_string_default_becomes_iso_text(tmp_path):
+    a = load_assumptions(write(tmp_path))
+    key, value = parse_override("cohort.survey_start=2013-01-01")
+    assert value == date(2013, 1, 1)
+    assert a.resolve("demo", None, {key: value})["cohort.survey_start"] == "2013-01-01"
+
+
+@pytest.mark.parametrize("name", ["default", '"a/b"', '"up..one"'])
+def test_variant_names_are_validated(tmp_path, name):
+    text = TOML + f'\n[variants.{name}]\nset = {{ "model.corstr" = "independence" }}\n'
+    with pytest.raises(AssumptionsError, match="variant name"):
+        load_assumptions(write(tmp_path, text))
+
+
+def test_int_override_for_float_default_shares_the_label(tmp_path):
+    a = load_assumptions(write(tmp_path))
+    as_int = a.resolve("demo", None, {"alignment.varus_max": -3})
+    as_float = a.resolve("demo", None, {"alignment.varus_max": -3.0})
+    assert as_int.label == as_float.label
+    assert isinstance(as_int["alignment.varus_max"], float)

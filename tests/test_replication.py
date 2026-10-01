@@ -1,6 +1,6 @@
 import pytest
 
-from oai.replication import grade, related_for, summarize
+from oai.replication import grade, related_for, select_section, summarize
 
 RELATED = {"flow": ["a"], "flow.knees": ["b", "c"], "t2": ["m"]}
 
@@ -54,3 +54,22 @@ def test_related_statuses_and_summary():
     text = summarize(t, section="default", label="default")
     assert "0 replicated · 1 drift · 0 missing" in text
     assert "flow.knees" in text and "b (1)" in text
+
+
+def test_select_section_matches_equivalent_overrides():
+    published = {"related": {}, "default": {}, "missing_as_walkers": {}}
+    sets = {
+        "missing_as_walkers": {"cohort.impute": "walker"},
+        "sens": {"model.corstr": "independence"},
+    }
+    base = {"cohort.impute": "none", "model.corstr": "exchangeable"}
+    assert select_section(published, "missing_as_walkers", base, sets) == "missing_as_walkers"
+    assert (
+        select_section(published, None, {**base, "cohort.impute": "walker"}, sets)
+        == "missing_as_walkers"
+    )
+    assert (
+        select_section(published, "sens", {**base, "model.corstr": "independence"}, sets)
+        == "default"
+    )
+    assert select_section(published, None, base, sets) == "default"

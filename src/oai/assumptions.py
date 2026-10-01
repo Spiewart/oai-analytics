@@ -12,9 +12,11 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import dataclass, field
+from datetime import date, time
 from pathlib import Path
 from typing import Any
 
@@ -26,6 +28,7 @@ LEDGER_FILE = "ASSUMPTIONS.md"
 STATUSES = ("confirmed", "assumed", "open")
 DEFAULT_LABEL = "default"
 _FIELDS = {"value", "status", "source", "rationale", "alternatives", "choices"}
+_VARIANT_NAME = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9_.-]*$")
 
 
 class AssumptionsError(OAIError):
@@ -107,6 +110,25 @@ class Resolved:
         )
 
 
+def _has_datetime(value: Any) -> bool:
+    if isinstance(value, (date, time)):
+        return True
+    if isinstance(value, list):
+        return any(_has_datetime(v) for v in value)
+    if isinstance(value, dict):
+        return any(_has_datetime(v) for v in value.values())
+    return False
+
+
+def _coerce(default: Any, value: Any) -> Any:
+    """Normalize a variant/--set value to its default's type where that is lossless."""
+    if isinstance(default, str) and isinstance(value, (date, time)):
+        return value.isoformat()  # `--set key=2013-01-01` parses as a TOML date
+    if isinstance(default, float) and isinstance(value, int) and not isinstance(value, bool):
+        return float(value)  # so -2 and -2.0 resolve (and label) identically
+    return value
+
+
 def _same_type(default: Any, value: Any) -> bool:
     if isinstance(default, bool) or isinstance(value, bool):
         return isinstance(default, bool) and isinstance(value, bool)
@@ -147,6 +169,10 @@ class Assumptions:
                 )
             for key, value in self.variants[variant].set.items():
                 values[key], origins[key] = value, "variant"
+        overrides = {
+            key: _coerce(self.items[key].value, value) if key in self.items else value
+            for key, value in overrides.items()
+        }
         for key, value in overrides.items():
             self.check(key, value, f"--set {key}")
             values[key], origins[key] = value, "override"
@@ -161,6 +187,10 @@ def _parse_item(key: str, entry: dict[str, Any], where: Path) -> Assumption:
     unknown = set(entry) - _FIELDS
     if unknown:
         raise AssumptionsError(f"{where}: {key}: unknown field(s) {sorted(unknown)}")
+    if _has_datetime(entry.get("value")):
+        raise AssumptionsError(
+            f'{where}: {key}: dates must be strings (quote them, e.g. "2012-09-12")'
+        )
     if entry.get("status") not in STATUSES:
         raise AssumptionsError(f"{where}: {key}: status must be one of {', '.join(STATUSES)}")
     source = entry.get("source")
@@ -209,11 +239,20 @@ def load_assumptions(analysis_root: Path) -> Assumptions:
     base = Assumptions(path=path, items=items)
     variants: dict[str, Variant] = {}
     for name, spec in raw_variants.items():
+        if name == DEFAULT_LABEL or ".." in name or not _VARIANT_NAME.match(name):
+            raise AssumptionsError(
+                f"{path}: variant name {name!r} must use letters, digits, '_', '.' or '-' "
+                f"(no '..') and must not be {DEFAULT_LABEL!r}"
+            )
         if not isinstance(spec, dict) or not isinstance(spec.get("set"), dict):
             raise AssumptionsError(f"{path}: variant {name!r} needs a 'set' table")
-        for key, value in spec["set"].items():
+        settings = {
+            key: _coerce(items[key].value, value) if key in items else value
+            for key, value in spec["set"].items()
+        }
+        for key, value in settings.items():
             base.check(key, value, f"{path}: variant {name!r}")
-        variants[name] = Variant(name, spec.get("description", ""), spec["set"])
+        variants[name] = Variant(name, spec.get("description", ""), settings)
     return Assumptions(path=path, items=items, variants=variants)
 
 

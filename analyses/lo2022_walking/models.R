@@ -3,13 +3,12 @@
 suppressPackageStartupMessages(library(geepack))
 
 A <- oaimodels::assumptions()
-frame <- oaimodels::read_frame(required = c(
-  "ID", "walker", "age", "sex", "kl0", "new_pain", "kl_worse", "jsn_worse", "improved_pain"
-))
-out_dir <- Sys.getenv("OAI_RESULTS_DIR")
 outcomes <- c("new_pain", "kl_worse", "jsn_worse", "improved_pain")
+base_covariates <- A[["model.covariates"]]
+frame <- oaimodels::read_frame(required = unique(c("ID", "walker", base_covariates, outcomes)))
+out_dir <- Sys.getenv("OAI_RESULTS_DIR")
 kl_term <- if (identical(A[["model.kl_covariate"]], "factor")) "factor(kl0)" else "kl0"
-covariates <- sub("^kl0$", kl_term, A[["model.covariates"]])
+covariates <- sub("^kl0$", kl_term, base_covariates)
 formulas <- list(or_unadj = "walker", or_adj = paste(c("walker", covariates), collapse = " + "))
 
 fit_or <- function(d, rhs) {
@@ -24,7 +23,7 @@ fit_or <- function(d, rhs) {
 metrics <- list()
 rows <- list()
 for (o in outcomes) {
-  d <- frame[!is.na(frame[[o]]), c("ID", "walker", "age", "sex", "kl0", o)]
+  d <- frame[!is.na(frame[[o]]), unique(c("ID", "walker", base_covariates, o))]
   names(d)[names(d) == o] <- "y"
   d$y <- as.integer(d$y)
   d <- d[stats::complete.cases(d), ]

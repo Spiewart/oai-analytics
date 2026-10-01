@@ -47,6 +47,7 @@ def simulated_frame() -> pl.DataFrame:
                     "age": age,
                     "sex": sex,
                     "kl0": kl0,
+                    "bmi": 22 + rng.random() * 15,
                     "kl_worse": rng.random() < (0.12 if walker else 0.35),
                     "jsn_worse": rng.random() < 0.25,
                     "new_pain": None if pain0 else rng.random() < 0.3,
@@ -78,3 +79,21 @@ def test_models_write_table2_and_metrics(tmp_path):
             )
     assert m["t2.kl_worse.or_unadj.hi"] < 1  # strongly protective by construction
     assert m["t2.kl_worse.walkers.n"] + m["t2.kl_worse.nonwalkers.n"] == 800
+
+
+def test_models_accept_extra_covariates(tmp_path):
+    frames = tmp_path / "work" / "lo2022_walking"
+    settings = load_settings(
+        env={"OAI_WORK_DIR": str(tmp_path / "work"), "OAI_RESULTS_DIR": str(tmp_path / "results")},
+        repo_root=REPO,
+    )
+    overrides = {"model.covariates": ["age", "sex", "kl0", "bmi"]}
+    label = load_analysis(ANALYSIS)
+    from oai.runner import resolve_assumptions
+
+    run_label = resolve_assumptions(label, None, overrides).label
+    (frames / run_label).mkdir(parents=True)
+    simulated_frame().write_parquet(frames / run_label / "frame.parquet")
+    run_analysis(label, settings, step_id="models", overrides=overrides, echo=lambda _: None)
+    table2 = pl.read_csv(tmp_path / "results" / "lo2022_walking" / run_label / "table2.csv")
+    assert table2.height == 8
