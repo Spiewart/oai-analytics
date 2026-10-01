@@ -1,7 +1,7 @@
 # Reporting Module + Lo 2022 Comparison Report — Design
 
 **Date:** 2026-09-30
-**Status:** Draft for review
+**Status:** Implemented (see §12 Amendments)
 **Builds on:** `2026-09-30-oai-analytics-scaffold-design.md`, `2026-09-30-assumptions-and-lo2022-replication-design.md`
 
 ## 1. Purpose

@@ -37,6 +37,7 @@ Settings resolve in this order: environment → `.env` → `[paths]` in `config/
 | `oai analyses` | List analyses and validate their `analysis.toml` |
 | `oai run NAME [--stage local\|enclave] [--step ID]` | Run an analysis's steps in order |
 | `oai run NAME --variant V` / `--set key=value` | Run with a named sensitivity variant or ad-hoc overrides ([docs/assumptions.md](docs/assumptions.md)) |
+| `oai report NAME [--run]` | Render the analysis's `[report]` (Quarto → PDF) under `OAI_RESULTS_DIR`; `--run` first runs unfinished runs ([docs/reporting.md](docs/reporting.md)) |
 | `oai assumptions NAME [--write]` | Show or write an analysis's assumptions ledger |
 | `oai export NAME` | Build an enclave bundle (`OAI_WORK_DIR/bundles/NAME-<utc>.tar.gz`) |
 | `oai missing TABLE [VISIT] [--csv FILE]` | Show each missing-value code per column: label, count and what it became |
@@ -83,6 +84,7 @@ uv run pytest                    # unit tests on synthetic fixtures
 uv run pytest -m realdata        # smoke tests against your OAI_DATA_DIR
 uv run pytest -m slow            # builds a real wheel
 (cd r && Rscript -e 'testthat::test_local("oaimodels")')
+(cd r && RENV_PROFILE=report Rscript -e 'testthat::test_local("oaireport")')
 uv run python scripts/check_no_data.py
 ```
 
@@ -91,7 +93,7 @@ uv run python scripts/check_no_data.py
 ```
 config/oai.toml      visit map, egress rules
 src/oai/             Python package (catalog, loader, visits, manifest, runner, export/)
-r/                   renv project + oaimodels R package
+r/                   renv project: oaimodels (models) + oaireport (figures, reports; renv profile "report")
 analyses/<name>/     analysis.toml + step scripts
 docs/reference/      source documents (.docx) with Markdown copies
 scripts/             leak guard, docx→md converter
