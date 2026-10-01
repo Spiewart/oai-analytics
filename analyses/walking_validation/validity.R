@@ -10,11 +10,21 @@ outcomes <- c("new_pain", "kl_worse", "jsn_worse", "improved_pain")
 reps <- A[["validity.bootstrap_reps"]]
 perms <- A[["validity.jt_permutations"]]
 seed <- A[["bias.seed"]]
+se_method <- A[["validity.median_regression_se"]]
+pase_threshold <- A[["pase.walker_threshold"]]
 adjust <- "age + sex + bmi"
 levels_amount <- c("none", "lower", "upper")
 samples <- list(validation = rep(TRUE, nrow(persons)), lo_subset = persons$in_lo)
 q <- function(x, p) unname(stats::quantile(x, p, na.rm = TRUE))
 bind <- function(rows) do.call(rbind, rows)
+# Between-wave Spearman correlation of a device measure among everyone valid at both waves: the
+# single-wave reliability used to deattenuate the convergent correlations (both benchmarks).
+between_wave <- function(m) {
+  a <- persons[[paste0(m, "_06")]]
+  b <- persons[[paste0(m, "_08")]]
+  both <- !is.na(a) & !is.na(b)
+  list(r = stats::cor(a[both], b[both], method = "spearman"), n = sum(both))
+}
 
 known <- list(); dose <- list(); convergent <- list(); classes <- list(); strata <- list()
 for (sample in names(samples)) {
@@ -24,7 +34,7 @@ for (sample in names(samples)) {
     nw <- d[[m]][!d$walker]
     hl <- oaimodels::hodges_lehmann(w, nw)
     adj <- oaimodels::median_regression(stats::as.formula(paste(m, "~ walker +", adjust)), d, "walkerTRUE",
-                                       se = "boot", reps = reps, seed = seed)
+                                       se = se_method, reps = reps, seed = seed)
     known[[length(known) + 1]] <- data.frame(
       sample = sample, measure = m, n_walkers = sum(!is.na(w)), n_nonwalkers = sum(!is.na(nw)),
       median_walkers = q(w, 0.5), q25_walkers = q(w, 0.25), q75_walkers = q(w, 0.75),
@@ -38,8 +48,8 @@ for (sample in names(samples)) {
     dd <- d[!is.na(level), ]
     dd$amount_level <- factor(dd$amount_level, levels = levels_amount)
     form <- stats::as.formula(paste(m, "~ amount_level +", adjust))
-    lower <- oaimodels::median_regression(form, dd, "amount_levellower", se = "boot", reps = reps, seed = seed)
-    upper <- oaimodels::median_regression(form, dd, "amount_levelupper", se = "boot", reps = reps, seed = seed)
+    lower <- oaimodels::median_regression(form, dd, "amount_levellower", se = se_method, reps = reps, seed = seed)
+    upper <- oaimodels::median_regression(form, dd, "amount_levelupper", se = se_method, reps = reps, seed = seed)
     dose[[length(dose) + 1]] <- data.frame(
       sample = sample, measure = m,
       median_none = q(d[[m]][level %in% "none"], 0.5), median_lower = q(d[[m]][level %in% "lower"], 0.5),
@@ -49,21 +59,19 @@ for (sample in names(samples)) {
     )
     walkers <- d[d$walker & !is.na(d$sessions), ]
     rho <- oaimodels::spearman_ci(walkers$sessions, walkers[[m]])
-    a <- persons[[paste0(m, "_06")]]
-    b <- persons[[paste0(m, "_08")]]
-    both <- !is.na(a) & !is.na(b)
-    r_waves <- stats::cor(a[both], b[both], method = "spearman")
-    reliability <- oaimodels::wave_reliability(r_waves, mean(walkers$n_waves == 2))
+    waves <- between_wave(m)
+    reliability <- oaimodels::wave_reliability(waves$r, mean(walkers$n_waves == 2))
     convergent[[length(convergent) + 1]] <- data.frame(
       sample = sample, measure = m, n = rho[["n"]], rho = rho[["rho"]], lo = rho[["lo"]], hi = rho[["hi"]],
-      between_wave_rho = r_waves, n_both_waves = sum(both), reliability = reliability,
+      between_wave_rho = waves$r, n_both_waves = waves$n, reliability = reliability,
       rho_deattenuated = oaimodels::deattenuate(rho[["rho"]], reliability_y = reliability)
     )
   }
   cl <- oaimodels::classification(d$walker, d$device_walker)
-  auc <- oaimodels::auc_ci(ifelse(d$walker, d$sessions, 0), d$device_walker, reps = reps, seed = seed)
+  score <- ifelse(d$walker, d$sessions, 0)
+  auc <- oaimodels::auc_ci(score, d$device_walker, reps = reps, seed = seed)
   cl <- rbind(cl, data.frame(measure = "auc", estimate = auc[["estimate"]], lo = auc[["lo"]],
-                             hi = auc[["hi"]], k = NA, n = sum(!is.na(d$device_walker))))
+                             hi = auc[["hi"]], k = NA, n = sum(!is.na(score) & !is.na(d$device_walker))))
   cl$sample <- sample
   classes[[length(classes) + 1]] <- cl
   by <- list(
@@ -81,18 +89,45 @@ for (sample in names(samples)) {
   }
 }
 
+# PASE benchmark (spec 6.6): items 1, 3 and 4 for the PASE walking subscore at each visit. A PASE
+# walker has a subscore above the threshold. Long format; lo/hi are NA where a statistic has no CI.
 pase <- list()
+pase_row <- function(visit, measure, statistic, estimate, lo, hi, n) {
+  data.frame(visit = visit, measure = measure, statistic = statistic,
+             estimate = estimate, lo = lo, hi = hi, n = n)
+}
 for (visit in c("06", "08", "10")) {
   p <- persons[[paste0("pase_walking_", visit)]]
+  d <- persons[!is.na(p), ]
+  d$pase_walker <- p[!is.na(p)] > pase_threshold
+  pase_walkers <- d[d$pase_walker, ]
   for (m in measures) {
-    rho <- oaimodels::spearman_ci(p, persons[[m]])
-    pase[[length(pase) + 1]] <- data.frame(visit = visit, measure = m, statistic = "rho",
-                                           estimate = rho[["rho"]], lo = rho[["lo"]], hi = rho[["hi"]], n = rho[["n"]])
+    # Item 1: known groups
+    w <- d[[m]][d$pase_walker]
+    nw <- d[[m]][!d$pase_walker]
+    n_groups <- sum(!is.na(w)) + sum(!is.na(nw))
+    hl <- oaimodels::hodges_lehmann(w, nw)
+    form <- stats::as.formula(paste(m, "~ pase_walker +", adjust))
+    adj <- oaimodels::median_regression(form, d, "pase_walkerTRUE", se = se_method, reps = reps, seed = seed)
+    pase[[length(pase) + 1]] <- pase_row(visit, m, "hl", hl[["estimate"]], hl[["lo"]], hl[["hi"]], n_groups)
+    pase[[length(pase) + 1]] <- pase_row(visit, m, "rank_biserial", oaimodels::rank_biserial(w, nw),
+                                         NA, NA, n_groups)
+    pase[[length(pase) + 1]] <- pase_row(visit, m, "adj_diff", adj[["estimate"]], adj[["lo"]], adj[["hi"]],
+                                         nrow(stats::model.frame(form, d)))
+    # Item 3: convergent ranking among PASE walkers, deattenuated like the walking item
+    rho <- oaimodels::spearman_ci(pase_walkers[[paste0("pase_walking_", visit)]], pase_walkers[[m]])
+    reliability <- oaimodels::wave_reliability(between_wave(m)$r, mean(pase_walkers$n_waves == 2))
+    pase[[length(pase) + 1]] <- pase_row(visit, m, "rho", rho[["rho"]], rho[["lo"]], rho[["hi"]], rho[["n"]])
+    pase[[length(pase) + 1]] <- pase_row(visit, m, "rho_deattenuated",
+                                         oaimodels::deattenuate(rho[["rho"]], reliability_y = reliability),
+                                         NA, NA, rho[["n"]])
   }
-  cl <- oaimodels::classification(p > 0, persons$device_walker)
-  cl <- cl[cl$measure %in% c("se", "sp"), ]
-  pase[[length(pase) + 1]] <- data.frame(visit = visit, measure = "device_walker", statistic = cl$measure,
-                                         estimate = cl$estimate, lo = cl$lo, hi = cl$hi, n = cl$n)
+  # Item 4: classification against the device walker
+  cl <- oaimodels::classification(p > pase_threshold, persons$device_walker)
+  auc <- oaimodels::auc_ci(p, persons$device_walker, reps = reps, seed = seed)
+  pase[[length(pase) + 1]] <- pase_row(visit, "device_walker", cl$measure, cl$estimate, cl$lo, cl$hi, cl$n)
+  pase[[length(pase) + 1]] <- pase_row(visit, "device_walker", "auc", auc[["estimate"]], auc[["lo"]],
+                                       auc[["hi"]], sum(!is.na(p) & !is.na(persons$device_walker)))
 }
 
 classification_all <- bind(classes)

@@ -117,10 +117,21 @@ value = { days = [0.0, 1.5, 3.5, 6.0], hours = [0.5, 1.5, 3.0, 5.0], weight = 20
 status = "assumed"
 source = "Washburn et al. 1993 PASE scoring for item 2 (walking outside the home)"
 
+[pase.walker_threshold]
+value = 0.0
+status = "assumed"
+source = "A PASE walker reports any walking outside the home in the past 7 days (subscore > 0)"
+
 [validity.bootstrap_reps]
 value = 1000
 status = "assumed"
-source = "AUC percentile bootstrap"
+source = "Reps for the AUC percentile bootstrap and the median-regression bootstrap"
+
+[validity.median_regression_se]
+value = "boot"
+status = "assumed"
+source = "xy-pair bootstrap; 'nid' gave 'non-positive fis' warnings and unreliable CIs on the zero-inflated purposeful-bout measure"
+choices = ["boot", "nid"]
 
 [validity.jt_permutations]
 value = 2000
