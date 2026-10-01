@@ -20,6 +20,17 @@ test_that("prevalence and reclassification algebra", {
   expect_equal(correct_or_2x2(100, 100, 100, 300, 0.8, 0.9), 44 / 9, tolerance = 1e-6)
 })
 
+test_that("correct_or_2x2 discards draws with Se + Sp <= 1 in either outcome stratum", {
+  # crude OR is 1.222; worse-than-chance classification must not be 'corrected' into 0.333
+  expect_true(is.na(correct_or_2x2(50, 50, 45, 55, 0.4, 0.4)))
+  # case-stratum violation only (control stratum is valid)
+  expect_true(is.na(correct_or_2x2(50, 50, 45, 55, 0.4, 0.4, se_ctrl = 0.9, sp_ctrl = 0.9)))
+  # control-stratum violation only
+  expect_true(is.na(correct_or_2x2(50, 50, 45, 55, 0.9, 0.9, se_ctrl = 0.4, sp_ctrl = 0.4)))
+  # Se + Sp exactly 1 is also no information
+  expect_true(is.na(correct_or_2x2(50, 50, 45, 55, 0.5, 0.5)))
+})
+
 test_that("reclassify is the identity at perfect sensitivity and specificity", {
   d <- person_data()
   set.seed(3)
@@ -56,6 +67,46 @@ test_that("differential priors must cover every stratum", {
   d <- person_data()
   bad <- data.frame(stratum = "case", se1 = 9, se2 = 2, sp1 = 9, sp2 = 2)
   expect_error(pba(d$persons, d$knees, glm_fit, bad, differential = TRUE, iterations = 2), "noncase")
+})
+
+test_that("a fit that returns non-finite values is discarded, not fatal", {
+  d <- person_data()
+  priors <- data.frame(stratum = "all", se = 0.9, sp = 0.9)
+  # NA on every call: every draw is discarded and the summary degrades to NA
+  na_fit <- function(k) c(log_or = NA_real_, se = NA_real_)
+  draws <- pba(d$persons, d$knees, na_fit, priors, iterations = 6, seed = 1)
+  expect_true(all(draws$discarded))
+  expect_true(all(is.na(draws$log_or) & is.na(draws$se) & is.na(draws$log_or_total)))
+  s <- summarise_pba(draws)
+  expect_true(is.na(s$or))
+  expect_equal(s$discarded, 1)
+  # a finite log_or with a non-finite se is also unusable
+  inf_fit <- function(k) c(log_or = 0.1, se = Inf)
+  expect_true(all(pba(d$persons, d$knees, inf_fit, priors, iterations = 3, seed = 1)$discarded))
+  # NA on odd calls only: the kept draws still summarise
+  calls <- new.env()
+  calls$n <- 0
+  odd_na_fit <- function(k) {
+    calls$n <- calls$n + 1
+    if (calls$n %% 2 == 1) c(log_or = NA_real_, se = NA_real_) else glm_fit(k)
+  }
+  draws <- pba(d$persons, d$knees, odd_na_fit, priors, iterations = 10, seed = 1)
+  expect_equal(sum(draws$discarded), 5)
+  expect_equal(draws$discarded, rep(c(TRUE, FALSE), 5))
+  s <- summarise_pba(draws, direction = 1, significant = FALSE)
+  expect_true(is.finite(s$or))
+  expect_equal(s$discarded, 0.5)
+  expect_equal(s$n, 10)
+})
+
+test_that("bind_runs refuses to return fewer iterations than requested", {
+  row <- function(i) {
+    data.frame(iter = i, log_or = 0, se = 1, log_or_total = 0, discarded = FALSE)
+  }
+  ok <- bind_runs(list(row(1), row(2), row(3)), 3)
+  expect_equal(nrow(ok), 3)
+  expect_error(bind_runs(list(row(1), NULL, row(3)), 3), "1 of 3")
+  expect_error(bind_runs(list(row(1), row(2)), 3), "3 iterations")
 })
 
 test_that("pba is identical across core counts", {

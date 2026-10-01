@@ -17,6 +17,8 @@ reclass_probs <- function(p_obs, se, sp) {
 #' Corrected odds ratio from a 2x2 table with outcome-specific classification
 #' a = exposed cases, b = unexposed cases, c = exposed non-cases, d = unexposed non-cases
 correct_or_2x2 <- function(a, b, c, d, se_case, sp_case, se_ctrl = se_case, sp_ctrl = sp_case) {
+  # Se + Sp <= 1 in either outcome stratum is worse than chance: the draw is discarded
+  if (!isTRUE(all(se_case + sp_case > 1)) || !isTRUE(all(se_ctrl + sp_ctrl > 1))) return(NA_real_)
   n1 <- a + b
   n0 <- c + d
   A <- (a - (1 - sp_case) * n1) / (se_case + sp_case - 1)
@@ -79,12 +81,10 @@ pba <- function(persons, knees, fit, priors, differential = FALSE, iterations = 
       sp <- stats::setNames(rep(d$sp, length(strata)), strata)
     }
     truth <- reclassify(persons, se, sp)
-    if (is.null(truth)) {
-      return(data.frame(iter = i, log_or = NA_real_, se = NA_real_, log_or_total = NA_real_,
-                        discarded = TRUE))
-    }
+    if (is.null(truth)) return(discarded_row(i))
     knees[[exposure]] <- truth[match(knees$ID, persons$ID)]
     est <- fit(knees)
+    if (!is.finite(est[["log_or"]]) || !is.finite(est[["se"]])) return(discarded_row(i))
     data.frame(iter = i, log_or = est[["log_or"]], se = est[["se"]],
                log_or_total = stats::rnorm(1, est[["log_or"]], est[["se"]]), discarded = FALSE)
   }
@@ -95,7 +95,29 @@ pba <- function(persons, knees, fit, priors, differential = FALSE, iterations = 
   }
   failed <- vapply(runs, inherits, logical(1), what = "try-error")
   if (any(failed)) stop("pba() iteration failed: ", runs[[which(failed)[1]]], call. = FALSE)
-  do.call(rbind, runs)
+  bind_runs(runs, iterations)
+}
+
+# The row recorded for an iteration that could not produce an estimate
+discarded_row <- function(i) {
+  data.frame(iter = i, log_or = NA_real_, se = NA_real_, log_or_total = NA_real_, discarded = TRUE)
+}
+
+# Row-bind the per-iteration results, refusing to return fewer iterations than were requested
+# (a killed parallel worker returns NULL for its jobs, which rbind would silently drop).
+bind_runs <- function(runs, iterations) {
+  lost <- vapply(runs, is.null, logical(1))
+  if (any(lost)) {
+    stop("pba() lost ", sum(lost), " of ", iterations, " iterations ",
+         "(a parallel worker was probably killed); rerun with fewer cores or more memory",
+         call. = FALSE)
+  }
+  out <- do.call(rbind, runs)
+  if (is.null(out) || nrow(out) != iterations) {
+    stop("pba() returned ", if (is.null(out)) 0L else nrow(out), " rows for ", iterations,
+         " iterations", call. = FALSE)
+  }
+  out
 }
 
 #' Median bias-adjusted OR with 95% simulation intervals, the share of iterations keeping the
