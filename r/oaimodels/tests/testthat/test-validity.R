@@ -33,6 +33,7 @@ test_that("spearman_ci, deattenuate and wave_reliability", {
   expect_equal(deattenuate(0.9, reliability_y = 0.25), 1)
   expect_equal(wave_reliability(0.6, 1), 2 * 0.6 / 1.6)
   expect_equal(wave_reliability(0.6, 0), 0.6)
+  expect_equal(wave_reliability(0.6, 0.5), 0.6 / (0.6 + 0.4 * 0.75))
 })
 
 test_that("wilson and classification", {
@@ -45,6 +46,14 @@ test_that("wilson and classification", {
   expect_equal(cl$estimate, c(3 / 4, 3 / 4, 3 / 4, 3 / 4))
   expect_equal(cl$k, c(3, 3, 3, 3))
   expect_equal(cl$n, c(4, 4, 4, 4))
+})
+
+test_that("newcombe_diff reproduces Newcombe's (1998) worked example", {
+  d <- newcombe_diff(56, 70, 48, 80)
+  expect_equal(unname(d), c(0.2000, 0.0524, 0.3339), tolerance = 1e-4)
+  expect_equal(names(d), c("estimate", "lo", "hi"))
+  expect_true(all(is.na(newcombe_diff(3, 0, 48, 80))))
+  expect_true(all(is.na(newcombe_diff(56, 70, 0, 0))))
 })
 
 test_that("classification handles empty cells", {
@@ -66,4 +75,7 @@ test_that("auc_ci and classification_by_stratum", {
   expect_setequal(unique(s$stratum), c("a", "b"))
   expect_equal(s$estimate[s$measure == "se" & s$stratum == "a"], 1)
   expect_lt(s$p_differs[s$measure == "se"][1], 0.001)
+  expect_true(is.na(s$difference[s$measure == "se" & s$stratum == "a"]))
+  expect_lt(s$difference[s$measure == "se" & s$stratum == "b"], 0)
+  expect_true(all(c("difference", "difference_lo", "difference_hi") %in% names(s)))
 })

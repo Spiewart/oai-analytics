@@ -85,10 +85,13 @@ deattenuate <- function(rho, reliability_x = 1, reliability_y = 1) {
   pmax(pmin(rho / sqrt(reliability_x * reliability_y), 1), -1)
 }
 
-#' Reliability of a person's mean over one or two waves from the between-wave correlation
-#' (Spearman-Brown for two waves), weighted by the share with two waves
+#' Reliability of a person's mean over one or two waves, from the between-wave correlation r
+#' (the reliability of a single wave) and the share of people with two waves: the person-level
+#' signal variance over signal plus the average error variance of the mean,
+#' r / (r + (1 - r) * (1 - share_two_waves / 2)). It equals r with no second waves and the
+#' Spearman-Brown value 2r / (1 + r) when everyone has two.
 wave_reliability <- function(r, share_two_waves) {
-  share_two_waves * (2 * r / (1 + r)) + (1 - share_two_waves) * r
+  r / (r + (1 - r) * (1 - share_two_waves / 2))
 }
 
 #' Wilson 95% interval for k successes of n (NA when n is 0)
@@ -100,6 +103,18 @@ wilson <- function(k, n) {
   centre <- (p + z^2 / (2 * n)) / d
   half <- z * sqrt(p * (1 - p) / n + z^2 / (4 * n^2)) / d
   c(estimate = p, lo = centre - half, hi = centre + half)
+}
+
+#' Difference between two proportions, k1/n1 minus k0/n0, with Newcombe's hybrid-score 95% CI
+#' (method 10, built from the two Wilson intervals); NA when either denominator is 0
+newcombe_diff <- function(k1, n1, k0, n0) {
+  if (n1 == 0 || n0 == 0) return(c(estimate = NA_real_, lo = NA_real_, hi = NA_real_))
+  a <- wilson(k1, n1)
+  b <- wilson(k0, n0)
+  diff <- a[["estimate"]] - b[["estimate"]]
+  c(estimate = diff,
+    lo = diff - sqrt((a[["estimate"]] - a[["lo"]])^2 + (b[["hi"]] - b[["estimate"]])^2),
+    hi = diff + sqrt((a[["hi"]] - a[["estimate"]])^2 + (b[["estimate"]] - b[["lo"]])^2))
 }
 
 #' Sensitivity, specificity, PPV and NPV of a binary test against a binary reference
@@ -140,8 +155,10 @@ auc_ci <- function(score, reference, reps = 1000, seed = 1) {
   c(estimate = auc(s, r), lo = q[1], hi = q[2])
 }
 
-#' Sensitivity and specificity per stratum, with a likelihood-ratio p-value for whether each
-#' differs across strata (NA when it cannot be tested)
+#' Sensitivity and specificity per stratum, each with its difference from the reference
+#' stratum (the first level of sort(unique(stratum)); Newcombe 95% CI, NA for the reference rows
+#' and wherever either estimate is NA), and a likelihood-ratio p-value for whether each differs
+#' across strata (NA when it cannot be tested)
 classification_by_stratum <- function(test, reference, stratum) {
   ok <- !is.na(test) & !is.na(reference) & !is.na(stratum)
   t <- as.logical(test[ok])
@@ -153,6 +170,15 @@ classification_by_stratum <- function(test, reference, stratum) {
     cl[cl$measure %in% c("se", "sp"), ]
   })
   out <- do.call(rbind, rows)
+  reference_level <- sort(unique(s))[1]
+  diffs <- t(vapply(seq_len(nrow(out)), function(i) {
+    ref <- out[out$measure == out$measure[i] & out$stratum == reference_level, ]
+    if (out$stratum[i] == reference_level) return(c(NA_real_, NA_real_, NA_real_))
+    unname(newcombe_diff(out$k[i], out$n[i], ref$k, ref$n))
+  }, numeric(3)))
+  out$difference <- diffs[, 1]
+  out$difference_lo <- diffs[, 2]
+  out$difference_hi <- diffs[, 3]
   lr_p <- function(subset) {
     correct <- (t == r)[subset]
     st <- factor(s[subset])
