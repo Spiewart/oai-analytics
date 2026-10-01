@@ -24,6 +24,7 @@ from oai.export.bundle import export_analysis
 from oai.export.egress import EgressError, check_egress
 from oai.loader import missing_summary
 from oai.manifest import find_analysis, list_analyses
+from oai.report import render_report
 from oai.runner import run_analysis
 
 app = typer.Typer(help="OAI analytics command line.", no_args_is_help=True)
@@ -105,6 +106,23 @@ def run(
             echo=typer.echo,
         )
         typer.echo(f"{len(results)} step(s) completed: {', '.join(r.step_id for r in results)}")
+
+
+@app.command()
+def report(
+    name: Annotated[str, typer.Argument(help="Analysis folder name under analyses/.")],
+    run_: Annotated[
+        bool,
+        typer.Option("--run", help="First run any [report] runs that have not finished."),
+    ] = False,
+) -> None:
+    """Render an analysis's [report] (Quarto -> PDF) under OAI_RESULTS_DIR."""
+    with user_errors():
+        settings = get_settings()
+        analysis = find_analysis(name, settings.analyses_dir)
+        pdf = render_report(analysis, settings, run_missing=run_, echo=typer.echo)
+    typer.echo(f"Report: {pdf}")
+    typer.echo(f"Before sharing: oai check-egress {pdf.parent}")
 
 
 @app.command("check-egress")
