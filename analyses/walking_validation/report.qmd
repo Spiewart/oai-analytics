@@ -72,10 +72,6 @@ all_exclude <- nrow(grid_np_excludes) == nrow(grid_np)
 lowest_sum <- min(grid_np$se + grid_np$sp)  # lowest feasible Se + Sp
 edge_se <- min(grid_np$se)
 below_infeasible <- all(is.na(grid_np_all$or[grid_np_all$se + grid_np_all$sp < lowest_sum - 1e-9]))
-grid_sentence <- sprintf(
-  "Under non-differential misclassification, the tipping-point grid for new frequent knee pain (adjusted) keeps an interval that excludes 1 in %s feasible cells (the lowest feasible Se + Sp is %s).",
-  if (all_exclude) sprintf("all %d", nrow(grid_np)) else sprintf("%d of %d", nrow(grid_np_excludes), nrow(grid_np)),
-  num(lowest_sum))
 headline_diff <- pba[pba$outcome == "new_pain" & pba$model == "or_adj" & pba$scenario == "differential", ]
 # Differential rows of both bias analyses (record-level PBA and summary-level correction)
 sl_all <- run$bias_summary_level
@@ -88,6 +84,17 @@ differential_text <- if (all(pba_diff_flagged) && all(sl_diff_flagged)) {
   sprintf("The differential analyses below are the record-level probabilistic bias analysis (%d of %d rows flagged) and the summary-level correction (%d of %d rows flagged)",
           sum(pba_diff_flagged), length(pba_diff_flagged), sum(sl_diff_flagged), length(sl_diff_flagged))
 }
+# The grid is non-differential, so it cannot speak to differential error (Summary clause)
+diff_flagged <- c(pba_diff_flagged, sl_diff_flagged)
+differential_clause <- if (all(diff_flagged)) {
+  "both differential bias analyses (record-level and summary-level) are flagged as unstable"
+} else {
+  sprintf("the differential bias analyses are flagged as unstable in %d of %d rows", sum(diff_flagged), length(diff_flagged))
+}
+grid_sentence <- sprintf(
+  "Under non-differential misclassification, the tipping-point grid for new frequent knee pain (adjusted) keeps an interval that excludes 1 in %s feasible cells (the lowest feasible Se + Sp is %s), but non-differential error biases toward the null, so the grid cannot show whether the association survives differential error, and %s.",
+  if (all_exclude) sprintf("all %d", nrow(grid_np)) else sprintf("%d of %d", nrow(grid_np_excludes), nrow(grid_np)),
+  num(lowest_sum), differential_clause)
 info <- run$run_info
 code_version <- paste0("oai-analytics ", info$oai_version,
                        if (is.null(info$git_commit)) "" else paste0(", commit ", substr(info$git_commit, 1, 7)),
@@ -279,12 +286,11 @@ oaireport::compare_table(data.frame(
 ```{r bias-numbers}
 j_lo <- youden("lo_subset")
 nondiff_or <- pba$or[nondiff]
-smallest <- min(pba$lo_total[nondiff])
-exponent <- floor(log10(smallest))
-smallest_text <- sprintf("%s × 10^−%d^", num(smallest / 10^exponent, 1), -exponent)
+# Upper bound on the non-differential lower limits, rounded up so "at most" stays true
+nondiff_lo_max <- formatC(round_up(max(pba$lo_total[nondiff])), format = "g", digits = 2)
 ```
 
-The record-level correction divides by Se + Sp − 1, which is only `r num(j_lo)` in the Lo 2022 subset, so small changes in the drawn sensitivity and specificity move the corrected odds ratio a long way. The device is an imperfect reference: it measures current activity, while the item asks about walking since age 50, so part of the low specificity is device error rather than item error. A draw is discarded when it implies a true walker prevalence outside 0–1 in either outcome group, or when Se + Sp ≤ 1. Depending on outcome and model, that happened to `r pct_range(pba$discarded[nondiff])` of non-differential draws and `r pct_range(pba$discarded[!nondiff])` of differential draws, above the pre-specified `r pct(threshold)` threshold for `r flag_text`. The draws that survive are not a random sample of the priors: they sit just past the boundary where one outcome group's implied number of true walkers reaches zero, and near that boundary the corrected odds ratio collapses toward 0. This truncation produces the non-differential estimates of `r num(min(nondiff_or))`–`r num(max(nondiff_or))` and lower limits as small as `r smallest_text`.
+The record-level correction divides by Se + Sp − 1, which is only `r num(j_lo)` in the Lo 2022 subset, so small changes in the drawn sensitivity and specificity move the corrected odds ratio a long way. The device is an imperfect reference: it measures current activity, while the item asks about walking since age 50, so part of the low specificity is device error rather than item error. A draw is discarded when it implies a true walker prevalence outside 0–1 in either outcome group, when Se + Sp ≤ 1, or when the reclassified exposure has a single level. Depending on outcome and model, that happened to `r pct_range(pba$discarded[nondiff])` of non-differential draws and `r pct_range(pba$discarded[!nondiff])` of differential draws, above the pre-specified `r pct(threshold)` threshold for `r flag_text`. The draws that survive are not a random sample of the priors: they sit just past the boundary where one outcome group's implied number of true walkers reaches zero, and near that boundary the corrected odds ratio collapses toward 0. This truncation produces the non-differential estimates of `r num(min(nondiff_or))`–`r num(max(nondiff_or))`, with lower limits that are effectively 0 (all at most `r nondiff_lo_max`): the draws behind them leave an outcome group with almost no true walkers, where the model separates, so these limits are numerical artefacts, not quantities.
 
 ## Tipping-point grid (primary)
 
