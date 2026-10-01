@@ -63,4 +63,4 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 ### Tooling
 
-- **Install the TODO worker in this repo** — <!-- skip --> Port `claude-todo-worker` from knee_acoustic_emissions: `.claude/daily-worker/{config.sh,prompt.md,run.sh}`, the `update-todo-patches` hook, and a launchd plist. Being designed interactively.
+- **Install the TODO worker in this repo** — <!-- skip --> Port `claude-todo-worker` from knee_acoustic_emissions: `.claude/daily-worker/{config.sh,prompt.md,run.sh}`, the `update-todo-patches` hook, and a launchd plist. Deferred by the owner (2026-09-30) until there is enough worker-eligible work here.
