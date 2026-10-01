@@ -29,6 +29,10 @@ rules = DeviceRules(
     max_valid_days=A["device.max_valid_days"],
     min_valid_days=A["device.min_valid_days"],
     mv_cutpoint=A["device.mv_cutpoint"],
+    light_floor=A["device.light_floor"],
+    bout_window=A["device.bout_window"],
+    bout_need=A["device.bout_need"],
+    bout_stop_below=A["device.bout_stop_below"],
     purposeful_bout_minutes=A["device.purposeful_bout_minutes"],
 )
 frames, results = Path(os.environ["OAI_FRAME_DIR"]), Path(os.environ["OAI_RESULTS_DIR"])

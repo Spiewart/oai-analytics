@@ -38,6 +38,26 @@ value = 2020
 status = "confirmed"
 source = "Troiano 2008 cutpoint, as in the release"
 
+[device.light_floor]
+value = 100
+status = "confirmed"
+source = "Troiano 2008 light intensity 100-2019 counts/min, as in the release"
+
+[device.bout_window]
+value = 10
+status = "confirmed"
+source = "AccelData_Descrip.pdf: MV bout rolling window of 10 minutes"
+
+[device.bout_need]
+value = 8
+status = "confirmed"
+source = "AccelData_Descrip.pdf: a bout is established when 8 of 10 minutes are at or above the cutpoint"
+
+[device.bout_stop_below]
+value = 3
+status = "confirmed"
+source = "AccelData_Descrip.pdf: the bout stops when 3 minutes in the 10-minute window are below the cutpoint"
+
 [device.purposeful_bout_minutes]
 value = 10
 status = "assumed"
@@ -76,6 +96,12 @@ value = { years = [3.0, 8.0, 15.5, 20.0], months = [2.5, 6.5, 10.5], times = [2.
 status = "open"
 source = "As lo2022_walking exposure.category_midpoints"
 
+[exposure.amount_split]
+value = "median"
+status = "assumed"
+source = "Spec 5: lower/upper halves of lifetime sessions among walkers (median split)"
+choices = ["median"]
+
 [strata.reading_project]
 value = 15
 status = "assumed"
@@ -106,6 +132,12 @@ value = "walker_requires_amount"
 status = "assumed"
 source = "The lo2022_walking run whose exposure coding matches exposure.yes_without_amount_as"
 choices = ["walker_requires_amount", "default"]
+
+[bias.prior]
+value = "beta_uniform"
+status = "assumed"
+source = "Spec 7: Beta(k + 1, n - k + 1) from the validation 2x2 counts (uniform prior)"
+choices = ["beta_uniform"]
 
 [bias.iterations]
 value = 2000
