@@ -219,3 +219,30 @@ heatmap 2-column) for reuse in a manuscript or slides.
 
 - Whether to install standalone Quarto (Homebrew) rather than rely on RStudio's bundle.
   Not blocking; discovery supports both.
+
+## 12. Amendments (2026-09-30, from prototyping while planning)
+
+These supersede the sections they name.
+
+1. **Tables use tinytable, not gt (§4, §4.4, §8).**
+   - gt's Typst path runs Quarto's `juice` CSS inliner, which fails inside the RStudio-bundled Quarto. tinytable writes native Typst.
+   - `compare_table(df, widths = NULL, compact = FALSE)` replaces `compare_table(df, title)`:
+     - **No `title`:** a tinytable caption is lost when its table breaks across pages, so tables are titled by Markdown headings instead.
+     - **`widths`:** relative column widths. Typst's default narrow, equal columns hyphenate words.
+     - **`compact`:** verdict symbols only, for wide grids.
+   - Tables are built with `theme_typst(multipage = TRUE)`, so long tables continue onto later pages with a repeated header. The default overprinted at the page foot after 17 rows.
+   - `compare_table` returns a `tinytable`. `format_verdicts()` and `parse_or()` are added.
+   - Verdict cells use a light status tint behind black text plus a symbol: the drift yellow is unreadable as text colour.
+2. **Reporting packages live in a renv profile (§4).**
+   - `r/renv/profiles/report/renv.lock`, activated by `RENV_PROFILE=report`, adds ggplot2, scales, tinytable, ragg, systemfonts, knitr, rmarkdown and withr on top of the default lockfile.
+   - The default `r/renv.lock`, which enclave bundles restore offline, is unchanged. The enclave therefore never needs font or graphics system libraries, or rmarkdown's dependency tree.
+   - `oai report` sets `RENV_PROFILE=report`, and `r/step-profile.R` loads `oaireport` only then.
+   - CI tests `oaireport` in a separate `r-report` job.
+3. **`run_info.json` and egress (§5).** About 2% of git commit hashes contain a run of digits that the participant-ID pattern matches. `[egress] ignore_id_pattern_columns` now also names JSON keys, and the project config lists `git_commit`.
+4. **Report directory and manifest (§6.1, §6.2).**
+   - `report/` is emptied before rendering.
+   - After a successful render, everything except `<stem>.pdf` and `figures/` is removed: the copied entry and assets, `.quarto/` and the Typst intermediates. Without this, egress (which fails closed on `.qmd` and `.toml`) would fail.
+   - `entry` and each asset must be a bare file name in the analysis folder.
+   - The Lo report's assets are `["ASSUMPTIONS.md"]`. Published values come from each run's `comparison.csv`, so `published.toml` is not needed.
+5. **Quarto discovery (§6.2).** An `OAI_QUARTO` or `[tools] quarto` value that is not executable is an error, not a fallthrough.
+6. **Lo report, cohort flow (§7, main body item 2).** The flow diagram's side boxes show excluded participants and knees, as "ours [published]". The Supplementary Table 1 characteristics (men, age, BMI) are a table in Appendix B rather than box text, so the figure stays legible at two-column width.
