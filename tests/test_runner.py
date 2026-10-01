@@ -271,3 +271,31 @@ def test_checkout_state_reports_commit_and_uncommitted_changes(tmp_path):
 
 def test_r_profile_env_only_inside_a_checkout(tmp_path):
     assert runner.r_profile_env(make_settings(tmp_path)) == {}
+
+
+def test_is_finished_requires_the_given_steps(toy, tmp_path):
+    run_analysis(toy, make_settings(tmp_path), stage="local", echo=lambda _: None)
+    results = tmp_path / "results" / "toy" / "default"
+    assert runner.is_finished(results, ["a"])
+    assert not runner.is_finished(results, ["a", "b"])
+
+
+def test_run_info_records_input_table_versions(tmp_path):
+    root = tmp_path / "analyses" / "versions"
+    root.mkdir(parents=True)
+    (root / "analysis.toml").write_text(
+        'name = "versions"\n\n[inputs]\ntables = ["allclinical:00", "kxr_sq_bu:*"]\n\n'
+        '[[steps]]\nid = "a"\nlang = "python"\nentry = "a.py"\n'
+    )
+    (root / "a.py").write_text("")
+    fixtures = Path(__file__).parent / "fixtures" / "oai"
+    settings = make_settings(tmp_path, OAI_DATA_DIR=str(fixtures))
+    run_analysis(load_analysis(root), settings, echo=lambda _: None)
+    info = json.loads((tmp_path / "results" / "versions" / "default" / "run_info.json").read_text())
+    assert set(info["data_versions"]) == {"allclinical_00", "kxr_sq_bu_00", "kxr_sq_bu_01"}
+    assert all(isinstance(v, str) and v for v in info["data_versions"].values())
+
+
+def test_run_info_data_versions_empty_without_data(toy, tmp_path):
+    run_analysis(toy, make_settings(tmp_path), stage="local", echo=lambda _: None)
+    assert read_run_info(tmp_path)["data_versions"] == {}

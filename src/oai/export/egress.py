@@ -118,8 +118,19 @@ def _read_txt_table(path: Path) -> pl.DataFrame | None:
     return df if df.width > 1 else None
 
 
+def _unique_keys(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    keys = [key for key, _ in pairs]
+    if len(keys) != len(set(keys)):
+        raise ValueError("duplicate JSON keys")  # json.loads would keep only the last value
+    return dict(pairs)
+
+
 def _without_keys(text: str, keys: set[str]) -> str:
-    """JSON text minus the values of `keys` at any depth; unparseable text is returned whole."""
+    """JSON text minus the values of `keys` at any depth.
+
+    Unparseable text, or JSON with duplicate keys, is returned whole. Non-ASCII text is kept
+    as-is (not escaped), so an ID right after a character such as an en dash is still found.
+    """
 
     def strip(value: Any) -> Any:
         if isinstance(value, dict):
@@ -129,8 +140,10 @@ def _without_keys(text: str, keys: set[str]) -> str:
         return value
 
     try:
-        return json.dumps(strip(json.loads(text)))
-    except json.JSONDecodeError:
+        return json.dumps(
+            strip(json.loads(text, object_pairs_hook=_unique_keys)), ensure_ascii=False
+        )
+    except ValueError:  # includes json.JSONDecodeError
         return text
 
 

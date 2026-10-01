@@ -207,3 +207,19 @@ def test_unparseable_json_is_scanned_whole(tmp_path):
 def test_project_config_ignores_git_commit():
     project = tomllib.loads((REPO_ROOT / "config" / "oai.toml").read_text())
     assert "git_commit" in project["egress"]["ignore_id_pattern_columns"]
+
+
+def test_ignored_json_keys_keep_ids_after_non_ascii_text(tmp_path):
+    note = f"visit\u2013{FAKE_ID}"  # en dash, then the ID
+    (tmp_path / "a.json").write_text(
+        json.dumps({"git_commit": "abc", "note": note}, ensure_ascii=False)
+    )
+    (tmp_path / "b.json").write_text(json.dumps({"git_commit": "abc", "note": note}))  # \u2013
+    for name in ("a.json", "b.json"):
+        report = check_egress(tmp_path, min_cell=5, ignore_id_pattern_columns=["git_commit"])
+        assert any(name in problem for problem in report.problems), name
+
+
+def test_duplicate_json_keys_are_scanned_whole(tmp_path):
+    (tmp_path / "dup.json").write_text(f'{{"note": "{FAKE_ID}", "note": "x", "git_commit": "abc"}}')
+    assert not check_egress(tmp_path, min_cell=5, ignore_id_pattern_columns=["git_commit"]).ok

@@ -121,6 +121,17 @@ def _read_header(path: Path) -> str:
         return fh.readline().decode("utf-8", errors="replace").rstrip("\r\n")
 
 
+def table_version(tf: TableFile) -> str | None:
+    """The release VERSION of a table file, from its first data row (None if it has none)."""
+    with tf.path.open("rb") as fh:
+        header = fh.readline().decode("utf-8", errors="replace").rstrip("\r\n").split("|")
+        row = fh.readline().decode("utf-8", errors="replace").rstrip("\r\n").split("|")
+    for i, name in enumerate(header):
+        if name.upper() == "VERSION" and i < len(row) and row[i].strip():
+            return row[i].strip()
+    return None
+
+
 def _has_misaligned_lines(path: Path, expected: int) -> bool:
     """True when any line has a different number of '|' separators than the header."""
     lines = pl.scan_csv(

@@ -282,3 +282,13 @@ def test_cli_missing_prints_and_saves_summary(tmp_path):
     assert result.exit_code == 0, result.output
     assert "P01BMI" in result.stdout and "Not Expected" in result.stdout
     assert pl.read_csv(out).height == 2
+
+
+def test_table_version_reads_the_first_data_row(tmp_path):
+    with_version = tmp_path / "AllClinical00.txt"
+    with_version.write_text("ID|VERSION|V00AGE\n1000001|0.2.3|61\n")
+    without = tmp_path / "Enrollees.txt"
+    without.write_text("ID|V00AGE\n1000001|61\n")
+    cat = catalog_for(tmp_path)
+    assert loader.table_version(cat.get("allclinical", "00")) == "0.2.3"
+    assert loader.table_version(cat.get("enrollees")) is None

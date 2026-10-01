@@ -96,6 +96,12 @@ compare_runs <- function(pattern, labels, run_titles = labels) {
   rows
 }
 
+versions <- unlist(d$run_info$data_versions)
+data_release <- if (length(versions)) {
+  paste(sprintf("%s %s", names(versions), versions), collapse = ", ")
+} else {
+  "not recorded"
+}
 commit <- d$run_info$git_commit
 code_version <- paste0(
   "oai-analytics ", d$run_info$oai_version,
@@ -111,7 +117,7 @@ code_version <- paste0(
 
 # Summary
 
-We re-ran every published analysis of Lo et al.^[Lo GH, et al. Association Between Walking for Exercise and Symptomatic and Structural Progression in Individuals With Knee Osteoarthritis. *Arthritis Rheumatol* 2022;74:1660–7. doi:10.1002/art.42241.] on the public OAI release with the oai-analytics suite. Every published number was then graded against our value. A count replicates within 3% (or 2), a mean within 0.5, and an odds ratio within 0.1 with the same statistical significance. Code: `r code_version`. The primary run finished `r d$run_info$finished_utc` UTC.
+We re-ran every published analysis of Lo et al.^[Lo GH, et al. Association Between Walking for Exercise and Symptomatic and Structural Progression in Individuals With Knee Osteoarthritis. *Arthritis Rheumatol* 2022;74:1660–7. doi:10.1002/art.42241.] on the public OAI release with the oai-analytics suite. Every published number was then graded against our value. A count replicates within 3% (or 2), a mean within 0.5, and an odds ratio within 0.1 with the same statistical significance. Data: the OAI public release; input table versions `r data_release`. Code: `r code_version`. The primary run finished `r d$run_info$finished_utc` UTC.
 
 ```{r headline}
 t2 <- d$comparison[d$comparison$kind == "or", ]
@@ -243,7 +249,7 @@ gap_table <- rbind(
 oaireport::compare_table(gap_table, widths = c(4, 1.2, 1.8, 1.4))
 ```
 
-Two coding choices that the paper does not state explain most of the count differences.
+Two coding choices that the paper does not state account for the walker count and for the count at the radiographic-OA step (table above). A shortfall of `r fmt(published_value(d, "t1.persons.all") - wra$metrics[["t1.persons.all"]])` participants in the final cohort (`r fmt(wra$metrics[["t1.persons.all"]])` against `r fmt(published_value(d, "t1.persons.all"))` published) remains unexplained.
 
 **1. Walkers who answered "yes" but gave no amount.** `r fmt(walkers(d) - walkers(wra))` participants answered yes to walking for exercise (V10WLKAR4) but left years, months per year and times per month blank. The primary analysis counts them as walkers: `r fmt(walkers(d))` walkers against `r fmt(published_value(d, "t1.persons.walkers"))` published. Coding them as non-walkers gives `r fmt(walkers(wra))` walkers, and the number of replicated results changes from `r replicated("default")` to `r replicated("walker_requires_amount")`. *Question for the authors:* **[placeholder: to be written by the study team]**
 

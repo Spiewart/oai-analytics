@@ -19,7 +19,7 @@ from oai.assumptions import DEFAULT_LABEL
 from oai.config import Settings
 from oai.errors import OAIError
 from oai.manifest import Analysis, ReportSpec
-from oai.runner import is_finished, r_profile_env, run_analysis, run_results_dir
+from oai.runner import RUN_INFO_FILE, is_finished, r_profile_env, run_analysis, run_results_dir
 
 REPORT_DIR = "report"
 FIGURES_DIR = "figures"
@@ -66,11 +66,12 @@ def _spec(analysis: Analysis) -> ReportSpec:
 
 
 def missing_runs(analysis: Analysis, settings: Settings) -> list[str]:
-    """The [report] runs without a finished run_info.json."""
+    """The [report] runs without a finished run of every local step."""
+    local = [s.id for s in analysis.steps if s.stage == "local"]
     return [
         label
         for label in _spec(analysis).runs
-        if not is_finished(run_results_dir(analysis, settings, label))
+        if not is_finished(run_results_dir(analysis, settings, label), local)
     ]
 
 
@@ -102,6 +103,11 @@ def render_report(
     quarto = find_quarto(env, settings.project.get("tools", {}).get("quarto"), bundles)
     results_root = settings.results_dir / analysis.name
     out = results_root / REPORT_DIR
+    if (out / RUN_INFO_FILE).exists():
+        raise ReportError(
+            f"{out} holds a run (a variant named {REPORT_DIR!r}?); rename that variant, "
+            "because rendering replaces this folder"
+        )
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)

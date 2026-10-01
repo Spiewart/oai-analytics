@@ -271,3 +271,27 @@ def test_real_quarto_renders_with_oaireport(tmp_path):
     assert pdf.stat().st_size > 5_000
     assert sorted(p.name for p in pdf.parent.iterdir()) == ["figures", "report.pdf"]
     assert {p.name for p in (pdf.parent / "figures").iterdir()} == {"smoke.pdf", "smoke.png"}
+
+
+def test_partial_run_is_not_finished_for_the_report(tmp_path):
+    two_steps = MANIFEST.replace(
+        "[report]", '[[steps]]\nid = "c"\nlang = "python"\nentry = "a.py"\n\n[report]'
+    )
+    analysis = make_toy(tmp_path, two_steps)
+    settings = make_settings(tmp_path)
+    run_analysis(analysis, settings, step_id="a", echo=quiet)
+    assert missing_runs(analysis, settings) == ["default", "alt"]
+    run_analysis(analysis, settings, echo=quiet)
+    assert missing_runs(analysis, settings) == ["alt"]
+
+
+def test_render_refuses_to_delete_a_run_folder(toy, tmp_path, quarto_env):
+    settings = make_settings(tmp_path)
+    for label in ("default", "alt"):
+        run_analysis(toy, settings, variant=None if label == "default" else label, echo=quiet)
+    clash = tmp_path / "results" / "toy" / "report"
+    clash.mkdir(parents=True)
+    (clash / "run_info.json").write_text("{}")
+    with pytest.raises(ReportError, match="holds a run"):
+        render_report(toy, settings, base_env=quarto_env, echo=quiet)
+    assert (clash / "run_info.json").is_file()

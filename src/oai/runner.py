@@ -20,15 +20,17 @@ import os
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
 from oai import __version__
 from oai.assumptions import DEFAULT_LABEL, Resolved, load_assumptions
+from oai.catalog import catalog_for
 from oai.config import Settings
 from oai.errors import OAIError
+from oai.loader import table_version
 from oai.manifest import STAGES, Analysis, Step
 
 RUN_INFO_FILE = "run_info.json"
@@ -89,13 +91,33 @@ def checkout_state(repo_root: Path | None) -> tuple[str | None, bool]:
     return head.stdout.strip(), bool(status.stdout.strip())
 
 
-def is_finished(results: Path) -> bool:
-    """True when results/run_info.json records a run whose steps all succeeded."""
+def is_finished(results: Path, steps: Iterable[str] = ()) -> bool:
+    """True when results/run_info.json records a successful run that included `steps`.
+
+    A run of only some steps (`--step`, `--stage`) does not finish the steps it skipped.
+    """
     try:
         info = json.loads((results / RUN_INFO_FILE).read_text())
     except (OSError, json.JSONDecodeError):
         return False
-    return isinstance(info, dict) and bool(info.get("finished_utc"))
+    if not isinstance(info, dict) or not info.get("finished_utc"):
+        return False
+    ran = info.get("steps")
+    return isinstance(ran, list) and set(steps) <= set(ran)
+
+
+def data_versions(analysis: Analysis, settings: Settings) -> dict[str, str]:
+    """VERSION of each declared input file, e.g. {"allclinical_10": "10.2.2"}.
+
+    Empty when the release is not available here (no OAI_DATA_DIR, e.g. in the enclave).
+    """
+    try:
+        catalog = catalog_for(settings.data_dir)
+        files = [tf for spec in analysis.inputs for tf in catalog.resolve_input(spec)]
+        versions = {tf.key: table_version(tf) for tf in files}
+    except (OAIError, OSError):
+        return {}
+    return {key: version for key, version in versions.items() if version is not None}
 
 
 def r_profile_env(settings: Settings) -> dict[str, str]:
@@ -185,6 +207,7 @@ def run_analysis(
         "finished_utc": None,
         "oai_version": __version__,
         "steps": [s.id for s in steps],
+        "data_versions": data_versions(analysis, settings),
     }
     info_path = Path(env["OAI_RESULTS_DIR"]) / RUN_INFO_FILE
     info_path.write_text(json.dumps(info, indent=2))
