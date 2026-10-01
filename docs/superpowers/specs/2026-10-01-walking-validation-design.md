@@ -58,10 +58,7 @@ Before submission:
 
 **Overlaps**
 - Walking item × either valid wave: 1,566.
-- Lo 2022 cohort (1,188 persons, replication `default` frame) × either valid wave: 784 (612 walkers, 172 non-walkers).
-  - V06: 765.
-  - V08: 591.
-  - Both: 572.
+- Lo 2022 cohort (1,188 persons) × answered the walking item × either valid wave: 767 (599 walkers, 168 non-walkers; see amendment 10).
 
 ## 4. Key decisions
 
@@ -103,7 +100,7 @@ Each person's value is the mean over their valid waves. Per-wave values are kept
 
 Samples:
 - the validation sample (n ≈ 1,566);
-- the Lo subset (n = 784), repeated where strata require it.
+- the Lo subset (n = 767), repeated where strata require it.
 
 Analyses:
 1. **Known groups.** Device measures by walker status: medians, Hodges–Lehmann differences, rank-biserial effect size, and median regression adjusted for the covariates.
@@ -219,8 +216,8 @@ Variants: `wave48`, `wave72`, `walker_any_bout`, `walker_150min`, `nonwear60`, `
 | Estimate | n | Approx. 95% CI half-width |
 |---|---|---|
 | Sensitivity, specificity (validation sample) | ~1,566 | ±0.02–0.04 |
-| Sensitivity (Lo subset) | 612 walkers | ±0.03–0.04 |
-| Specificity (Lo subset) | 172 non-walkers | ±0.07 |
+| Sensitivity (Lo subset) | 599 walkers | ±0.03–0.04 |
+| Specificity (Lo subset) | 168 non-walkers | ±0.07 |
 | Specificity, per outcome stratum | | ±0.10–0.20 |
 | Spearman ρ | ~1,200 walkers | ±0.06 |
 
@@ -288,3 +285,4 @@ These supersede the sections they name.
 7. **Validation-sample coding (§5).** Participants who did not answer the walking item are excluded from the validation sample (`missing_as = "exclude"`). The Lo cohort keeps the replication's coding.
 8. **PASE walking subscore (§6).** Computed with the Washburn et al. 1993 constants: days 0/1.5/3.5/6, hours 0.5/1.5/3/5, weight 20. The constants are ledgered.
 9. **Parallelism (§7).** Bias-analysis iterations run with `parallel::mclapply`, using cores from `OAI_R_CORES`. Iteration i uses `set.seed(seed + i)`, so results do not depend on the core count.
+10. **Lo validation subset (§3, §10).** The Lo 2022 participants used for validation and for the bias-analysis priors are those who answered the walking item and have a valid device wave: 767, not 784. The replication codes 18 participants who never answered the item as non-walkers; their answers cannot be validated, so they are excluded from the 2×2 counts but remain in the bias analysis as classified non-walkers.
