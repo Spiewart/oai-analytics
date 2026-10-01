@@ -21,6 +21,7 @@ test_that("median_regression returns the median difference", {
   est <- median_regression(y ~ group, d, "group")
   expect_equal(est[["estimate"]], 3, tolerance = 1e-6)
   expect_error(median_regression(y ~ group, d, "other"), "other")
+  expect_no_warning(median_regression(y ~ group, d, "group"))
 })
 
 test_that("spearman_ci, deattenuate and wave_reliability", {

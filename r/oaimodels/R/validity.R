@@ -43,13 +43,22 @@ jonckheere <- function(x, group, permutations = 2000, seed = 1) {
   c(statistic = observed, p = (1 + sum(perm >= observed)) / (permutations + 1))
 }
 
+# Muffle only quantreg's "Solution may be nonunique" warning; any other warning still surfaces.
+quiet_nonunique <- function(expr) {
+  withCallingHandlers(expr, warning = function(w) {
+    if (grepl("nonunique", conditionMessage(w), fixed = TRUE)) invokeRestart("muffleWarning")
+  })
+}
+
 #' Median (quantile 0.5) regression coefficient for one term, with a 95% CI
 median_regression <- function(formula, data, term) {
   if (!requireNamespace("quantreg", quietly = TRUE)) {
     stop("median_regression() needs the quantreg package", call. = FALSE)
   }
-  fit <- quantreg::rq(formula, tau = 0.5, data = data)
-  s <- summary(fit, se = "nid")$coefficients
+  # Non-unique medians are expected with discrete covariates; the returned estimate is one
+  # valid solution.
+  fit <- quiet_nonunique(quantreg::rq(formula, tau = 0.5, data = data))
+  s <- quiet_nonunique(summary(fit, se = "nid"))$coefficients
   if (!term %in% rownames(s)) {
     stop("term ", term, " is not in the model (", paste(rownames(s), collapse = ", "), ")",
          call. = FALSE)
