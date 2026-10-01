@@ -87,21 +87,36 @@ def person_outcomes(knees: pl.DataFrame) -> pl.DataFrame:
     )
 
 
+def check_walker_coding(answered: pl.DataFrame, lo_people: pl.DataFrame) -> None:
+    """Stop if any participant in both frames is a walker in one coding and not in the other."""
+    differ = (
+        answered.select("ID", "walker")
+        .join(lo_people.select("ID", "lo_walker"), on="ID", how="inner")
+        .filter(pl.col("walker") != pl.col("lo_walker"))
+        .height
+    )
+    if differ:
+        raise CohortError(
+            f"{differ} Lo 2022 participant{'s' if differ != 1 else ''} coded differently here "
+            f"and in {LO2022}; check the exposure coding"
+        )
+
+
 def read_lo_frame(
     work_dir: Path, label: str, yes_without_amount_as: str
 ) -> tuple[pl.DataFrame, dict]:
     """The replication's knee frame and resolved assumptions for `label`, checked for coding."""
     d = work_dir / LO2022 / label
     frame, resolved = d / "frame.parquet", d / "assumptions.resolved.json"
+    command = f"oai run {LO2022}" + ("" if label == "default" else f" --variant {label}")
     if not frame.is_file() or not resolved.is_file():
-        command = f"oai run {LO2022}" + ("" if label == "default" else f" --variant {label}")
         raise CohortError(f"no {LO2022} frame for {label!r} in {d}; run `{command}` first")
     values = {k: v["value"] for k, v in json.loads(resolved.read_text())["assumptions"].items()}
     coding = values["exposure.yes_without_amount_as"]
     if coding != yes_without_amount_as:
         raise CohortError(
             f"{LO2022} {label!r} codes yes-without-amount as {coding!r}, but this run uses "
-            f"{yes_without_amount_as!r}; set bias.lo2022_label to the matching run"
+            f"{yes_without_amount_as!r}; set bias.lo2022_label to the matching run; run `{command}`"
         )
     return pl.read_parquet(frame), values
 

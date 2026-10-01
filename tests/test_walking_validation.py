@@ -10,6 +10,7 @@ sys.path.insert(0, str(REPO / "analyses" / "walking_validation"))
 
 from wv import (  # noqa: E402
     CohortError,
+    check_walker_coding,
     combine_waves,
     lo_model,
     person_outcomes,
@@ -110,8 +111,9 @@ def write_lo(tmp_path, label, coding):
 
 def test_read_lo_frame_rejects_other_coding(tmp_path):
     write_lo(tmp_path, "default", "walker")
-    with pytest.raises(CohortError, match="codes yes-without-amount as 'walker'"):
+    with pytest.raises(CohortError, match="codes yes-without-amount as 'walker'") as err:
         read_lo_frame(tmp_path, "default", "non-walker")
+    assert "oai run lo2022_walking" in str(err.value)
     frame, values = read_lo_frame(tmp_path, "default", "walker")
     assert frame.height == 1 and values["model.corstr"] == "exchangeable"
 
@@ -135,3 +137,16 @@ def test_lo_model_mirrors_models_r():
         "corstr": "exchangeable",
         "covariates": "age,sex,kl0",
     }
+
+
+def test_check_walker_coding_agrees():
+    answered = pl.DataFrame({"ID": [1, 2, 3], "walker": [True, False, True]})
+    lo_people = pl.DataFrame({"ID": [1, 2, 4], "lo_walker": [True, False, False]})
+    check_walker_coding(answered, lo_people)
+
+
+def test_check_walker_coding_counts_differences():
+    answered = pl.DataFrame({"ID": [1, 2, 3], "walker": [True, True, False]})
+    lo_people = pl.DataFrame({"ID": [1, 2, 4], "lo_walker": [True, False, True]})
+    with pytest.raises(CohortError, match="1 Lo 2022 participant"):
+        check_walker_coding(answered, lo_people)

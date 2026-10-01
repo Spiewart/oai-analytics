@@ -12,6 +12,7 @@ from wv import (
     MEASURES,
     OUTCOMES,
     CohortError,
+    check_walker_coding,
     combine_waves,
     lo_model,
     person_outcomes,
@@ -83,6 +84,7 @@ combined = with_device_walker(
 label = A["bias.lo2022_label"]
 lo_knees, lo_values = read_lo_frame(settings.work_dir, label, A["exposure.yes_without_amount_as"])
 lo_people = person_outcomes(lo_knees).with_columns(pl.lit(True).alias("in_lo"))
+check_walker_coding(answered, lo_people)
 
 persons = (
     answered.join(combined, on="ID", how="inner")
@@ -98,11 +100,6 @@ persons = (
     )
 )
 persons = with_amount_level(persons).sort("ID")
-mismatch = persons.filter(pl.col("in_lo") & (pl.col("walker") != pl.col("lo_walker"))).height
-if mismatch:
-    raise CohortError(
-        f"{mismatch} Lo 2022 participants are coded differently here; check the coding"
-    )
 persons.write_parquet(frames / "frame.parquet")
 
 covariates = list(lo_values["model.covariates"])
