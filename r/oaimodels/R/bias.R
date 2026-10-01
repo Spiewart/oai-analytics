@@ -90,6 +90,9 @@ pba <- function(persons, knees, fit, priors, differential = FALSE, iterations = 
     truth <- reclassify(persons, se, sp)
     if (is.null(truth)) return(discarded_row(i))
     knees[[exposure]] <- truth[match(knees$ID, persons$ID)]
+    # A draw just inside the feasibility edge can reclassify every fitted knee to one level, and
+    # no model can estimate an exposure effect from a constant exposure
+    if (length(unique(knees[[exposure]])) < 2) return(discarded_row(i))
     est <- fit(knees)
     if (!is.finite(est[["log_or"]]) || !is.finite(est[["se"]])) return(discarded_row(i))
     data.frame(iter = i, log_or = est[["log_or"]], se = est[["se"]],

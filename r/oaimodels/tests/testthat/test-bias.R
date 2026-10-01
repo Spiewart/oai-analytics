@@ -95,6 +95,27 @@ test_that("impossible priors are discarded, not fatal", {
   }
 })
 
+test_that("a draw that leaves a single exposure level is discarded, not fatal", {
+  # p_obs = 0.5 in both outcome strata with Se = 0.9 and Sp just above 0.5: the implied true
+  # prevalence (2.5e-9) passes reclassify()'s feasibility check, but every knee comes out a
+  # non-walker, and the model cannot estimate a walker coefficient from a constant exposure
+  n <- 40
+  persons <- data.frame(ID = seq_len(n), observed = rep(c(TRUE, FALSE), n / 2),
+                        stratum = rep(c("case", "noncase"), each = n / 2))
+  knees <- data.frame(ID = persons$ID, y = as.integer(persons$stratum == "case"),
+                      walker = persons$observed)
+  priors <- data.frame(stratum = "all", se = 0.9, sp = 0.5 + 1e-9)
+  for (cores in if (.Platform$OS.type == "windows") 1 else c(1, 2)) {
+    draws <- pba(persons, knees, glm_fit, priors, iterations = 4, seed = 1, cores = cores)
+    expect_equal(nrow(draws), 4)
+    expect_true(all(draws$discarded))
+    s <- summarise_pba(draws)
+    expect_true(is.na(s$or))
+    expect_equal(s$discarded, 1)
+    expect_equal(s$n, 4)
+  }
+})
+
 test_that("differential priors must cover every stratum", {
   d <- person_data()
   bad <- data.frame(stratum = "case", se1 = 9, se2 = 2, sp1 = 9, sp2 = 2)
@@ -151,7 +172,6 @@ test_that("pba is identical across core counts", {
 })
 
 test_that("pba recovers a true OR under known non-differential misclassification", {
-  skip_if(Sys.getenv("OAI_SLOW") == "", "set OAI_SLOW=1 to run the simulation test")
   set.seed(11)
   n <- 4000
   truth <- stats::runif(n) < 0.5

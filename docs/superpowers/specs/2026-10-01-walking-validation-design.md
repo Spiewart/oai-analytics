@@ -207,7 +207,7 @@ Variants: `wave48`, `wave72`, `walker_any_bout`, `walker_150min`, `nonwear60`, `
 - **Bias analysis, unit tests:**
   - with sensitivity and specificity fixed at 1, every iteration returns the observed OR;
   - with fixed values below 1 on a small synthetic cohort, the summary-level correction matches the closed-form result.
-- **Bias analysis, simulation test (`slow`).** Generate a cohort with known true OR and known non-differential misclassification. The probabilistic analysis's median adjusted OR is within 0.05 of the truth over a fixed seed.
+- **Bias analysis, simulation test (runs by default; about a second).** Generate a cohort with known true OR and known non-differential misclassification. The probabilistic analysis's median adjusted OR is within 0.05 of the truth over a fixed seed.
 - **Validity statistics.** Small synthetic datasets with known Spearman, sensitivity and specificity, and Hodges–Lehmann values.
 - **Report.** Renders end to end (`realdata`), and egress passes.
 
