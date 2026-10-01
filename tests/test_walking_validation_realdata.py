@@ -8,10 +8,11 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from oai.config import get_settings
+from oai.config import ConfigError, get_settings, load_settings
 from oai.export.egress import check_egress
 from oai.manifest import find_analysis
-from oai.runner import run_analysis
+from oai.report import ReportError, find_quarto, render_report
+from oai.runner import is_finished, resolve_assumptions, run_analysis, run_results_dir
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -48,7 +49,9 @@ def test_walking_validation_end_to_end():
         "validity.jt_permutations": 99,
     }
     run_analysis(analysis, settings, overrides=fast, echo=quiet)
-    out = next((settings.results_dir / "walking_validation").glob("default+custom-*"))
+    # this run's own folder (the label the runner derives from these overrides), not whichever
+    # earlier default+custom-* run the filesystem lists first
+    out = run_results_dir(analysis, settings, resolve_assumptions(analysis, None, fast).label)
     comparison = pl.read_csv(out / "comparison.csv")
     device = comparison.filter(pl.col("metric").str.starts_with("device."))
     assert device.height == 8, device
@@ -75,6 +78,65 @@ def test_walking_validation_end_to_end():
     egress = settings.project["egress"]
     report = check_egress(
         out,
+        min_cell=egress["min_cell"],
+        small_cell=egress["small_cell"],
+        ignore_id_pattern_columns=egress["ignore_id_pattern_columns"],
+    )
+    assert report.ok, report.problems
+
+
+def _report_tools_ready() -> bool:
+    try:
+        find_quarto(os.environ)
+    except ReportError:
+        return False
+    if shutil.which("Rscript") is None:
+        return False
+    probe = subprocess.run(
+        ["Rscript", "-e", "library(knitr); library(ggplot2); library(tinytable)"],
+        cwd=REPO / "r",
+        capture_output=True,
+        env={**os.environ, "RENV_PROFILE": "report"},
+    )
+    return probe.returncode == 0
+
+
+def _existing_run() -> Path | None:
+    """The developer's own finished default run, looked up at collection time, before the
+    autouse fixture points OAI_RESULTS_DIR at a throwaway folder."""
+    try:
+        run = load_settings().results_dir / "walking_validation" / "default"
+    except ConfigError:
+        return None
+    return run if is_finished(run) else None
+
+
+EXISTING_RUN = _existing_run()
+
+
+@pytest.mark.realdata
+@pytest.mark.skipif(
+    not _report_tools_ready(), reason="Quarto or the r/ report profile is unavailable"
+)
+@pytest.mark.skipif(
+    EXISTING_RUN is None,
+    reason="no finished walking_validation default run; `oai run walking_validation` first",
+)
+def test_walking_validation_report_renders():
+    # Renders from the existing full run without --run (a run takes ~8 minutes). The run's
+    # aggregate results are copied into this test's throwaway results folder, so rendering never
+    # replaces the developer's own report.
+    settings = get_settings()
+    analysis = find_analysis("walking_validation", settings.analyses_dir)
+    shutil.copytree(EXISTING_RUN, run_results_dir(analysis, settings, "default"))
+    pdf = render_report(analysis, settings, echo=lambda _: None)
+    assert pdf.stat().st_size > 50_000
+    figures = {p.name for p in (pdf.parent / "figures").iterdir()}
+    for name in ("known_groups", "strata", "tipping", "forest_bias"):
+        assert {f"{name}.pdf", f"{name}.png"} <= figures, name
+    egress = settings.project["egress"]
+    report = check_egress(
+        pdf.parent,
         min_cell=egress["min_cell"],
         small_cell=egress["small_cell"],
         ignore_id_pattern_columns=egress["ignore_id_pattern_columns"],

@@ -12,6 +12,7 @@ from wv import (  # noqa: E402
     CohortError,
     check_walker_coding,
     combine_waves,
+    copy_lo_results,
     lo_model,
     person_outcomes,
     read_lo_frame,
@@ -130,9 +131,37 @@ def test_read_lo_frame_rejects_other_coding(tmp_path):
     write_lo(tmp_path, "default", "walker")
     with pytest.raises(CohortError, match="codes yes-without-amount as 'walker'") as err:
         read_lo_frame(tmp_path, "default", "non-walker")
-    assert "oai run lo2022_walking" in str(err.value)
+    assert "`oai run lo2022_walking`" in str(err.value)
+    assert "--variant default" not in str(err.value)
     frame, values = read_lo_frame(tmp_path, "default", "walker")
     assert frame.height == 1 and values["model.corstr"] == "exchangeable"
+
+
+def test_copy_lo_results_names_a_command_the_cli_accepts(tmp_path):
+    out = tmp_path / "out"
+    out.mkdir()
+    # the replication's default run takes no --variant (the CLI rejects --variant default)
+    with pytest.raises(CohortError, match="comparison.csv is missing") as err:
+        copy_lo_results(tmp_path / "lo2022_walking" / "default", "default", out)
+    assert "`oai run lo2022_walking`" in str(err.value)
+    assert "--variant default" not in str(err.value)
+    with pytest.raises(CohortError) as err:
+        copy_lo_results(tmp_path / "lo2022_walking" / "x", "walker_requires_amount", out)
+    assert "`oai run lo2022_walking --variant walker_requires_amount`" in str(err.value)
+
+
+def test_copy_lo_results(tmp_path):
+    lo = tmp_path / "lo2022_walking" / "default"
+    lo.mkdir(parents=True)
+    pl.DataFrame({"metric": ["t2.new_pain.or_adj", "t1.age"], "ours": ["0.6", "61"]}).write_csv(
+        lo / "comparison.csv"
+    )
+    pl.DataFrame({"outcome": ["new_pain"], "or": [0.6]}).write_csv(lo / "table2.csv")
+    out = tmp_path / "out"
+    out.mkdir()
+    copy_lo_results(lo, "default", out)
+    assert pl.read_csv(out / "lo2022_t2.csv")["metric"].to_list() == ["t2.new_pain.or_adj"]
+    assert (out / "lo2022_table2.csv").read_text() == (lo / "table2.csv").read_text()
 
 
 def test_read_lo_frame_names_the_command(tmp_path):

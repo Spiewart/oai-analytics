@@ -4,6 +4,7 @@ link to the Lo 2022 replication's knee frame."""
 from __future__ import annotations
 
 import json
+import shutil
 from pathlib import Path
 
 import polars as pl
@@ -112,13 +113,19 @@ def check_walker_coding(answered: pl.DataFrame, lo_people: pl.DataFrame) -> None
         )
 
 
+def lo_command(label: str) -> str:
+    """The command that produces the replication's run `label` (its default run takes no
+    --variant)."""
+    return f"oai run {LO2022}" + ("" if label == "default" else f" --variant {label}")
+
+
 def read_lo_frame(
     work_dir: Path, label: str, yes_without_amount_as: str
 ) -> tuple[pl.DataFrame, dict]:
     """The replication's knee frame and resolved assumptions for `label`, checked for coding."""
     d = work_dir / LO2022 / label
     frame, resolved = d / "frame.parquet", d / "assumptions.resolved.json"
-    command = f"oai run {LO2022}" + ("" if label == "default" else f" --variant {label}")
+    command = lo_command(label)
     if not frame.is_file() or not resolved.is_file():
         raise CohortError(f"no {LO2022} frame for {label!r} in {d}; run `{command}` first")
     values = {k: v["value"] for k, v in json.loads(resolved.read_text())["assumptions"].items()}
@@ -129,6 +136,20 @@ def read_lo_frame(
             f"{yes_without_amount_as!r}; set bias.lo2022_label to the matching run; run `{command}`"
         )
     return pl.read_parquet(frame), values
+
+
+def copy_lo_results(lo_results: Path, label: str, results: Path) -> None:
+    """Copy the replication's Table 2 rows (lo2022_t2.csv) and table (lo2022_table2.csv)."""
+    for name, target in (("comparison.csv", "lo2022_t2.csv"), ("table2.csv", "lo2022_table2.csv")):
+        source = lo_results / name
+        if not source.is_file():
+            raise CohortError(f"{source} is missing; run `{lo_command(label)}` first")
+        if name == "comparison.csv":
+            pl.read_csv(source).filter(pl.col("metric").str.starts_with("t2.")).write_csv(
+                results / target
+            )
+        else:
+            shutil.copyfile(source, results / target)
 
 
 def lo_model(values: dict) -> dict[str, str]:

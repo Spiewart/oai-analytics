@@ -2,7 +2,6 @@
 
 import json
 import os
-import shutil
 from functools import partial
 from pathlib import Path
 
@@ -11,9 +10,9 @@ from wv import (
     LO2022,
     MEASURES,
     OUTCOMES,
-    CohortError,
     check_walker_coding,
     combine_waves,
+    copy_lo_results,
     lo_model,
     person_outcomes,
     read_lo_frame,
@@ -115,17 +114,7 @@ lo_knees.select([c for c in keep if c in lo_knees.columns]).write_parquet(
 
 # The runner points OAI_RESULTS_DIR at <results_dir>/<analysis>/<label>, so settings.results_dir
 # inside a step is that per-run folder; the replication's results are its sibling analysis.
-lo_results = results.parent.parent / LO2022 / label
-for name, target in (("comparison.csv", "lo2022_t2.csv"), ("table2.csv", "lo2022_table2.csv")):
-    source = lo_results / name
-    if not source.is_file():
-        raise CohortError(f"{source} is missing; run `oai run {LO2022} --variant {label}` first")
-    if name == "comparison.csv":
-        pl.read_csv(source).filter(pl.col("metric").str.starts_with("t2.")).write_csv(
-            results / target
-        )
-    else:
-        shutil.copyfile(source, results / target)
+copy_lo_results(results.parent.parent / LO2022 / label, label, results)
 
 lo_subset = persons.filter("in_lo")
 flow = pl.DataFrame(
