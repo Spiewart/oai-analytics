@@ -256,3 +256,35 @@ The probabilistic bias analysis carries the imprecision of specificity within ou
 
 - The exact habitual-walker threshold could be informed by the distribution of purposeful-bout days in the validation sample. The primary definition is fixed before outcomes are examined, as above.
 - Whether a second paper should report the PASE agreement aims using the same device derivation (likely yes; `activity_agreement`).
+
+## 15. Amendments (2026-10-01, from planning-time prototypes)
+
+These supersede the sections they name.
+
+1. **Device algorithm (§5, §9).** A prototype on both waves showed that the release's processing is reproduced exactly when two rules are applied together:
+   - non-wear runs are found within each calendar day (`PAStudyDay`) and need ≥90 minutes, not >90;
+   - an MV bout spans its start through its last minute at or above the cutpoint, including its interior below-cutpoint minutes.
+
+   Results:
+
+   | | 48 months | 72 months |
+   |---|---|---|
+   | Release person-days matched | 13,040 / 13,040 | 9,399 / 9,399 |
+   | Wear minutes identical | 99.75% | 99.60% |
+   | MV and bout minutes identical | 100% | 100% |
+   | Valid persons (ours / release) | 1,928 / 1,927 | 1,394 / 1,394 |
+
+   The §9 tests use these tolerances.
+2. **Reclassification happens within outcome strata (§7).** PPV and NPV are always computed within outcome strata (person-level case and non-case). Reclassifying with the pooled prevalence would bias every scenario toward the null.
+   - The non-differential scenario shares one sensitivity/specificity draw across strata. The differential scenario draws per stratum.
+   - Draws with Se + Sp ≤ 1 are discarded and counted, along with those implying an impossible prevalence.
+3. **Confidence intervals (§6).** Sensitivity, specificity, PPV and NPV use Wilson intervals: persons are independent rows, so a bootstrap adds nothing for a single proportion. The AUC keeps a percentile bootstrap.
+4. **R environment (§8).** The R steps need `quantreg`, which is added only to the `report` renv profile. A new `analysis.toml` option, `[r] profile = "report"` (local-only), makes the runner set `RENV_PROFILE` for that analysis's R steps. The default `r/renv.lock` is unchanged.
+5. **Replication link (§8).**
+   - **Copied results:** the `cohort` step copies the replication's Table 2 rows (`comparison.csv` `t2.*`, `table2.csv`) into this analysis's results as `lo2022_t2.csv` and `lo2022_table2.csv`.
+   - **Reproduction check:** before simulating, the `bias` step stops unless its observed odds ratios equal the replication's (|ΔOR| ≤ 1e-8).
+   - **Coding check:** the `cohort` step stops if any Lo-cohort participant's walker coding differs between the two analyses.
+6. **Report figures (§8).** The known-groups figure is drawn from aggregate quartiles, not participant-level points, so the PDF stays aggregate.
+7. **Validation-sample coding (§5).** Participants who did not answer the walking item are excluded from the validation sample (`missing_as = "exclude"`). The Lo cohort keeps the replication's coding.
+8. **PASE walking subscore (§6).** Computed with the Washburn et al. 1993 constants: days 0/1.5/3.5/6, hours 0.5/1.5/3/5, weight 20. The constants are ledgered.
+9. **Parallelism (§7).** Bias-analysis iterations run with `parallel::mclapply`, using cores from `OAI_R_CORES`. Iteration i uses `set.seed(seed + i)`, so results do not depend on the core count.
