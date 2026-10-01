@@ -36,5 +36,6 @@ V14 = { verified = false }
 [egress]
 small_cell = "warn"  # off | warn | fail
 min_cell = 5         # counts 1..min_cell-1 are flagged
-# Columns whose values legitimately look like 7-digit numbers (e.g. GWAS base-pair positions).
-ignore_id_pattern_columns = ["POS", "BP", "position"]
+# Columns (and JSON keys, e.g. run_info.json's git_commit) whose values legitimately look
+# like 7-digit numbers: GWAS base-pair positions, git commit hashes.
+ignore_id_pattern_columns = ["POS", "BP", "position", "git_commit"]

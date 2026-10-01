@@ -1,9 +1,13 @@
+import json
+import re
+import subprocess
 import textwrap
 from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
 
+import oai
 from oai import runner
 from oai.assumptions import AssumptionsError
 from oai.cli import app
@@ -210,3 +214,60 @@ def test_assumptions_env_points_at_per_label_results_copy(labelled, tmp_path):
     )
     results = tmp_path / "results" / "toy" / "indep"
     assert Path((results / "where.txt").read_text()).parent == results.resolve()
+
+
+def read_run_info(tmp_path, label="default"):
+    return json.loads((tmp_path / "results" / "toy" / label / "run_info.json").read_text())
+
+
+def test_run_info_records_a_finished_run(toy, tmp_path):
+    run_analysis(toy, make_settings(tmp_path), stage="local", echo=lambda _: None)
+    info = read_run_info(tmp_path)
+    assert info["analysis"] == "toy"
+    assert info["label"] == "default"
+    assert info["variant"] is None
+    assert info["steps"] == ["a"]
+    assert info["git_commit"] is None and info["git_dirty"] is False  # repo_root=None
+    assert info["oai_version"] == oai.__version__
+    assert info["started_utc"] <= info["finished_utc"]
+    assert runner.is_finished(tmp_path / "results" / "toy" / "default")
+
+
+def test_run_info_has_no_finish_time_when_a_step_fails(toy, tmp_path):
+    (toy.root / "a.py").write_text("raise SystemExit(3)\n")
+    with pytest.raises(RunnerError, match="exit code 3"):
+        run_analysis(toy, make_settings(tmp_path), stage="local", echo=lambda _: None)
+    assert read_run_info(tmp_path)["finished_utc"] is None
+    assert not runner.is_finished(tmp_path / "results" / "toy" / "default")
+
+
+@pytest.mark.parametrize("content", [None, "not json", "[]", '{"finished_utc": null}'])
+def test_is_finished_false_for_missing_or_unfinished(tmp_path, content):
+    if content is not None:
+        (tmp_path / "run_info.json").write_text(content)
+    assert not runner.is_finished(tmp_path)
+
+
+def test_checkout_state_reports_commit_and_uncommitted_changes(tmp_path):
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    def git(*args):
+        subprocess.run(["git", *args], cwd=repo, check=True, capture_output=True)
+
+    git("init", "-q")
+    (repo / "f.txt").write_text("x")
+    git("add", "f.txt")
+    git("-c", "user.name=t", "-c", "user.email=t@example.com", "commit", "-qm", "init")
+    commit, dirty = runner.checkout_state(repo)
+    assert re.fullmatch(r"[0-9a-f]{40}", commit) and dirty is False
+    (repo / "f.txt").write_text("y")
+    assert runner.checkout_state(repo) == (commit, True)
+    assert runner.checkout_state(None) == (None, False)
+    outside = tmp_path / "plain"
+    outside.mkdir()
+    assert runner.checkout_state(outside) == (None, False)
+
+
+def test_r_profile_env_only_inside_a_checkout(tmp_path):
+    assert runner.r_profile_env(make_settings(tmp_path)) == {}

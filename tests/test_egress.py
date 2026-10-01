@@ -1,3 +1,7 @@
+import json
+import tomllib
+from pathlib import Path
+
 import polars as pl
 import pytest
 from typer.testing import CliRunner
@@ -6,6 +10,7 @@ from oai.cli import app
 from oai.export.egress import EgressError, check_egress, small_cell_violations
 
 FAKE_ID = int("9" + "000123")  # built at runtime; never type the pattern literally
+REPO_ROOT = Path(__file__).resolve().parents[1]
 
 
 def test_clean_aggregate_results_pass(tmp_path):
@@ -171,3 +176,34 @@ def test_events_columns_count_as_counts(tmp_path):
     pl.DataFrame({"outcome": ["a"], "n": [100], "events": [3]}).write_csv(tmp_path / "table2.csv")
     [warning] = check_egress(tmp_path, min_cell=5).warnings
     assert "'events'" in warning
+
+
+# A hex commit with FAKE_ID (already defined in this file) between letters: the ID pattern
+# matches it. Built at runtime, like FAKE_ID, so the leak guard never sees the literal.
+SHA_LIKE_ID = f"ab{FAKE_ID}cd" + "0" * 29
+
+
+def test_ignored_json_keys_skip_id_like_commit_hashes(tmp_path):
+    (tmp_path / "run_info.json").write_text(
+        json.dumps({"git_commit": SHA_LIKE_ID, "label": "default"})
+    )
+    assert not check_egress(tmp_path, min_cell=5).ok  # scanned unless the key is ignored
+    assert check_egress(tmp_path, min_cell=5, ignore_id_pattern_columns=["git_commit"]).ok
+
+
+def test_ignored_json_keys_do_not_hide_other_values(tmp_path):
+    (tmp_path / "run_info.json").write_text(
+        json.dumps({"git_commit": "abc", "nested": {"note": f"x{FAKE_ID}y"}})
+    )
+    report = check_egress(tmp_path, min_cell=5, ignore_id_pattern_columns=["git_commit"])
+    assert not report.ok
+
+
+def test_unparseable_json_is_scanned_whole(tmp_path):
+    (tmp_path / "broken.json").write_text(f'{{"git_commit": "ab{FAKE_ID}cd"')
+    assert not check_egress(tmp_path, min_cell=5, ignore_id_pattern_columns=["git_commit"]).ok
+
+
+def test_project_config_ignores_git_commit():
+    project = tomllib.loads((REPO_ROOT / "config" / "oai.toml").read_text())
+    assert "git_commit" in project["egress"]["ignore_id_pattern_columns"]

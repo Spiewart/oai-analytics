@@ -9,22 +9,29 @@ the analysis folder with:
                    explicitly to the bundle's data/, which is then used as-is)
   OAI_RESULTS_DIR  aggregate outputs: <results_dir>/<analysis>/<label>
   OAI_ASSUMPTIONS  the per-label assumptions.resolved.json in OAI_RESULTS_DIR
+Each run also writes OAI_RESULTS_DIR/run_info.json (analysis, label, variant, git commit,
+start/finish times, oai version, steps); finished_utc stays null unless every step succeeds.
 """
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
 import sys
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
+from oai import __version__
 from oai.assumptions import DEFAULT_LABEL, Resolved, load_assumptions
 from oai.config import Settings
 from oai.errors import OAIError
 from oai.manifest import STAGES, Analysis, Step
+
+RUN_INFO_FILE = "run_info.json"
 
 
 class RunnerError(OAIError):
@@ -62,6 +69,47 @@ def frame_dir(
     return Path(override) if override else settings.work_dir / analysis.name / label
 
 
+def run_results_dir(analysis: Analysis, settings: Settings, label: str = DEFAULT_LABEL) -> Path:
+    """Aggregate outputs of one run: <results_dir>/<analysis>/<label>."""
+    return settings.results_dir / analysis.name / label
+
+
+def checkout_state(repo_root: Path | None) -> tuple[str | None, bool]:
+    """(HEAD commit, has uncommitted changes) of a git checkout; (None, False) outside one."""
+    if repo_root is None or shutil.which("git") is None:
+        return None, False
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"], cwd=repo_root, capture_output=True, text=True
+    )
+    if head.returncode != 0:
+        return None, False
+    status = subprocess.run(
+        ["git", "status", "--porcelain"], cwd=repo_root, capture_output=True, text=True
+    )
+    return head.stdout.strip(), bool(status.stdout.strip())
+
+
+def is_finished(results: Path) -> bool:
+    """True when results/run_info.json records a run whose steps all succeeded."""
+    try:
+        info = json.loads((results / RUN_INFO_FILE).read_text())
+    except (OSError, json.JSONDecodeError):
+        return False
+    return isinstance(info, dict) and bool(info.get("finished_utc"))
+
+
+def r_profile_env(settings: Settings) -> dict[str, str]:
+    """OAI_R_DIR and R_PROFILE_USER, so R starts through r/step-profile.R (checkouts only)."""
+    r_profile = settings.repo_root / "r" / "step-profile.R" if settings.repo_root else None
+    if r_profile is None or not r_profile.is_file():
+        return {}
+    return {"OAI_R_DIR": str(r_profile.parent), "R_PROFILE_USER": str(r_profile)}
+
+
+def _utc_now() -> str:
+    return datetime.now(UTC).isoformat(timespec="seconds")
+
+
 def resolve_assumptions(
     analysis: Analysis, variant: str | None = None, overrides: Mapping[str, object] | None = None
 ) -> Resolved:
@@ -78,7 +126,7 @@ def step_env(
     env = dict(os.environ if base_env is None else base_env)
     resolved = resolved or resolve_assumptions(analysis)
     frames = frame_dir(analysis, settings, env, resolved.label)
-    results = settings.results_dir / analysis.name / resolved.label
+    results = run_results_dir(analysis, settings, resolved.label)
     frames.mkdir(parents=True, exist_ok=True)
     results.mkdir(parents=True, exist_ok=True)
     resolved.write(frames)
@@ -92,10 +140,8 @@ def step_env(
         OAI_ASSUMPTIONS=str(assumptions_path),
         OAI_RUN_LABEL=resolved.label,
     )
-    r_profile = settings.repo_root / "r" / "step-profile.R" if settings.repo_root else None
-    if r_profile is not None and r_profile.is_file():
-        env.setdefault("OAI_R_DIR", str(r_profile.parent))
-        env.setdefault("R_PROFILE_USER", str(r_profile))
+    for key, value in r_profile_env(settings).items():
+        env.setdefault(key, value)
     return env
 
 
@@ -128,6 +174,20 @@ def run_analysis(
         )
     commands = [(step, step_command(step, analysis)) for step in steps]
     env = step_env(analysis, settings, base_env, resolved=resolved)
+    commit, dirty = checkout_state(settings.repo_root)
+    info: dict[str, object] = {
+        "analysis": analysis.name,
+        "label": resolved.label,
+        "variant": resolved.variant,
+        "git_commit": commit,
+        "git_dirty": dirty,
+        "started_utc": _utc_now(),
+        "finished_utc": None,
+        "oai_version": __version__,
+        "steps": [s.id for s in steps],
+    }
+    info_path = Path(env["OAI_RESULTS_DIR"]) / RUN_INFO_FILE
+    info_path.write_text(json.dumps(info, indent=2))
     results: list[StepResult] = []
     for step, cmd in commands:
         echo(f"==> {analysis.name}:{step.id} [{resolved.label}] ({step.lang}, {step.stage})")
@@ -135,4 +195,6 @@ def run_analysis(
         results.append(StepResult(step.id, proc.returncode))
         if proc.returncode != 0:
             raise RunnerError(f"step {step.id!r} failed with exit code {proc.returncode}")
+    info["finished_utc"] = _utc_now()
+    info_path.write_text(json.dumps(info, indent=2))
     return results

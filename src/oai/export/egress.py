@@ -6,10 +6,12 @@ formats, which are listed for manual review.
 
 from __future__ import annotations
 
+import json
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
@@ -116,6 +118,22 @@ def _read_txt_table(path: Path) -> pl.DataFrame | None:
     return df if df.width > 1 else None
 
 
+def _without_keys(text: str, keys: set[str]) -> str:
+    """JSON text minus the values of `keys` at any depth; unparseable text is returned whole."""
+
+    def strip(value: Any) -> Any:
+        if isinstance(value, dict):
+            return {k: strip(v) for k, v in value.items() if k not in keys}
+        if isinstance(value, list):
+            return [strip(v) for v in value]
+        return value
+
+    try:
+        return json.dumps(strip(json.loads(text)))
+    except json.JSONDecodeError:
+        return text
+
+
 def check_egress(
     results_dir: Path,
     *,
@@ -155,7 +173,10 @@ def check_egress(
             elif suffix == ".parquet":
                 check_frame(pl.read_parquet(path), rel)
             elif suffix in TEXT_SUFFIXES or suffix in SCANNED_REVIEW_SUFFIXES:
-                if PARTICIPANT_ID.search(path.read_text(errors="replace")):
+                text = path.read_text(errors="replace")
+                if suffix == ".json" and ignore:
+                    text = _without_keys(text, ignore)
+                if PARTICIPANT_ID.search(text):
                     report.problems.append(f"{rel}: contains participant-ID-like values")
                 if suffix == ".txt" and (df := _read_txt_table(path)) is not None:
                     check_frame(df, rel)

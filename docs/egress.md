@@ -13,7 +13,8 @@ certifications prohibit, so these checks always fail the run:
   `subject_id`, `sample_id`, `SAMPID`, `dbGaP_Subject_ID`, `participant_id` (any case);
 - values or column headers that look like OAI participant IDs (a 7-digit number starting
   with 9, including forms like `ID_ID` or `OAI` + ID). Decimal fractions don't match,
-  and columns listed in `ignore_id_pattern_columns` (e.g. GWAS base-pair `POS`) are skipped;
+  and columns or JSON keys listed in `ignore_id_pattern_columns` (e.g. GWAS base-pair
+  `POS`, `run_info.json`'s `git_commit`) are skipped;
 - file types the check cannot read (it fails closed). Figures (PNG/PDF/JPG) are listed
   for manual review, and HTML/SVG are both scanned and listed, because they can embed data.
 
@@ -38,7 +39,7 @@ Settings (`config/oai.toml`):
 [egress]
 small_cell = "warn"  # off | warn | fail
 min_cell = 5         # counts 1..min_cell-1 are flagged
-ignore_id_pattern_columns = ["POS", "BP", "position"]
+ignore_id_pattern_columns = ["POS", "BP", "position", "git_commit"]
 ```
 
 Switch to `small_cell = "fail"` (and raise `min_cell`) if a journal, collaborator or
