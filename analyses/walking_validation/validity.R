@@ -111,25 +111,26 @@ for (visit in c("06", "08", "10")) {
   suffix <- if (paired) paste0("_", visit) else ""
   reference <- paste0("device_walker", suffix)
   score <- paste0("pase_walking_", visit)
-  d <- persons[!is.na(persons[[score]]) & !is.na(persons[[reference]]), ]
-  p <- d[[score]]
-  d$pase_walker <- p > pase_threshold
-  pase_walkers <- d[d$pase_walker, ]
+  at_visit <- persons[!is.na(persons[[score]]) & !is.na(persons[[reference]]), ]
+  p <- at_visit[[score]]
+  at_visit$pase_walker <- p > pase_threshold
+  pase_walkers <- at_visit[at_visit$pase_walker, ]
   visit_row <- function(...) pase_row(visit, device_wave, ...)
   for (m in measures) {
     col <- paste0(m, suffix)
     # Item 1: known groups
-    w <- d[[col]][d$pase_walker]
-    nw <- d[[col]][!d$pase_walker]
+    w <- at_visit[[col]][at_visit$pase_walker]
+    nw <- at_visit[[col]][!at_visit$pase_walker]
     n_groups <- sum(!is.na(w)) + sum(!is.na(nw))
     hl <- oaimodels::hodges_lehmann(w, nw)
     form <- stats::as.formula(paste(col, "~ pase_walker +", adjust))
-    adj <- oaimodels::median_regression(form, d, "pase_walkerTRUE", se = se_method, reps = reps, seed = seed)
+    adj <- oaimodels::median_regression(form, at_visit, "pase_walkerTRUE", se = se_method, reps = reps,
+                                        seed = seed)
     pase[[length(pase) + 1]] <- visit_row(m, "hl", hl[["estimate"]], hl[["lo"]], hl[["hi"]], n_groups)
     pase[[length(pase) + 1]] <- visit_row(m, "rank_biserial", oaimodels::rank_biserial(w, nw), NA, NA,
                                           n_groups)
     pase[[length(pase) + 1]] <- visit_row(m, "adj_diff", adj[["estimate"]], adj[["lo"]], adj[["hi"]],
-                                          nrow(stats::model.frame(form, d)))
+                                          adj[["n"]])
     # Item 3: convergent ranking among PASE walkers, deattenuated like the walking item
     rho <- oaimodels::spearman_ci(pase_walkers[[score]], pase_walkers[[col]])
     share_two_waves <- if (paired) 0 else mean(pase_walkers$n_waves == 2)
@@ -140,11 +141,11 @@ for (visit in c("06", "08", "10")) {
                                           NA, NA, rho[["n"]])
   }
   # Item 4: classification against the device walker
-  cl <- oaimodels::classification(p > pase_threshold, d[[reference]])
-  auc <- oaimodels::auc_ci(p, d[[reference]], reps = reps, seed = seed)
+  cl <- oaimodels::classification(p > pase_threshold, at_visit[[reference]])
+  auc <- oaimodels::auc_ci(p, at_visit[[reference]], reps = reps, seed = seed)
   pase[[length(pase) + 1]] <- visit_row("device_walker", cl$measure, cl$estimate, cl$lo, cl$hi, cl$n)
   pase[[length(pase) + 1]] <- visit_row("device_walker", "auc", auc[["estimate"]], auc[["lo"]],
-                                        auc[["hi"]], nrow(d))
+                                        auc[["hi"]], nrow(at_visit))
 }
 
 classification_all <- bind(classes)
