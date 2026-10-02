@@ -327,6 +327,23 @@ def test_bias_checks_every_published_value_before_any_fitting(step_copy):
 
 
 @pytest.mark.realdata
+@pytest.mark.parametrize("how", ["absent", "twice"])
+def test_bias_checks_the_replicated_odds_ratios_before_any_fitting(step_copy, how):
+    # The last outcome's replicated odds ratio is missing (or listed twice) and the iterations are
+    # invalid, which the first PBA call would reject: the lookup guard must stop the step first.
+    _set_assumption(step_copy, "bias.iterations", 0)
+    path = step_copy.results / "lo2022_table2.csv"
+    table = pl.read_csv(path)
+    target = (pl.col("outcome") == "improved_pain") & (pl.col("model") == "or_adj")
+    table = table.filter(~target) if how == "absent" else pl.concat([table, table.filter(target)])
+    table.write_csv(path)
+    done = step_copy.run("bias")
+    assert done.returncode != 0
+    assert "lo2022_table2.csv" in done.stderr and "improved_pain" in done.stderr, done.stderr
+    assert "iterations must be" not in done.stderr, done.stderr
+
+
+@pytest.mark.realdata
 def test_bias_stops_when_a_prior_stratum_disagrees_with_the_model_frame(step_copy):
     # a validated person whose any-knee event differs from the complete-case model frame's
     def flip(df):

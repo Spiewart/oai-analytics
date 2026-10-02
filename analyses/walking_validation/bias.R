@@ -68,6 +68,16 @@ published_or <- function(o, m) {
   pub
 }
 
+# The replication's own odds ratio for one outcome and model, which the step must reproduce
+replicated_or <- function(o, m) {
+  x <- replicated$or[replicated$outcome == o & replicated$model == m]
+  if (length(x) != 1 || is.na(x)) {
+    stop("bias step: lo2022_table2.csv has ", length(x), " odds ratio(s) for ", o, " ", m,
+         " (expected one)", call. = FALSE)
+  }
+  x
+}
+
 # Everything the loop reads from the frames and the published table, built and checked for every
 # outcome first, so a missing or inconsistent value stops the step before any PBA runs.
 inputs <- lapply(stats::setNames(outcomes, outcomes), function(o) {
@@ -96,7 +106,8 @@ inputs <- lapply(stats::setNames(outcomes, outcomes), function(o) {
     # the summary-level correction's 2x2 counts
     counts = list(a = a, b = b, c0 = published_count(o, "walkers", "n") - a,
                   d0 = published_count(o, "nonwalkers", "n") - b),
-    or = stats::setNames(lapply(names(models), function(m) published_or(o, m)), names(models))
+    or = stats::setNames(lapply(names(models), function(m) published_or(o, m)), names(models)),
+    replicated_or = stats::setNames(lapply(names(models), function(m) replicated_or(o, m)), names(models))
   )
 })
 
@@ -119,8 +130,7 @@ for (o in outcomes) {
   for (m in names(models)) {
     fit <- function(kn) oaimodels::fit_knee_gee(kn, models[[m]], corstr = model$corstr)[c("log_or", "se")]
     observed <- oaimodels::fit_knee_gee(k, models[[m]], corstr = model$corstr)
-    rep_or <- replicated$or[replicated$outcome == o & replicated$model == m]
-    if (length(rep_or) != 1 || abs(observed[["or"]] - rep_or) > 1e-8) {
+    if (abs(observed[["or"]] - inputs[[o]]$replicated_or[[m]]) > 1e-8) {
       stop("bias step does not reproduce the replication's ", o, " ", m, " odds ratio", call. = FALSE)
     }
     pub <- inputs[[o]]$or[[m]]
