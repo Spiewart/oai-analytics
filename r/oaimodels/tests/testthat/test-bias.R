@@ -39,8 +39,9 @@ test_that("reclassify is the identity at perfect sensitivity and specificity", {
 })
 
 test_that("reclassify keeps perfect-classification draws despite floating-point rounding", {
-  # (p_obs + 1 - 1) / 1 is not exactly p_obs for most proportions, so ppv = p / p_obs can come out
-  # 1 + 2.2e-16: a strict ppv <= 1 check would discard a valid Se = Sp = 1 draw
+  # (p_obs + 1 - 1) / 1 is not exactly p_obs for many proportions (14 of the 54 below), so
+  # ppv = p / p_obs can come out 1 + 2.2e-16: a strict ppv <= 1 check would discard a valid
+  # Se = Sp = 1 draw
   for (n in c(7, 10, 13)) {
     for (k in 1:(n - 1)) {
       case <- c(rep(TRUE, k), rep(FALSE, n - k))
@@ -183,4 +184,100 @@ test_that("pba recovers a true OR under known non-differential misclassification
   priors <- data.frame(stratum = "all", se1 = 851, se2 = 151, sp1 = 751, sp2 = 251)
   s <- summarise_pba(pba(persons, knees, glm_fit, priors, iterations = 300, seed = 2))
   expect_lt(abs(s$or - true_or), 0.05)
+})
+
+test_that("reclassify and pba look Se and Sp up by stratum name, not position", {
+  d <- person_data()
+  # numeric strata 1 and 3: by position, se[[3]] would be out of bounds
+  persons <- d$persons
+  persons$stratum <- ifelse(persons$stratum == "case", 3, 1)
+  perfect <- c("1" = 1, "3" = 1)
+  expect_identical(reclassify(persons, perfect, perfect), persons$observed)
+  # logical strata: by position, se[[FALSE]] selects nothing
+  persons$stratum <- persons$stratum == 3
+  perfect <- c("FALSE" = 1, "TRUE" = 1)
+  expect_identical(reclassify(persons, perfect, perfect), persons$observed)
+  # numeric strata listed in the opposite order from the priors
+  persons$stratum <- ifelse(persons$stratum, 2, 1)
+  observed <- glm_fit(d$knees)
+  priors <- data.frame(stratum = c(1, 2), se = c(1, 1), sp = c(1, 1))
+  draws <- pba(persons, d$knees, glm_fit, priors, differential = TRUE, iterations = 3, seed = 1)
+  expect_equal(draws$log_or, rep(observed[["log_or"]], 3))
+})
+
+test_that("pba rejects missing observed values and knees without a person", {
+  d <- person_data()
+  priors <- data.frame(stratum = "all", se = 0.9, sp = 0.9)
+  missing_observed <- d$persons
+  missing_observed$observed[c(4, 9)] <- NA
+  expect_error(pba(missing_observed, d$knees, glm_fit, priors, iterations = 2),
+               "2 persons have no observed exposure")
+  orphan <- d$knees
+  orphan$ID[1:3] <- orphan$ID[1:3] + 10000
+  expect_error(pba(d$persons, orphan, glm_fit, priors, iterations = 2),
+               "3 knees have an ID that is not in persons")
+})
+
+test_that("pba needs at least one whole iteration", {
+  d <- person_data()
+  priors <- data.frame(stratum = "all", se = 0.9, sp = 0.9)
+  for (bad in list(0, -1, 2.5, NA, c(2, 3))) {
+    expect_error(pba(d$persons, d$knees, glm_fit, priors, iterations = bad),
+                 "iterations must be a whole number >= 1")
+  }
+})
+
+test_that("differential pba uses each stratum's own draw", {
+  d <- person_data()
+  priors <- data.frame(stratum = c("noncase", "case"), se1 = c(90, 85), se2 = c(10, 15),
+                       sp1 = c(75, 80), sp2 = c(25, 20))
+  draws <- pba(d$persons, d$knees, glm_fit, priors, differential = TRUE, iterations = 3, seed = 7)
+  expect_false(any(draws$discarded))
+  # iteration i draws Se then Sp for the strata in persons' order, from set.seed(seed + i)
+  strata <- unique(d$persons$stratum)
+  rows <- priors[match(strata, priors$stratum), ]
+  for (i in 1:3) {
+    set.seed(7 + i)
+    se <- stats::setNames(stats::rbeta(2, rows$se1, rows$se2), strata)
+    sp <- stats::setNames(stats::rbeta(2, rows$sp1, rows$sp2), strata)
+    knees <- d$knees
+    knees$walker <- reclassify(d$persons, se, sp)[match(knees$ID, d$persons$ID)]
+    est <- glm_fit(knees)
+    expect_equal(draws$log_or[i], est[["log_or"]])
+    expect_equal(draws$se[i], est[["se"]])
+    expect_equal(draws$log_or_total[i], stats::rnorm(1, est[["log_or"]], est[["se"]]))
+  }
+  s <- summarise_pba(draws, direction = 1, significant = FALSE)
+  expect_equal(s$or, exp(stats::median(draws$log_or)))
+  expect_equal(s$n, 3)
+})
+
+test_that("summarise_pba's conclusion share with significant = TRUE", {
+  draws <- data.frame(
+    iter = 1:5,
+    log_or = c(0.5, 0.5, -0.5, 0.1, NA),
+    se = c(0.1, 0.5, 0.1, 0.01, NA),
+    log_or_total = c(0.5, 0.4, -0.6, 0.1, NA),
+    discarded = c(FALSE, FALSE, FALSE, FALSE, TRUE)
+  )
+  # kept draws: z = 5, 1, -5, 10; same direction as +1 and |z| > 1.96: draws 1 and 4
+  expect_equal(summarise_pba(draws, direction = 1, significant = TRUE)$conclusion_share, 2 / 4)
+  expect_equal(summarise_pba(draws, direction = 1, significant = FALSE)$conclusion_share, 3 / 4)
+  expect_equal(summarise_pba(draws, direction = -1, significant = TRUE)$conclusion_share, 1 / 4)
+  expect_true(is.na(summarise_pba(draws)$conclusion_share))
+  expect_equal(summarise_pba(draws)$discarded, 1 / 5)
+})
+
+test_that("pba leaves the caller's random-number stream alone and repeats under a seed", {
+  d <- person_data()
+  priors <- data.frame(stratum = "all", se1 = 90, se2 = 10, sp1 = 80, sp2 = 20)
+  set.seed(99)
+  expected <- stats::runif(3)
+  set.seed(99)
+  first <- pba(d$persons, d$knees, glm_fit, priors, iterations = 4, seed = 3, cores = 1)
+  expect_identical(stats::runif(3), expected)
+  rm(".Random.seed", envir = globalenv())
+  expect_identical(pba(d$persons, d$knees, glm_fit, priors, iterations = 4, seed = 3, cores = 1), first)
+  expect_false(exists(".Random.seed", envir = globalenv(), inherits = FALSE))
+  set.seed(1)
 })

@@ -31,17 +31,19 @@ correct_or_2x2 <- function(a, b, c, d, se_case, sp_case, se_ctrl = se_case, sp_c
 
 #' One reclassification of persons$observed within persons$stratum; NULL if impossible
 #'
+#' `se` and `sp` are named by stratum (as.character(stratum)), whatever the type of the strata.
 #' Probabilities within `tolerance` of 0 or 1 are rounding (Se = Sp = 1 gives ppv = 1 + 2.2e-16
-#' for most proportions) and are clamped into [0, 1]; the true prevalence must lie strictly
+#' for many proportions) and are clamped into [0, 1]; the true prevalence must lie strictly
 #' inside (0, 1) up to the same tolerance, and Se + Sp <= 1 is always impossible.
 reclassify <- function(persons, se, sp, tolerance = 1e-12) {
   out <- logical(nrow(persons))
   for (s in unique(persons$stratum)) {
     i <- persons$stratum == s
+    key <- as.character(s)
     p_obs <- mean(persons$observed[i])
-    pr <- reclass_probs(p_obs, se[[s]], sp[[s]])
+    pr <- reclass_probs(p_obs, se[[key]], sp[[key]])
     probs <- c(pr$p_true, pr$ppv, pr$fom)
-    if (se[[s]] + sp[[s]] <= 1 || !all(is.finite(probs)) ||
+    if (se[[key]] + sp[[key]] <= 1 || !all(is.finite(probs)) ||
         pr$p_true <= tolerance || pr$p_true >= 1 - tolerance ||
         any(probs[2:3] < -tolerance | probs[2:3] > 1 + tolerance)) {
       return(NULL)
@@ -55,13 +57,32 @@ reclassify <- function(persons, se, sp, tolerance = 1e-12) {
 }
 
 #' Record-level probabilistic bias analysis
-#' @param persons data.frame(ID, observed, stratum)
-#' @param knees rows passed to `fit` after `exposure` is replaced by each draw (matched by ID)
+#' @param persons data.frame(ID, observed, stratum), with no missing `observed`
+#' @param knees rows passed to `fit` after `exposure` is replaced by each draw (matched by ID; every
+#'   knee's ID must be in `persons`)
 #' @param fit function(knees) -> c(log_or, se)
 #' @param priors Beta shapes (stratum, se1, se2, sp1, sp2) or fixed values (stratum, se, sp)
 #' @param differential One draw per stratum (TRUE) or one shared draw (FALSE; one prior row)
+#' @param iterations A whole number >= 1.
+#' @param seed Iteration i runs from set.seed(seed + i), so results do not depend on `cores`, and
+#'   the caller's random-number stream is left as it was. Analyses run with seeds s and s + 1
+#'   share all but one iteration's draws: use one seed per analysis, not adjacent seeds as
+#'   replicates.
 pba <- function(persons, knees, fit, priors, differential = FALSE, iterations = 1000, seed = 1,
                 cores = 1, exposure = "walker") {
+  if (!is.numeric(iterations) || length(iterations) != 1 || is.na(iterations) ||
+      iterations < 1 || iterations != round(iterations)) {
+    stop("pba(): iterations must be a whole number >= 1, got ",
+         paste(format(iterations), collapse = ", "), call. = FALSE)
+  }
+  no_observed <- sum(is.na(persons$observed))
+  if (no_observed) {
+    stop("pba(): ", no_observed, " persons have no observed exposure", call. = FALSE)
+  }
+  orphans <- sum(!knees$ID %in% persons$ID)
+  if (orphans) {
+    stop("pba(): ", orphans, " knees have an ID that is not in persons", call. = FALSE)
+  }
   strata <- unique(persons$stratum)
   fixed <- all(c("se", "sp") %in% names(priors))
   if (differential) {
@@ -98,11 +119,11 @@ pba <- function(persons, knees, fit, priors, differential = FALSE, iterations = 
     data.frame(iter = i, log_or = est[["log_or"]], se = est[["se"]],
                log_or_total = stats::rnorm(1, est[["log_or"]], est[["se"]]), discarded = FALSE)
   }
-  runs <- if (cores > 1) {
+  runs <- preserve_rng(if (cores > 1) {
     parallel::mclapply(seq_len(iterations), one, mc.cores = cores)
   } else {
     lapply(seq_len(iterations), one)
-  }
+  })
   failed <- vapply(runs, inherits, logical(1), what = "try-error")
   if (any(failed)) stop("pba() iteration failed: ", runs[[which(failed)[1]]], call. = FALSE)
   bind_runs(runs, iterations)
