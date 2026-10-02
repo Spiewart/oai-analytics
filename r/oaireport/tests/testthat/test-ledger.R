@@ -1,4 +1,4 @@
-zwsp <- "​"
+zwsp <- "\u200b"
 
 write_ledger <- function(lines) {
   path <- withr::local_tempfile(fileext = ".md", .local_envir = parent.frame())

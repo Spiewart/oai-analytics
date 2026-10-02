@@ -1,10 +1,5 @@
 # The assumptions ledger (ASSUMPTIONS.md, written by `oai assumptions NAME --write`) for a report.
 
-zero_width_space <- "​"
-
-# Zero-width break points after "." and "_", so a long identifier wraps inside a narrow table cell.
-breakable_key <- function(x) gsub("([._])", paste0("\\1", zero_width_space), x)
-
 #' The assumptions ledger as Markdown lines for a `results: asis` chunk
 #'
 #' Drops the title and the generated-by comment (the report has its own headings) and makes the
@@ -19,13 +14,13 @@ ledger_markdown <- function(path = "ASSUMPTIONS.md") {
   ledger <- ledger[!grepl("^# |^<!--", ledger)]
   identifiers <- gregexpr("`[A-Za-z][A-Za-z0-9_.{}]*`", ledger)
   regmatches(ledger, identifiers) <- lapply(regmatches(ledger, identifiers), function(x) {
-    breakable_key(gsub("`", "", x))
+    breakable_ids(gsub("`", "", x))
   })
   sets <- gregexpr("`[A-Za-z][A-Za-z0-9_.{}]* = [^`]*`", ledger)
   regmatches(ledger, sets) <- lapply(regmatches(ledger, sets), function(x) {
     vapply(x, function(span) {
       part <- regmatches(span, regexec("^`([^ ]+)( = .*)`$", span))[[1]]
-      paste0("`", breakable_key(part[2]), part[3], "`")
+      paste0("`", breakable_ids(part[2]), part[3], "`")
     }, character(1), USE.NAMES = FALSE)
   })
   ledger
