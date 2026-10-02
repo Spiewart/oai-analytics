@@ -320,6 +320,8 @@ def render_ledger(name: str, assumptions: Assumptions) -> str:
     if assumptions.variants:
         lines += ["", "## Variants", "", "| Variant | Sets | Description |", "|---|---|---|"]
         for v in sorted(assumptions.variants.values(), key=lambda v: v.name):
-            sets = "<br>".join(f"`{k} = {_cell(_fmt(val))}`" for k, val in v.set.items())
+            # "; ", not <br>: a table cell cannot hold a line break that GitHub and Typst both
+            # render, and Typst (the reports) drops raw HTML, running the values together.
+            sets = "; ".join(f"`{k} = {_cell(_fmt(val))}`" for k, val in v.set.items())
             lines.append(f"| `{v.name}` | {sets} | {_cell(v.description)} |")
     return "\n".join(lines) + "\n"

@@ -58,7 +58,7 @@
 
 | Variant | Sets | Description |
 |---|---|---|
-| `exposure_replication_coding` | `exposure.yes_without_amount_as = walker`<br>`bias.lo2022_label = default` | 'Yes' with no amount answers coded as a walker (the replication's default coding) |
+| `exposure_replication_coding` | `exposure.yes_without_amount_as = walker`; `bias.lo2022_label = default` | 'Yes' with no amount answers coded as a walker (the replication's default coding) |
 | `nonwear60` | `device.nonwear_minutes = 60` | NHANES 60-minute non-wear rule |
 | `walker_150min` | `reference.walker_rule = bout_minutes` | Device walker = >= 150 purposeful-bout minutes a week |
 | `walker_any_bout` | `reference.walker_rule = any_bout` | Device walker = any purposeful bout |

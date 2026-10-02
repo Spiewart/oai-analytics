@@ -51,7 +51,7 @@
 | `corstr_independence` | `model.corstr = independence` | Sensitivity: independence working correlation |
 | `missing_as_nonwalkers` | `cohort.impute_missing_walking = non-walker` | Supplementary Table 2: survey non-respondents imputed as non-walkers |
 | `missing_as_walkers` | `cohort.impute_missing_walking = walker` | Supplementary Table 3: survey non-respondents imputed as walkers |
-| `published_counts` | `cohort.roa_counts_replaced_knees = true`<br>`exposure.yes_without_amount_as = non-walker` | Both count-reproducing choices together |
+| `published_counts` | `cohort.roa_counts_replaced_knees = true`; `exposure.yes_without_amount_as = non-walker` | Both count-reproducing choices together |
 | `replacement_not_worsening` | `outcomes.replacement_is_structural_worsening = false` | Sensitivity: an interval replacement does not count as structural worsening |
 | `roa_counts_replaced_knees` | `cohort.roa_counts_replaced_knees = true` | Count participants whose OA knee was replaced at baseline at the radiographic-OA step (reproduces 2,356) |
 | `walker_requires_amount` | `exposure.yes_without_amount_as = non-walker` | 'Yes' walkers with no amount answers coded non-walkers (reproduces 887 walkers) |

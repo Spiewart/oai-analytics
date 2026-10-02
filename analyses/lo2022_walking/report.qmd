@@ -402,6 +402,14 @@ spans <- gregexpr("`[A-Za-z][A-Za-z0-9_.{}]*`", ledger)
 regmatches(ledger, spans) <- lapply(regmatches(ledger, spans), function(x) {
   gsub("([._])", "\\1\u200b", gsub("`", "", x))
 })
+# A variant's "key = value" spans stay code, with break points in the key so a long one wraps
+sets <- gregexpr("`[A-Za-z][A-Za-z0-9_.{}]* = [^`]*`", ledger)
+regmatches(ledger, sets) <- lapply(regmatches(ledger, sets), function(x) {
+  vapply(x, function(span) {
+    part <- regmatches(span, regexec("^`([^ ]+)( = .*)`$", span))[[1]]
+    paste0("`", gsub("([._])", "\\1\u200b", part[2]), part[3], "`")
+  }, character(1), USE.NAMES = FALSE)
+})
 cat(ledger, sep = "\n")
 ```
 

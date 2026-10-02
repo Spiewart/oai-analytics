@@ -186,6 +186,24 @@ def test_render_ledger_escapes_pipes(tmp_path):
     assert "a \\| b" in render_ledger("demo", load_assumptions(write(tmp_path, text)))
 
 
+def test_render_ledger_multi_value_variant_cell_has_no_raw_html(tmp_path):
+    """A variant that sets several keys lists them in one cell, separated by "; ". Raw HTML such
+    as <br> is dropped by Typst (it would run the values together), so the cell holds none."""
+    text = TOML + textwrap.dedent(
+        """
+        [variants.both]
+        description = "two choices at once"
+        set = { "model.corstr" = "independence", "cohort.min_age" = 55 }
+        """
+    )
+    ledger = render_ledger("demo", load_assumptions(write(tmp_path, text)))
+    row = next(line for line in ledger.splitlines() if line.startswith("| `both` |"))
+    assert row == (
+        "| `both` | `model.corstr = independence`; `cohort.min_age = 55` | two choices at once |"
+    )
+    assert "<br" not in ledger.lower()
+
+
 def test_cli_assumptions_prints_and_writes(tmp_path, monkeypatch):
     root = write(tmp_path)
     (root / "analysis.toml").write_text(
