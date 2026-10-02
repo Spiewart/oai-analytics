@@ -43,7 +43,7 @@ for visit in ("06", "08"):
     waves.append(persons)
     check = reproduction(daily, visit, rules)
     check["valid_persons"] = persons.filter("valid").height
-    check["release_valid_persons"] = release_valid_persons(visit, rules.min_valid_days)
+    check["release_valid_persons"] = release_valid_persons(visit, rules)
     rows.append({"wave": visit, **check})
     metrics += [(f"device.{visit}.{key}", float(value)) for key, value in check.items()]
     print(f"wave {visit}: {check}")

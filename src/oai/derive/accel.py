@@ -7,7 +7,9 @@ Parameterised by DeviceRules:
 - valid day: >= valid_day_hours of wear; only the first max_valid_days valid days count;
 - MV bout: starts at a wear minute >= mv_cutpoint once bout_need of the bout_window minutes from
   it are >= the cutpoint; extends while each bout_window-minute window holds fewer than
-  bout_stop_below minutes below it; spans its start through its last minute >= the cutpoint.
+  bout_stop_below minutes below it; spans its start through its last minute >= the cutpoint;
+- purposeful bout: an MV bout of at least purposeful_bout_minutes minutes (each bout the
+  algorithm finds is judged on its own length and counted once).
 With the release's rules this reproduces the release's by-day files (tests/test_accel_realdata.py).
 """
 
@@ -87,16 +89,20 @@ def nonwear_mask(
     return out
 
 
-def bout_mask(
+def bout_spans(
     counts: np.ndarray, day_key: np.ndarray, wear: np.ndarray, rules: DeviceRules = DEFAULT_RULES
-) -> np.ndarray:
-    """True for minutes inside an MV bout; only wear minutes count as >= the cutpoint."""
+) -> tuple[np.ndarray, np.ndarray]:
+    """Start and end (exclusive) row of each MV bout, in row order; a bout never spans two days.
+
+    Only wear minutes count as >= the cutpoint.
+    """
     c = np.nan_to_num(np.asarray(counts, dtype=float), nan=0.0)
     above = (c >= rules.mv_cutpoint) & wear
-    out = np.zeros(len(c), dtype=bool)
+    starts: list[int] = []
+    ends: list[int] = []
     win, need, stop = rules.bout_window, rules.bout_need, rules.bout_stop_below
     if len(c) == 0:
-        return out
+        return np.zeros(0, dtype=np.int64), np.zeros(0, dtype=np.int64)
     seg_starts = np.flatnonzero(np.r_[True, day_key[1:] != day_key[:-1]])
     seg_ends = np.r_[seg_starts[1:], len(c)]
     for s, e in zip(seg_starts, seg_ends, strict=True):
@@ -116,8 +122,19 @@ def bout_mask(
             end = min(j + win, n) - 1
             while not a[end]:
                 end -= 1
-            out[s + i : s + end + 1] = True
+            starts.append(s + i)
+            ends.append(s + end + 1)
             next_free = end + 1
+    return np.array(starts, dtype=np.int64), np.array(ends, dtype=np.int64)
+
+
+def bout_mask(
+    counts: np.ndarray, day_key: np.ndarray, wear: np.ndarray, rules: DeviceRules = DEFAULT_RULES
+) -> np.ndarray:
+    """True for minutes inside an MV bout; only wear minutes count as >= the cutpoint."""
+    out = np.zeros(len(counts), dtype=bool)
+    for start, end in zip(*bout_spans(counts, day_key, wear, rules), strict=True):
+        out[start:end] = True
     return out
 
 
@@ -127,15 +144,15 @@ def daily_summary(minutes: pl.DataFrame, rules: DeviceRules = DEFAULT_RULES) -> 
     key = m["ID"].to_numpy() * DAY_KEY_SCALE + m["day"].to_numpy()
     cnt = m["cnt"].cast(pl.Float64).to_numpy()
     wear = ~nonwear_mask(cnt, key, rules)
-    bout = bout_mask(cnt, key, wear, rules)
     c = np.nan_to_num(cnt, nan=0.0)
+    bout = np.zeros(len(c), dtype=bool)
     purposeful = np.zeros(len(c), dtype=bool)
     purposeful_start = np.zeros(len(c), dtype=bool)
-    b_starts, b_ends, b_vals = _runs(bout.astype(np.int8), key)
-    for s, e in zip(b_starts[b_vals == 1], b_ends[b_vals == 1], strict=True):
-        if e - s >= rules.purposeful_bout_minutes:
-            purposeful[s:e] = True
-            purposeful_start[s] = True
+    for start, end in zip(*bout_spans(cnt, key, wear, rules), strict=True):
+        bout[start:end] = True
+        if end - start >= rules.purposeful_bout_minutes:
+            purposeful[start:end] = True
+            purposeful_start[start] = True
     per_minute = m.select("ID", "day").with_columns(
         pl.Series("wear", wear),
         pl.Series("mv", wear & (c >= rules.mv_cutpoint)),
@@ -193,17 +210,16 @@ def person_summary(daily: pl.DataFrame, rules: DeviceRules = DEFAULT_RULES) -> p
 def read_minutes(visit: str) -> pl.DataFrame:
     """ID, day, minute, cnt for one accelerometer wave ("06" or "08"), sorted."""
     lf = read_table("acceldatabymin", visit, lazy=True)
-    names = {name.upper(): name for name in lf.collect_schema().names()}
-
-    def col(name: str) -> pl.Expr:
-        return pl.col(names[name.upper()])
-
+    # find_col wants a frame; one with no rows resolves names without reading the large file
+    col = partial(
+        find_col, pl.DataFrame(schema=lf.collect_schema()), where=f"acceldatabymin{visit}"
+    )
     return (
         lf.select(
-            col("ID").cast(pl.Int64).alias("ID"),
-            col(f"V{visit}PAStudyDay").cast(pl.Int64).alias("day"),
-            col(f"V{visit}MinSequence").cast(pl.Int64).alias("minute"),
-            col(f"V{visit}MINCnt").cast(pl.Float64).alias("cnt"),
+            pl.col(col("ID")).cast(pl.Int64).alias("ID"),
+            pl.col(col(f"V{visit}PAStudyDay")).cast(pl.Int64).alias("day"),
+            pl.col(col(f"V{visit}MinSequence")).cast(pl.Int64).alias("minute"),
+            pl.col(col(f"V{visit}MINCnt")).cast(pl.Float64).alias("cnt"),
         )
         .sort(["ID", "day", "minute"])
         .collect()
@@ -226,19 +242,27 @@ def release_by_day(visit: str) -> pl.DataFrame:
 def reproduction(
     daily: pl.DataFrame, visit: str, rules: DeviceRules = DEFAULT_RULES
 ) -> dict[str, int]:
-    """Agreement of our first valid days with the release's by-day file."""
+    """Agreement of our first valid days with the release's by-day file.
+
+    A day is a mismatch when the values differ (wear by half a minute or more, MV and bout
+    minutes at all) or when either side is null, so a missing value never counts as agreement.
+    """
     ref = release_by_day(visit)
     matched = ref.join(first_valid_days(daily, rules), on=["ID", "day"], how="inner")
+
+    def mismatches(differ: pl.Series) -> int:
+        return int(differ.fill_null(True).sum())  # null in either value -> null -> mismatch
+
     return {
         "release_days": ref.height,
         "matched_days": matched.height,
-        "wear_mismatch_days": int(((matched["wear_min"] - matched["wear_ref"]).abs() >= 0.5).sum()),
-        "mv_mismatch_days": int((matched["mv_min"] != matched["mv_ref"]).sum()),
-        "bout_mismatch_days": int((matched["bout_min"] != matched["bout_ref"]).sum()),
+        "wear_mismatch_days": mismatches((matched["wear_min"] - matched["wear_ref"]).abs() >= 0.5),
+        "mv_mismatch_days": mismatches(matched["mv_min"] != matched["mv_ref"]),
+        "bout_mismatch_days": mismatches(matched["bout_min"] != matched["bout_ref"]),
     }
 
 
-def release_valid_persons(visit: str, min_valid_days: int = 4) -> int:
-    """Participants the release counts as valid (VxxANVDAYS >= min_valid_days)."""
+def release_valid_persons(visit: str, rules: DeviceRules = DEFAULT_RULES) -> int:
+    """Participants the release counts as valid (VxxANVDAYS >= rules.min_valid_days)."""
     df = read_table("accelerometry", visit)
-    return df.filter(pl.col(find_col(df, f"V{visit}ANVDAYS")) >= min_valid_days).height
+    return df.filter(pl.col(find_col(df, f"V{visit}ANVDAYS")) >= rules.min_valid_days).height
