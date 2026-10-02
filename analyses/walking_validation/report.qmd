@@ -43,6 +43,7 @@ interval <- function(lo, hi, sep = "–") ifelse(is.na(lo), "–", paste0(num(lo
 flag_mark <- function(flagged) ifelse(flagged, "✓", "")
 # Device measures: counts/day without decimals, minutes/day to 2 decimals
 dnum <- function(x, measure) ifelse(measure == "counts_per_day", num(x, 0), num(x))
+class_names <- c(se = "Se", sp = "Sp", ppv = "PPV", npv = "NPV", auc = "AUC")  # as in the legends
 measure_names <- c(purposeful_min = "Purposeful-bout min/day", counts_per_day = "Counts/day",
                    light_min = "Light min/day")
 outcome_names <- c(new_pain = "New frequent knee pain", kl_worse = "KL grade worsening",
@@ -148,16 +149,21 @@ purposeful_minutes <- fmt(assumption("device.purposeful_bout_minutes"))
 valid_day <- sprintf("a valid day has at least %s wear hours and a valid wave at least %s valid days",
                      fmt(assumption("device.valid_day_hours")), fmt(assumption("device.min_valid_days")))
 
-# The walking item
+# The walking item, defined in full once, in the first legend that uses it
 yes_without <- assumption("exposure.yes_without_amount_as")
 item_def <- switch(yes_without,
-  `non-walker` = "Walker: answered yes to the 96-month walking-for-exercise question (V10WLKAR4) and gave an amount; non-walker: answered no, or yes with no amount.",
-  walker = "Walker: answered yes to the 96-month walking-for-exercise question (V10WLKAR4), with or without an amount; non-walker: answered no.",
-  exclude = "Walker: answered yes to the 96-month walking-for-exercise question (V10WLKAR4) and gave an amount; non-walker: answered no (a yes with no amount is left out).",
+  `non-walker` = "Walker: answered yes to the 96-month question on walking for exercise (at least 20 minutes a day, at least 10 times, at age 50 or older; V10WLKAR4) and gave at least one amount (years, months per year or times per month); non-walker: answered no, or yes with no amount.",
+  walker = "Walker: answered yes to the 96-month question on walking for exercise (at least 20 minutes a day, at least 10 times, at age 50 or older; V10WLKAR4), with or without an amount; non-walker: answered no.",
+  exclude = "Walker: answered yes to the 96-month question on walking for exercise (at least 20 minutes a day, at least 10 times, at age 50 or older; V10WLKAR4) and gave at least one amount (years, months per year or times per month); non-walker: answered no (a yes with no amount is left out).",
   stop("unknown exposure.yes_without_amount_as: ", yes_without))
+# The walkers with no lifetime-sessions score (an amount item is missing); a "yes" with no
+# amount at all is one of them only under walker coding
+no_amount_group <- if (yes_without == "walker") {
+  "walkers who gave no amount or only some of the amount items"
+} else "walkers who answered some but not all of the amount items"
 sessions_def <- "Lifetime sessions: years × months per year × times per month, at the midpoints of the answer categories (walkers only)."
 
-# The device reference standard
+# The device reference standard, defined in full once (Classification)
 walker_rule <- assumption("reference.walker_rule")
 rule_short <- switch(walker_rule,
   bout_days = sprintf("on average at least %s days a week with a purposeful bout", fmt(assumption("reference.min_bout_days_per_week"))),
@@ -179,16 +185,16 @@ measures_def <- sprintf("Device measures are averages per valid day: purposeful-
 # PASE
 pase_threshold <- assumption("pase.walker_threshold")
 pase_def <- if (pase_threshold == 0) {
-  "PASE walker: a PASE walking subscore above 0, i.e. any walking outside the home in the past 7 days (PASE item 2), at that visit."
+  "PASE (Physical Activity Scale for the Elderly) walker: a PASE walking subscore above 0, i.e. any walking outside the home in the past 7 days (PASE item 2), at that visit."
 } else {
-  sprintf("PASE walker: a PASE walking subscore above %s (PASE item 2, walking outside the home in the past 7 days) at that visit.", fmt(pase_threshold))
+  sprintf("PASE (Physical Activity Scale for the Elderly) walker: a PASE walking subscore above %s (PASE item 2, walking outside the home in the past 7 days) at that visit.", fmt(pase_threshold))
 }
 
 # Models and tests
 reps_text <- if (assumption("validity.median_regression_se") == "boot") {
   sprintf("bootstrap 95%% CI, %s resamples", fmt(assumption("validity.bootstrap_reps")))
 } else "95% CI from sandwich standard errors"
-adjusted_def <- sprintf("median regression adjusting for age, sex and BMI (%s)", reps_text)
+adjusted_def <- sprintf("median regression adjusting for age, sex and body-mass index (BMI) (%s)", reps_text)
 jt_permutations <- assumption("validity.jt_permutations")
 
 legend <- list()
@@ -197,19 +203,15 @@ legend$flow <- sprintf("Validation sample (first two rows): participants who ans
 legend$reproduction <- sprintf("Release days: person-days in the release's by-day accelerometry file; matched: those also among our first %s valid days. Wear, MV and bout differs: matched days on which our wear minutes (by half a minute or more), moderate-to-vigorous (MV) minutes or MV-bout minutes differ from the release's. Valid persons: participants with at least %s valid days, ours / the release's own count.",
                                fmt(assumption("device.max_valid_days")), fmt(assumption("device.min_valid_days")))
 legend$known_groups_figure <- sprintf("Point: median; bar: interquartile range, by walking-item status, in the validation sample. %s %s", item_def, measures_def)
-legend$known_groups <- sprintf("Validation sample and Lo 2022 subset; walkers and non-walkers by the walking item, and the device measures, as defined above. Hodges–Lehmann: median of all walker − non-walker differences (95%% CI); rank-biserial: effect size from −1 to 1; adjusted median difference: walkers minus non-walkers from %s.",
+legend$known_groups <- sprintf("Validation sample and Lo 2022 subset; walkers and device measures as defined in the figure legend above. Hodges–Lehmann: median of all walker − non-walker differences (95%% confidence interval, CI); rank-biserial: effect size from −1 to 1; adjusted median difference: walkers minus non-walkers from %s.",
                                adjusted_def)
-legend$convergent <- sprintf("Walkers with a known amount, in the validation sample and the Lo 2022 subset (n). Spearman ρ: rank correlation (95%% CI) between lifetime sessions and the device measure; between-wave ρ: correlation of that measure between 48 and 72 months in participants valid at both waves; deattenuated ρ: ρ corrected for that unreliability. %s %s",
-                             sessions_def, measures_def)
-legend$classification <- sprintf("Validation sample and Lo 2022 subset. Se: share of device walkers who are walkers by the item; Sp: share of device non-walkers who are non-walkers by the item; PPV and NPV: share of item walkers and of item non-walkers who are device walkers and non-walkers; AUC: chance that a device walker has more lifetime sessions than a device non-walker (non-walkers score 0, walkers with no amount are left out); k / n: count over its denominator. %s %s %s",
-                                 item_def, device_def, device_detail)
-legend$strata <- sprintf("Se and Sp (95%% CI) against the device walker, within subgroups of the validation sample and the Lo 2022 subset: KL 0–1, KL 2 and KL 3–4 are the baseline Kellgren–Lawrence grade of the worse knee; frequent pain and no frequent pain refer to either knee at baseline; event and no event (Lo 2022 subset only) mean the outcome occurred in either knee during follow-up. %s",
-                         device_def)
-legend$tipping <- sprintf("Rows: the walking item's assumed sensitivity (Se); columns: its assumed specificity (Sp), taken to be the same in participants with and without the outcome (non-differential). Each cell is the median adjusted odds ratio over %s draws; shaded cells have a 95%% simulation interval that excludes 1; “–” marks a combination that is infeasible (every draw discarded). One panel per outcome.",
+legend$convergent <- "Walkers with a known amount (n), in the validation sample and the Lo 2022 subset; walkers, lifetime sessions and device measures as defined under Known groups and dose–response. Spearman ρ: rank correlation (95% CI) between lifetime sessions and the device measure; between-wave ρ: correlation of that measure between 48 and 72 months in participants valid at both waves, estimated in the validation sample and used for both samples; deattenuated ρ: ρ corrected for that unreliability."
+legend$classification <- sprintf("Validation sample and Lo 2022 subset; walkers by the item as defined under Known groups. Se (sensitivity): share of device walkers who are walkers by the item; Sp (specificity): share of device non-walkers who are non-walkers by the item; PPV and NPV (positive and negative predictive value): share of item walkers and of item non-walkers who are device walkers and non-walkers; AUC (area under the ROC curve): chance that a device walker has more lifetime sessions than a device non-walker (non-walkers score 0, and %s are left out); k / n: count over its denominator. %s %s",
+                                 no_amount_group, device_def, device_detail)
+legend$strata <- "Se and Sp (95% CI) against the device walker (as defined under Classification), within subgroups of the validation sample and the Lo 2022 subset: KL 0–1, KL 2 and KL 3–4 are the baseline Kellgren–Lawrence (KL) grade of the worse knee; frequent pain and no frequent pain refer to either knee at baseline; event and no event (Lo 2022 subset only) mean the outcome occurred in either knee during follow-up. The four outcomes are new frequent knee pain, KL grade worsening, medial joint-space narrowing (JSN) worsening and resolution of frequent knee pain."
+legend$tipping <- sprintf("Knees of the Lo 2022 cohort with the outcome observed, one panel per outcome (outcomes as named in the subgroup figure legend). Rows: the walking item's assumed sensitivity (Se); columns: its assumed specificity (Sp), taken to be the same in participants with and without the outcome (non-differential). Each cell is the median adjusted odds ratio over %s draws; shaded cells have a 95%% simulation interval that excludes 1; “–” marks a combination that is infeasible (every draw discarded).",
                           fmt(assumption("bias.tipping_iterations")))
-legend$summary_level <- "Crude OR: odds ratio from the published Table 2 counts (events and participants among walkers and non-walkers; knees, clustering ignored). Corrected (95% SI): median corrected odds ratio over the kept draws with its 95% simulation interval, “–” when every draw was discarded. Scenario, discarded and flagged are as in the table above."
-legend$priors <- sprintf("Lo 2022 participants with device data and the outcome observed. Sensitivity k / n: device walkers who are walkers by the item over all device walkers; specificity k / n: device non-walkers who are non-walkers over all device non-walkers. Scenario: non-differential = everyone (stratum “all”); differential = by outcome group (“case”: the outcome in either knee, “noncase”: not). %s %s",
-                        device_def, item_def)
+legend$summary_level <- "Published Table 2 counts of knees in the Lo 2022 cohort (events and total knees among walkers and non-walkers; clustering ignored), by outcome. Crude OR (odds ratio): from those counts; Corrected (95% SI, simulation interval): median corrected odds ratio over the kept draws with its 95% simulation interval, “–” when every draw was discarded. Scenario, discarded and flagged are as in the table above."
 ```
 
 ```{=typst}
@@ -341,12 +343,7 @@ oaireport::compare_table(data.frame(
 no_level <- tapply(dz$n_walkers_no_level, dz$sample, max)  # the same in every measure
 no_level <- no_level[intersect(names(sample_names), names(no_level))]
 sample_phrase <- c(validation = "the validation sample", lo_subset = "the Lo 2022 subset")
-# A "yes" with no amount answers is a walker with no level only under walker coding
-no_level_who <- if (assumption("exposure.yes_without_amount_as") == "walker") {
-  "Walkers who gave no amount, or only some of the amount items, have no level"
-} else {
-  "Walkers who answered some but not all of the amount items have no level"
-}
+no_level_who <- paste0(cap1(no_amount_group), " have no level")
 no_level_text <- if (all(no_level == 0)) {
   "Every walker has an amount level, so none is left out of the lower and upper groups."
 } else {
@@ -357,7 +354,7 @@ no_level_text <- if (all(no_level == 0)) {
 
 ```{r note-dose}
 #| results: asis
-dose_note <- sprintf("Validation sample and Lo 2022 subset; walkers and non-walkers by the walking item, and the device measures, as defined above. Median (n) of the device measure: none = non-walkers; lower and upper = walkers at or below and above the %s of lifetime sessions (years × months per year × times per month, at category midpoints) among walkers; n = participants with the measure. %s Trend p: Jonckheere–Terpstra permutation test (%s permutations, so the smallest p-value is 1/%s, shown as “≤ %s”); upper vs none, adjusted: %s.",
+dose_note <- sprintf("Validation sample and Lo 2022 subset; walkers and device measures as defined under Known groups. Median (n) of the device measure: none = non-walkers; lower and upper = walkers at or below and above the %s of lifetime sessions (years × months per year × times per month, at the midpoints of the answer categories) among walkers; n = participants with the measure. %s Trend p: Jonckheere–Terpstra permutation test (%s permutations, so the smallest p-value is 1/%s, shown as “≤ %s”); upper vs none, adjusted: %s.",
                      assumption("exposure.amount_split"), no_level_text, count(jt_b), count(jt_b + 1),
                      formatC(round_up(jt_floor), format = "g", digits = 2), adjusted_def)
 cat(oaireport::table_note(dose_note), sep = "\n")
@@ -383,7 +380,7 @@ cat(oaireport::table_note(legend$convergent), sep = "\n")
 
 ```{r classification}
 oaireport::compare_table(data.frame(
-  Sample = named(cls$sample, sample_names), Measure = toupper(cls$measure), Estimate = num(cls$estimate),
+  Sample = named(cls$sample, sample_names), Measure = named(cls$measure, class_names), Estimate = num(cls$estimate),
   `95% CI` = interval(cls$lo, cls$hi),
   `k / n` = ifelse(is.na(cls$k), count(cls$n), sprintf("%s / %s", count(cls$k), count(cls$n))),
   check.names = FALSE), widths = c(1.4, 1, 1, 1.4, 1.4), multipage = FALSE)
@@ -469,7 +466,7 @@ The same statistics for the PASE walking item (walking outside the home in the p
 pz <- run$validity_pase
 statistic_names <- c(hl = "Hodges–Lehmann", rank_biserial = "Rank-biserial", adj_diff = "Adjusted difference",
                      rho = "Spearman ρ", rho_deattenuated = "Deattenuated ρ")
-statistic <- ifelse(pz$statistic %in% names(statistic_names), statistic_names[pz$statistic], toupper(pz$statistic))
+statistic <- ifelse(pz$statistic %in% names(statistic_names), statistic_names[pz$statistic], named(pz$statistic, class_names))
 pase_estimate <- ifelse(pz$statistic %in% c("hl", "adj_diff"), dnum(pz$estimate, pz$measure), num(pz$estimate))
 pase_ci <- ifelse(is.na(pz$lo), "–",
                   ifelse(pz$statistic %in% c("hl", "adj_diff"),
@@ -501,8 +498,8 @@ tinytable::group_tt(
 pairing_short <- if (pairing == "adjacent_wave") {
   sprintf("48 and 72 months are paired with the device wave of the same visit and 96 months with %s", combined_text)
 } else sprintf("every visit is paired with %s", combined_text)
-pase_note <- sprintf("Each block is a device measure (an average per valid day) or the device walker. Each visit shows the estimate (95%% CI) and n, the participants with a PASE walking subscore and valid device data at that visit (%s). Statistics are defined as in the known-groups and classification legends, with PASE walkers in place of item walkers and the subscore (0 for no walking) in place of lifetime sessions; Spearman ρ and deattenuated ρ are among PASE walkers. %s",
-                     pairing_short, pase_def)
+pase_note <- sprintf("Validation sample only. %s Each block is a device measure (as defined under Known groups) or the device walker (as defined under Classification); each visit shows the estimate (95%% CI) and n, which is each statistic's own denominator: for Hodges–Lehmann, rank-biserial, adjusted difference and AUC, the participants with a PASE walking subscore and valid device data at that visit; for Spearman ρ and deattenuated ρ, the PASE walkers among them; for Se, the device walkers; for Sp, the device non-walkers; for PPV, the PASE walkers; for NPV, the PASE non-walkers. The statistics are otherwise defined as in the known-groups and classification legends, with PASE walkers in place of item walkers and the subscore (0 for no walking) in place of lifetime sessions. Visits: %s.",
+                     pase_def, pairing_short)
 cat(oaireport::table_note(pase_note), sep = "\n")
 ```
 
@@ -538,7 +535,7 @@ collapse_text <- if (collapse) {
 } else ""
 ```
 
-The record-level correction divides by Se + Sp − 1, which is only `r num(j_lo)` in the Lo 2022 subset, so small changes in the drawn sensitivity and specificity move the corrected odds ratio a long way. The device is an imperfect reference: it measures current activity, while the item asks about walking since age 50, so part of the low specificity is device error rather than item error. A draw is discarded when it implies a true walker prevalence outside 0–1 in either outcome group, when Se + Sp ≤ 1, or when the reclassified exposure has a single level. Depending on outcome and model, that happened to `r pct_range(pba$discarded[nondiff])` of non-differential draws and `r pct_range(pba$discarded[!nondiff])` of differential draws, `r discard_vs_threshold`. `r collapse_text`
+The record-level correction divides by Se + Sp − 1, which is only `r num(j_lo)` in the Lo 2022 subset, so small changes in the drawn sensitivity and specificity move the corrected odds ratio a long way. The device is an imperfect reference: it measures current activity, while the item asks about walking since age 50, so part of the low specificity is device error rather than item error. A draw is discarded when it implies a true walker prevalence outside 0–1 in either outcome group, when Se + Sp ≤ 1, when the reclassified exposure has a single level, or when the refit gives no finite estimate. Depending on outcome and model, that happened to `r pct_range(pba$discarded[nondiff])` of non-differential draws and `r pct_range(pba$discarded[!nondiff])` of differential draws, `r discard_vs_threshold`. `r collapse_text`
 
 ```{r tipping-heading}
 #| results: asis
@@ -606,7 +603,7 @@ oaireport::compare_table(data.frame(
 
 ```{r note-pba}
 #| results: asis
-pba_note <- sprintf("Model: the paper's unadjusted and adjusted models; scenario: non-differential = one sensitivity and specificity for everyone, differential = separate values for participants with and without the outcome; observed: odds ratio of our replication. Bias-adjusted (95%% SI): median over the kept draws with its 95%% simulation interval (systematic plus random error); conclusion holds: share of kept draws with the published direction and, where the published result was significant, an interval excluding 1. Discarded: share of the %s draws implying an impossible prevalence (outside 0–1 in either outcome group), Se + Sp ≤ 1 or a single exposure level; ✓ (flagged) = more than %s discarded.",
+pba_note <- sprintf("Knees of the Lo 2022 cohort, by outcome; each draw refits the replication's models. Model: the paper's unadjusted and adjusted models; scenario: non-differential = one sensitivity and specificity for everyone, differential = separate values for participants with and without the outcome; observed: odds ratio of our replication. Bias-adjusted (95%% SI): median over the kept draws with its 95%% simulation interval (systematic plus random error); conclusion holds: share of kept draws with the published direction and, where the published result was significant, an interval excluding 1. Discarded: share of the %s draws implying an impossible prevalence (outside 0–1 in either outcome group), Se + Sp ≤ 1, a single exposure level, or a refit with no finite estimate; ✓ (flagged) = more than %s discarded.",
                     count(pba$n[1]), pct(threshold))
 cat(oaireport::table_note(pba_note), sep = "\n")
 ```
@@ -637,7 +634,7 @@ forest <- oaireport::forest_plot(est, facet = "model", sources = sources) +
   ggplot2::coord_cartesian(xlim = axis_limits)
 oaireport::save_figure(forest, "forest_bias", "2col", height = 4.4)
 forest
-forest_note <- sprintf("Panels: the unadjusted and adjusted models; rows: outcomes. Published: odds ratio and 95%% CI from Lo et al. 2022 Table 2; replication: ours; bias-adjusted: median and 95%% simulation interval over the kept draws, under non-differential and differential misclassification. Intervals are cut at the axis limits (%s and %s). %s",
+forest_note <- sprintf("Knees of the Lo 2022 cohort, by outcome. Panels: the unadjusted and adjusted models; rows: outcomes. Published: odds ratio and 95%% CI from Lo et al. 2022 Table 2; replication: ours; bias-adjusted: median and 95%% simulation interval over the kept draws, under non-differential and differential misclassification. Intervals are cut at the axis limits (%s and %s). %s",
                        num(axis_limits[1]), num(axis_limits[2], 0), flagged_points_text)
 cat(oaireport::table_note(forest_note, close_group = TRUE), sep = "\n")
 ```
@@ -689,12 +686,21 @@ outside_text <- if (length(outside)) {
 
 ```{r note-priors}
 #| results: asis
-cat(oaireport::table_note(legend$priors), sep = "\n")
+n_prior <- pr$se_n[pr$stratum == "all"] + pr$sp_n[pr$stratum == "all"]  # persons per outcome
+n_prior_text <- if (min(n_prior) == max(n_prior)) count(n_prior[1]) else sprintf("%s to %s by outcome", count(min(n_prior)), count(max(n_prior)))
+priors_note <- sprintf("Lo 2022 participants who answered the walking item and have device data (the Lo 2022 subset, %s) with the outcome observed (%s). Sensitivity k / n: device walkers who are walkers by the item over all device walkers; specificity k / n: device non-walkers who are non-walkers over all device non-walkers; walkers and device walkers as defined under Known groups and Classification. Scenario: non-differential = everyone (stratum “all”); differential = by outcome group (“case”: the outcome in either knee, “noncase”: not).",
+                       count(run$metrics[["sample.lo_subset.persons"]]), n_prior_text)
+cat(oaireport::table_note(priors_note), sep = "\n")
 ```
 
 Priors are Beta(k + 1, n − k + 1) from the 2×2 counts above, taken in the Lo et al. 2022 participants with device data and the outcome observed.`r outside_text` Reclassification is done within outcome strata, and each iteration refits the replication's own GEE models. Each scenario ran `r count(pba$n[1])` iterations and each tipping-point cell `r count(assumption("bias.tipping_iterations"))`.
 
 The assumptions ledger below lists every analytic choice, its status (confirmed, assumed or open) and its source. It is generated from `assumptions.toml`.
+
+```{r ledger-legend}
+#| results: asis
+cat(oaireport::table_note("Each table lists the assumptions of one status: confirmed (from a source document), assumed or open. Key: the assumption's name; value: what this run used, with the other allowed choices; source: where it comes from; rationale: why it was chosen. The Variants table lists named sensitivity runs: the assumption values each one sets, and a description."), sep = "\n")
+```
 
 ```{r ledger}
 #| results: asis
