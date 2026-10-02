@@ -2,6 +2,7 @@ import json
 import runpy
 import sys
 import tomllib
+import warnings
 from pathlib import Path
 
 import polars as pl
@@ -17,13 +18,16 @@ sys.path.insert(0, str(ANALYSIS))
 
 from wv import (  # noqa: E402
     DEVICE_RULE_KEYS,
+    OUTCOMES,
     CohortError,
     check_walker_coding,
+    cohort_flow,
     combine_waves,
-    copy_lo_results,
+    lo_knee_columns,
     lo_model,
     person_outcomes,
     read_lo_frame,
+    read_lo_results,
     with_amount_level,
     with_device_walker,
     without_ungradable_device_rows,
@@ -62,6 +66,9 @@ def test_combine_waves_keeps_single_wave_persons():
     one_wave = combine_waves(device, "08")
     assert one_wave["ID"].to_list() == [1] and one_wave["purposeful_min"].to_list() == [20.0]
     assert "purposeful_min_06" in one_wave.columns
+    assert one_wave["n_waves"].to_list() == [1]  # the waves used, not the waves the person has
+    first_wave = combine_waves(device, "06").sort("ID")
+    assert first_wave["ID"].to_list() == [1, 2] and first_wave["n_waves"].to_list() == [1, 1]
     with pytest.raises(ValueError, match="combination"):
         combine_waves(device, "both")
 
@@ -106,6 +113,18 @@ def test_amount_level_median_split():
     ]
 
 
+def test_amount_level_without_a_median_is_null_for_walkers():
+    # no walker has an amount, so there is no median and no split: walkers have no level
+    df = pl.DataFrame(
+        {"walker": [False, True, True, None], "sessions": [None, None, None, None]},
+        schema_overrides={"sessions": pl.Float64},
+    )
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")  # no comparison with a null median
+        level = with_amount_level(df)["amount_level"].to_list()
+    assert level == ["none", None, None, None]
+
+
 def test_person_outcomes_any_knee():
     knees = pl.DataFrame(
         {
@@ -142,39 +161,69 @@ def write_lo(tmp_path, label, coding):
 
 def test_read_lo_frame_rejects_other_coding(tmp_path):
     write_lo(tmp_path, "default", "walker")
-    with pytest.raises(CohortError, match="codes yes-without-amount as 'walker'") as err:
+    with pytest.raises(CohortError, match="codes it as 'walker'") as err:
         read_lo_frame(tmp_path, "default", "non-walker")
-    assert "`oai run lo2022_walking`" in str(err.value)
-    assert "--variant default" not in str(err.value)
+    message = str(err.value)
+    # the first instruction is to choose another run, not to re-run the one that does not match
+    assert message.startswith("set bias.lo2022_label to the label of a lo2022_walking run")
+    assert "yes-without-amount as 'non-walker'" in message
+    assert "`oai run lo2022_walking --variant <variant>`" in message
+    assert "`oai run lo2022_walking`" not in message  # the same label again would not help
     frame, values = read_lo_frame(tmp_path, "default", "walker")
     assert frame.height == 1 and values["model.corstr"] == "exchangeable"
 
 
-def test_copy_lo_results_names_a_command_the_cli_accepts(tmp_path):
-    out = tmp_path / "out"
-    out.mkdir()
+def test_read_lo_results_names_a_command_the_cli_accepts(tmp_path):
     # the replication's default run takes no --variant (the CLI rejects --variant default)
     with pytest.raises(CohortError, match="comparison.csv is missing") as err:
-        copy_lo_results(tmp_path / "lo2022_walking" / "default", "default", out)
+        read_lo_results(tmp_path / "lo2022_walking" / "default", "default")
     assert "`oai run lo2022_walking`" in str(err.value)
     assert "--variant default" not in str(err.value)
     with pytest.raises(CohortError) as err:
-        copy_lo_results(tmp_path / "lo2022_walking" / "x", "walker_requires_amount", out)
+        read_lo_results(tmp_path / "lo2022_walking" / "x", "walker_requires_amount")
     assert "`oai run lo2022_walking --variant walker_requires_amount`" in str(err.value)
 
 
-def test_copy_lo_results(tmp_path):
+def test_read_lo_results(tmp_path):
     lo = tmp_path / "lo2022_walking" / "default"
     lo.mkdir(parents=True)
     pl.DataFrame({"metric": ["t2.new_pain.or_adj", "t1.age"], "ours": ["0.6", "61"]}).write_csv(
         lo / "comparison.csv"
     )
     pl.DataFrame({"outcome": ["new_pain"], "or": [0.6]}).write_csv(lo / "table2.csv")
-    out = tmp_path / "out"
-    out.mkdir()
-    copy_lo_results(lo, "default", out)
-    assert pl.read_csv(out / "lo2022_t2.csv")["metric"].to_list() == ["t2.new_pain.or_adj"]
-    assert (out / "lo2022_table2.csv").read_text() == (lo / "table2.csv").read_text()
+    out = read_lo_results(lo, "default")
+    assert list(out) == ["lo2022_t2.csv", "lo2022_table2.csv"]
+    assert out["lo2022_t2.csv"] == b"metric,ours\nt2.new_pain.or_adj,0.6\n"
+    assert out["lo2022_table2.csv"] == (lo / "table2.csv").read_bytes()
+    assert list(tmp_path.rglob("lo2022_t2.csv")) == []  # reading writes nothing
+
+
+def test_read_lo_results_stops_on_an_empty_table_2(tmp_path):
+    lo = tmp_path / "lo2022_walking" / "walker_requires_amount"
+    lo.mkdir(parents=True)
+    pl.DataFrame({"metric": ["t1.age"], "ours": ["61"]}).write_csv(lo / "comparison.csv")
+    pl.DataFrame({"outcome": ["new_pain"]}).write_csv(lo / "table2.csv")
+    with pytest.raises(CohortError, match="no t2.* rows") as err:
+        read_lo_results(lo, "walker_requires_amount")
+    assert "`oai run lo2022_walking --variant walker_requires_amount`" in str(err.value)
+    pl.DataFrame({"name": ["t2.x"]}).write_csv(lo / "comparison.csv")
+    with pytest.raises(CohortError, match="no metric column"):
+        read_lo_results(lo, "walker_requires_amount")
+
+
+def test_lo_knee_columns_names_what_is_missing():
+    knees = pl.DataFrame(
+        {c: [1] for c in ["ID", "SIDE", "walker", "age", "sex", "bmi", "kl0", "extra", *OUTCOMES]}
+    )
+    out = lo_knee_columns(knees, ["age", "sex", "kl0"], "default")
+    assert out.columns == ["ID", "SIDE", "walker", "age", "sex", "bmi", "kl0", *OUTCOMES]
+    with pytest.raises(CohortError) as err:
+        lo_knee_columns(knees.drop("kl0", "bmi", "kl_worse"), ["age", "sex", "kl0"], "default")
+    message = str(err.value)
+    assert "lacks columns bmi, kl0, kl_worse" in message
+    assert "`oai run lo2022_walking`" in message
+    with pytest.raises(CohortError, match="lacks column alignment;"):
+        lo_knee_columns(knees, ["age", "alignment"], "default")
 
 
 def test_read_lo_frame_names_the_command(tmp_path):
@@ -198,17 +247,55 @@ def test_lo_model_mirrors_models_r():
     }
 
 
+def test_lo_model_with_a_linear_kl_term():
+    values = {
+        "model.covariates": ["age", "kl0", "bmi"],
+        "model.kl_covariate": "numeric",
+        "model.corstr": "independence",
+    }
+    assert lo_model(values) == {
+        "or_unadj": "walker",
+        "or_adj": "walker + age + kl0 + bmi",
+        "corstr": "independence",
+        "covariates": "age,kl0,bmi",
+    }
+
+
 def test_check_walker_coding_agrees():
     answered = pl.DataFrame({"ID": [1, 2, 3], "walker": [True, False, True]})
     lo_people = pl.DataFrame({"ID": [1, 2, 4], "lo_walker": [True, False, False]})
     check_walker_coding(answered, lo_people)
 
 
+def test_check_walker_coding_stops_on_a_null_lo_walker():
+    # a null would make the comparison null, which the join filter drops: it must not be skipped
+    answered = pl.DataFrame({"ID": [1, 2, 3], "walker": [True, False, True]})
+    lo_people = pl.DataFrame({"ID": [1, 2, 3], "lo_walker": [True, None, None]})
+    with pytest.raises(CohortError, match="2 Lo 2022 participants have no walker code"):
+        check_walker_coding(answered, lo_people)
+    with pytest.raises(CohortError, match="1 Lo 2022 participant has no walker code"):
+        check_walker_coding(answered, lo_people.head(2))
+
+
 def test_check_walker_coding_counts_differences():
     answered = pl.DataFrame({"ID": [1, 2, 3], "walker": [True, True, False]})
     lo_people = pl.DataFrame({"ID": [1, 2, 4], "lo_walker": [True, False, True]})
-    with pytest.raises(CohortError, match="1 Lo 2022 participant"):
+    with pytest.raises(CohortError, match="1 Lo 2022 participant coded differently") as err:
         check_walker_coding(answered, lo_people)
+    assert "bias.lo2022_label" in str(err.value)
+
+
+def test_cohort_flow_shows_who_the_lo_cohort_loses():
+    answered = pl.DataFrame({"ID": [1, 2, 3, 5, 6]})
+    persons = pl.DataFrame({"ID": [1, 2, 3], "in_lo": [True, True, False]})
+    lo_people = pl.DataFrame({"ID": [1, 2, 4, 5, 7]})  # 4 and 7 did not answer the item
+    assert cohort_flow(answered, persons, lo_people).rows() == [
+        ("answered_walking_item", 5),
+        ("with_valid_device_wave", 3),
+        ("lo2022_cohort", 5),
+        ("lo2022_answered_item", 3),
+        ("lo2022_answered_with_device", 2),
+    ]
 
 
 # Comparison grading: expected.toml, wv.without_ungradable_device_rows and compare.py.

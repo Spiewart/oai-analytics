@@ -121,7 +121,8 @@ The exposure in Lo et al. 2022 is the 96-month survey item "walked for exercise 
 flow_labels <- c(answered_walking_item = "Answered the walking item (96 months)",
                  with_valid_device_wave = "With a valid device wave (48 or 72 months)",
                  lo2022_cohort = "In the Lo 2022 cohort",
-                 lo2022_with_device = "In the Lo 2022 cohort with device data")
+                 lo2022_answered_item = "In the Lo 2022 cohort and answered the walking item",
+                 lo2022_answered_with_device = "In the Lo 2022 cohort, answered the item, with device data")
 oaireport::compare_table(data.frame(Step = named(run$flow$step, flow_labels),
                                     Participants = count(run$flow$persons)),
                          widths = c(4, 1.5))

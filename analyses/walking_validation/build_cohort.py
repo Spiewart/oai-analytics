@@ -11,11 +11,13 @@ from wv import (
     MEASURES,
     OUTCOMES,
     check_walker_coding,
+    cohort_flow,
     combine_waves,
-    copy_lo_results,
+    lo_knee_columns,
     lo_model,
     person_outcomes,
     read_lo_frame,
+    read_lo_results,
     with_amount_level,
     with_device_walker,
 )
@@ -87,6 +89,11 @@ for wave in (None, "06", "08"):
 
 label = A["bias.lo2022_label"]
 lo_knees, lo_values = read_lo_frame(settings.work_dir, label, A["exposure.yes_without_amount_as"])
+# The runner points OAI_RESULTS_DIR at this run's own folder; the replication's results are in
+# its sibling analysis under the configured results folder, OAI_RESULTS_BASE.
+lo_results = read_lo_results(results_base / LO2022 / label, label)
+lo_knees = lo_knee_columns(lo_knees, lo_values["model.covariates"], label)
+lo_model_spec = lo_model(lo_values)
 lo_people = person_outcomes(lo_knees).with_columns(pl.lit(True).alias("in_lo"))
 check_walker_coding(answered, lo_people)
 
@@ -104,29 +111,8 @@ persons = (
     )
 )
 persons = with_amount_level(persons).sort("ID")
-persons.write_parquet(frames / "frame.parquet")
-
-covariates = list(lo_values["model.covariates"])
-keep = ["ID", "SIDE", "walker", *dict.fromkeys(["age", "sex", "bmi", *covariates]), *OUTCOMES]
-lo_knees.select([c for c in keep if c in lo_knees.columns]).write_parquet(
-    frames / "lo_knees.parquet"
-)
-(frames / "lo_model.json").write_text(json.dumps(lo_model(lo_values), indent=2))
-
-# The runner points OAI_RESULTS_DIR at this run's own folder; the replication's results are in
-# its sibling analysis under the configured results folder, OAI_RESULTS_BASE.
-copy_lo_results(results_base / LO2022 / label, label, results)
-
 lo_subset = persons.filter("in_lo")
-flow = pl.DataFrame(
-    [
-        {"step": "answered_walking_item", "persons": answered.height},
-        {"step": "with_valid_device_wave", "persons": persons.height},
-        {"step": "lo2022_cohort", "persons": lo_people.height},
-        {"step": "lo2022_with_device", "persons": lo_subset.height},
-    ]
-)
-flow.write_csv(results / "flow.csv")
+flow = cohort_flow(answered, persons, lo_people)
 metrics = [
     ("sample.validation.persons", persons.height),
     ("sample.validation.walkers", persons["walker"].sum()),
@@ -136,8 +122,17 @@ metrics = [
     ("sample.lo_subset.walkers", lo_subset["walker"].sum()),
     ("sample.lo_subset.device_walkers", lo_subset["device_walker"].sum()),
 ]
-pl.DataFrame(
+metrics_table = pl.DataFrame(
     [(m, float(v)) for m, v in metrics], schema=["metric", "value"], orient="row"
-).write_csv(results / "metrics_cohort.csv")
+)
+
+# Everything above can stop the step; nothing is written until it has all succeeded.
+persons.write_parquet(frames / "frame.parquet")
+lo_knees.write_parquet(frames / "lo_knees.parquet")
+(frames / "lo_model.json").write_text(json.dumps(lo_model_spec, indent=2))
+for name, content in lo_results.items():
+    (results / name).write_bytes(content)
+flow.write_csv(results / "flow.csv")
+metrics_table.write_csv(results / "metrics_cohort.csv")
 print(flow)
 print(f"measures: {', '.join(MEASURES)}; outcomes: {', '.join(OUTCOMES)}")
