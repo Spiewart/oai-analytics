@@ -1,13 +1,15 @@
 # Step `validity`: does the walking item rank and classify people like the device? (spec 6)
 A <- oaimodels::assumptions()
-persons <- oaimodels::read_frame(required = c(
-  "ID", "walker", "amount_level", "sessions", "device_walker", "in_lo", "n_waves", "age", "sex",
-  "bmi", "kl_max0", "pain0_any", "purposeful_min", "counts_per_day", "light_min",
-  "device_walker_06", "device_walker_08"
-))
-out_dir <- Sys.getenv("OAI_RESULTS_DIR")
 measures <- c("purposeful_min", "counts_per_day", "light_min")
 outcomes <- c("new_pain", "kl_worse", "jsn_worse", "improved_pain")
+# Every column the step reads, so a frame without one stops here and names it
+persons <- oaimodels::read_frame(required = c(
+  "ID", "walker", "amount_level", "sessions", "device_walker", "in_lo", "n_waves", "age", "sex",
+  "bmi", "kl_max0", "pain0_any", measures, paste0(measures, "_06"), paste0(measures, "_08"),
+  "device_walker_06", "device_walker_08", paste0("pase_walking_", c("06", "08", "10")),
+  paste0(outcomes, "_any")
+))
+out_dir <- Sys.getenv("OAI_RESULTS_DIR")
 reps <- A[["validity.bootstrap_reps"]]
 perms <- A[["validity.jt_permutations"]]
 seed <- A[["bias.seed"]]
@@ -45,6 +47,9 @@ for (sample in names(samples)) {
       adj_diff = adj[["estimate"]], adj_lo = adj[["lo"]], adj_hi = adj[["hi"]]
     )
     level <- factor(d$amount_level, levels = levels_amount)
+    # n behind each median: participants at that level with the measure. Walkers with no amount
+    # level (they gave no amount) are in no level and so are left out of the lower/upper groups.
+    n_at <- function(lv) sum(level %in% lv & !is.na(d[[m]]))
     jt <- oaimodels::jonckheere(d[[m]], level, permutations = perms, seed = seed)
     dd <- d[!is.na(level), ]
     dd$amount_level <- factor(dd$amount_level, levels = levels_amount)
@@ -54,7 +59,10 @@ for (sample in names(samples)) {
     dose[[length(dose) + 1]] <- data.frame(
       sample = sample, measure = m,
       median_none = q(d[[m]][level %in% "none"], 0.5), median_lower = q(d[[m]][level %in% "lower"], 0.5),
-      median_upper = q(d[[m]][level %in% "upper"], 0.5), jt = jt[["statistic"]], jt_p = jt[["p"]],
+      median_upper = q(d[[m]][level %in% "upper"], 0.5),
+      n_none = n_at("none"), n_lower = n_at("lower"), n_upper = n_at("upper"),
+      n_walkers_no_level = sum(d$walker & is.na(level), na.rm = TRUE),
+      jt = jt[["statistic"]], jt_p = jt[["p"]],
       adj_lower = lower[["estimate"]], adj_lower_lo = lower[["lo"]], adj_lower_hi = lower[["hi"]],
       adj_upper = upper[["estimate"]], adj_upper_lo = upper[["lo"]], adj_upper_hi = upper[["hi"]]
     )
@@ -73,7 +81,7 @@ for (sample in names(samples)) {
   auc <- oaimodels::auc_ci(score, d$device_walker, reps = reps, seed = seed)
   cl <- rbind(cl, data.frame(measure = "auc", estimate = auc[["estimate"]], lo = auc[["lo"]],
                              hi = auc[["hi"]], k = NA, n = sum(!is.na(score) & !is.na(d$device_walker))))
-  cl$sample <- sample
+  cl$sample <- rep(sample, nrow(cl))
   classes[[length(classes) + 1]] <- cl
   by <- list(
     kl = as.character(cut(d$kl_max0, c(-Inf, 1, 2, Inf), labels = c("KL 0-1", "KL 2", "KL 3-4"))),
@@ -84,8 +92,8 @@ for (sample in names(samples)) {
   }
   for (v in names(by)) {
     s <- oaimodels::classification_by_stratum(d$walker, d$device_walker, by[[v]])
-    s$sample <- sample
-    s$variable <- v
+    s$sample <- rep(sample, nrow(s))  # rep(): a zero-row frame (all-missing input) takes no scalar
+    s$variable <- rep(v, nrow(s))
     strata[[length(strata) + 1]] <- s
   }
 }

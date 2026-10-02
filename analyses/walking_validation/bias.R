@@ -1,17 +1,28 @@
 # Step `bias`: how far could misclassification of the walking item move Lo 2022's odds ratios?
 # (spec 7). Refits the replication's own models on reclassified exposure.
+# OAI_R_CORES: worker processes for the draws. A positive integer; unset (or empty) means the
+# detected cores minus one, at least 1. Checked first, so a bad value stops the step at once.
+cores_setting <- Sys.getenv("OAI_R_CORES", "")
+cores <- if (nzchar(cores_setting)) {
+  n <- suppressWarnings(as.integer(cores_setting))
+  if (!grepl("^[0-9]+$", cores_setting) || is.na(n) || n < 1L) {
+    stop("OAI_R_CORES must be a positive integer, got '", cores_setting, "'", call. = FALSE)
+  }
+  n
+} else {
+  max(1L, parallel::detectCores() - 1L, na.rm = TRUE)
+}
 A <- oaimodels::assumptions()
 frames <- Sys.getenv("OAI_FRAME_DIR")
 out_dir <- Sys.getenv("OAI_RESULTS_DIR")
-persons <- oaimodels::read_frame(required = c("ID", "walker", "device_walker", "in_lo"))
+outcomes <- c("new_pain", "kl_worse", "jsn_worse", "improved_pain")
+persons <- oaimodels::read_frame(required = c("ID", "walker", "device_walker", "in_lo", paste0(outcomes, "_any")))
 knees_all <- oaimodels::read_frame(file.path(frames, "lo_knees.parquet"), required = c("ID", "walker"))
 model <- jsonlite::fromJSON(file.path(frames, "lo_model.json"))
 published <- utils::read.csv(file.path(out_dir, "lo2022_t2.csv"), na.strings = c("", "NA"))
 replicated <- utils::read.csv(file.path(out_dir, "lo2022_table2.csv"))
-outcomes <- c("new_pain", "kl_worse", "jsn_worse", "improved_pain")
 models <- c(or_unadj = model$or_unadj, or_adj = model$or_adj)
 base_covariates <- strsplit(model$covariates, ",")[[1]]
-cores <- as.integer(Sys.getenv("OAI_R_CORES", max(1L, parallel::detectCores() - 1L)))
 iterations <- A[["bias.iterations"]]
 seed <- A[["bias.seed"]]
 validated <- persons[persons$in_lo & !is.na(persons$device_walker), ]
@@ -42,6 +53,46 @@ for (o in outcomes) {
   person <- data.frame(ID = k$ID[first], observed = k$walker[first])
   person$stratum <- ifelse(person$ID %in% k$ID[k$y == 1], "case", "noncase")
   v <- validated[!is.na(validated[[paste0(o, "_any")]]), ]
+  # The priors come from the validated Lo participants with this outcome observed (case if any knee
+  # had the event). They are some of the model's participants, the rest having no device data, and
+  # each must be in the same outcome group here as in the model frame, which drops knees with a
+  # missing covariate: the pba draws reclassify the model's persons by these group names.
+  prior_group <- ifelse(v[[paste0(o, "_any")]], "case", "noncase")
+  model_group <- person$stratum[match(v$ID, person$ID)]
+  if (anyNA(model_group)) {
+    stop("bias step: ", sum(is.na(model_group)), " validated participant(s) with ", o,
+         " observed are not in the complete-case model frame, so the ", o, " priors would describe ",
+         "people the model does not include", call. = FALSE)
+  }
+  if (any(prior_group != model_group)) {
+    stop("bias step: ", sum(prior_group != model_group), " validated participant(s) are in a ",
+         "different ", o, " case/noncase group in the priors (", o, "_any, from all knees) than in ",
+         "the complete-case model frame", call. = FALSE)
+  }
+  # The published counts of this outcome's Table 2 (a, b, c0, d0 for the summary-level correction)
+  count <- function(group, what) {
+    metric <- sprintf("t2.%s.%s.%s", o, group, what)
+    x <- suppressWarnings(as.numeric(published$published[published$metric == metric]))
+    if (length(x) != 1 || is.na(x)) {
+      stop("bias step: the published count ", metric, " in lo2022_t2.csv is missing or not a number",
+           call. = FALSE)
+    }
+    x
+  }
+  a <- count("walkers", "events")
+  b <- count("nonwalkers", "events")
+  c0 <- count("walkers", "n") - a
+  d0 <- count("nonwalkers", "n") - b
+  published_or <- lapply(names(models), function(m) {
+    metric <- paste0("t2.", o, ".", m)
+    pub <- oaireport::parse_or(published$published[published$metric == metric])
+    if (nrow(pub) != 1 || is.na(pub$or) || is.na(pub$sig)) {
+      stop("bias step: the published odds ratio ", metric, " in lo2022_t2.csv is missing or not ",
+           "readable as 'OR (lo-hi)' (found ", nrow(pub), " row(s))", call. = FALSE)
+    }
+    pub
+  })
+  names(published_or) <- names(models)
   nondiff <- prior_row(v, "all")
   diff <- rbind(prior_row(v[v[[paste0(o, "_any")]], ], "case"),
                 prior_row(v[!v[[paste0(o, "_any")]], ], "noncase"))
@@ -56,7 +107,7 @@ for (o in outcomes) {
     if (length(rep_or) != 1 || abs(observed[["or"]] - rep_or) > 1e-8) {
       stop("bias step does not reproduce the replication's ", o, " ", m, " odds ratio", call. = FALSE)
     }
-    pub <- oaireport::parse_or(published$published[published$metric == paste0("t2.", o, ".", m)])
+    pub <- published_or[[m]]
     for (scenario in c("non-differential", "differential")) {
       priors <- if (scenario == "differential") diff else nondiff
       draws <- oaimodels::pba(person, k, fit, priors, differential = scenario == "differential",
@@ -90,13 +141,6 @@ for (o in outcomes) {
     stop("bias step: the Se = 1, Sp = 1 tipping cell does not reproduce the observed adjusted ", o,
          " odds ratio", call. = FALSE)
   }
-  count <- function(group, what) {
-    as.numeric(published$published[published$metric == sprintf("t2.%s.%s.%s", o, group, what)])
-  }
-  a <- count("walkers", "events")
-  b <- count("nonwalkers", "events")
-  c0 <- count("walkers", "n") - a
-  d0 <- count("nonwalkers", "n") - b
   for (scenario in c("non-differential", "differential")) {
     set.seed(seed)
     ors <- replicate(iterations, {

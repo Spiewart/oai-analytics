@@ -5,10 +5,12 @@ One run is shared by the tests in this module: it is made in throwaway work and 
 """
 
 import dataclasses
+import functools
 import os
 import shutil
 import subprocess
 from pathlib import Path
+from types import SimpleNamespace
 
 import polars as pl
 import pytest
@@ -17,7 +19,15 @@ from oai.config import ConfigError, Settings, load_settings
 from oai.export.egress import check_egress
 from oai.manifest import Analysis, find_analysis
 from oai.report import ReportError, find_quarto, render_report
-from oai.runner import resolve_assumptions, run_analysis, run_results_dir
+from oai.runner import (
+    process_env,
+    r_profile_env,
+    resolve_assumptions,
+    run_analysis,
+    run_results_dir,
+    select_steps,
+    step_command,
+)
 
 REPO = Path(__file__).resolve().parents[1]
 FAST = {
@@ -29,6 +39,7 @@ FAST = {
 }
 
 
+@functools.cache
 def _ready() -> bool:
     if shutil.which("Rscript") is None:
         return False
@@ -121,6 +132,231 @@ def test_walking_validation_end_to_end(fast_run):
         ignore_id_pattern_columns=egress["ignore_id_pattern_columns"],
     )
     assert report.ok, report.problems
+
+
+@pytest.mark.realdata
+def test_e2e_dose_table_has_the_level_counts(fast_run):
+    dose = pl.read_csv(fast_run.out / "validity_dose.csv")
+    assert {"n_none", "n_lower", "n_upper", "n_walkers_no_level"} <= set(dose.columns)
+
+
+@pytest.fixture
+def step_copy(fast_run, tmp_path):
+    """The fast run's frames and results copied into tmp_path, and a way to run one R step on them.
+
+    Tests change the copies (never the run itself) and call `run(step_id, **env)`, which returns
+    the finished process with its stderr.
+    """
+    analysis, settings = fast_run.analysis, fast_run.settings
+    source = settings.work_dir / analysis.name / fast_run.out.name
+    frames, results = tmp_path / "frames", tmp_path / "results"
+    frames.mkdir()
+    for name in ("frame.parquet", "lo_knees.parquet", "lo_model.json"):
+        shutil.copy(source / name, frames / name)
+    shutil.copytree(fast_run.out, results)
+
+    def run(step_id: str, **env: str) -> subprocess.CompletedProcess:
+        step = select_steps(analysis, step_id=step_id)[0]
+        base = {
+            **os.environ,
+            "OAI_ANALYSIS": analysis.name,
+            "OAI_FRAME_DIR": str(frames),
+            "OAI_RESULTS_DIR": str(results),
+            "OAI_RESULTS_BASE": str(settings.results_dir),
+            "OAI_ASSUMPTIONS": str(results / "assumptions.resolved.json"),
+            **r_profile_env(settings),
+            **env,
+        }
+        return subprocess.run(
+            step_command(step, analysis),
+            cwd=analysis.root,
+            env=process_env(step, analysis, base),
+            capture_output=True,
+            text=True,
+        )
+
+    return SimpleNamespace(frames=frames, results=results, run=run)
+
+
+def _edit_frame(step_copy, edit):
+    path = step_copy.frames / "frame.parquet"
+    pl.read_parquet(path).pipe(edit).write_parquet(path)
+
+
+def _edit_published(step_copy, edit):
+    path = step_copy.results / "lo2022_t2.csv"
+    edit(pl.read_csv(path)).write_csv(path)
+
+
+@pytest.mark.realdata
+def test_validity_dose_counts_each_level_and_the_walkers_without_one(step_copy):
+    # Walkers who gave only some amount items already have no level. Three more lose theirs, two
+    # of them in the Lo subset, and the count must rise by exactly those.
+    def no_level(df, sample):
+        d = df if sample == "validation" else df.filter("in_lo")
+        return d.filter(pl.col("walker") & pl.col("amount_level").is_null()).height
+
+    before = pl.read_parquet(step_copy.frames / "frame.parquet")
+    expected = {
+        "validation": no_level(before, "validation") + 3,
+        "lo_subset": no_level(before, "lo_subset") + 2,
+    }
+    levelled = pl.col("walker") & pl.col("amount_level").is_not_null()
+    losers = [
+        *before.filter(levelled & pl.col("in_lo"))["ID"].head(2),
+        *before.filter(levelled & ~pl.col("in_lo"))["ID"].head(1),
+    ]
+    _edit_frame(
+        step_copy,
+        lambda df: df.with_columns(
+            pl.when(pl.col("ID").is_in(losers))
+            .then(None)
+            .otherwise(pl.col("amount_level"))
+            .alias("amount_level")
+        ),
+    )
+    done = step_copy.run("validity")
+    assert done.returncode == 0, done.stderr
+    frame = pl.read_parquet(step_copy.frames / "frame.parquet")
+    dose = pl.read_csv(step_copy.results / "validity_dose.csv")
+    assert dose.height == 6
+    for row in dose.iter_rows(named=True):
+        d = frame if row["sample"] == "validation" else frame.filter("in_lo")
+        measured = d.filter(pl.col(row["measure"]).is_not_null())
+        for level in ("none", "lower", "upper"):
+            n = measured.filter(pl.col("amount_level") == level).height
+            assert row[f"n_{level}"] == n, (row["sample"], row["measure"], level)
+        assert row["n_walkers_no_level"] == expected[row["sample"]], (row["sample"], row["measure"])
+
+
+@pytest.mark.realdata
+def test_validity_names_the_columns_a_frame_lacks(step_copy):
+    # columns the step reads but did not list as required used to fail deep inside the step
+    _edit_frame(step_copy, lambda df: df.drop("pase_walking_10", "light_min_08", "new_pain_any"))
+    done = step_copy.run("validity")
+    assert done.returncode != 0
+    assert "Frame is missing required columns" in done.stderr, done.stderr
+    for column in ("pase_walking_10", "light_min_08", "new_pain_any"):
+        assert column in done.stderr, done.stderr
+
+
+@pytest.mark.realdata
+@pytest.mark.parametrize("how", ["blank", "absent"])
+def test_bias_stops_on_a_missing_published_odds_ratio(step_copy, how):
+    target = "t2.new_pain.or_adj"
+
+    def spoil(df):
+        if how == "absent":
+            return df.filter(pl.col("metric") != target)
+        return df.with_columns(
+            pl.when(pl.col("metric") == target)
+            .then(None)
+            .otherwise(pl.col("published"))
+            .alias("published")
+        )
+
+    _edit_published(step_copy, spoil)
+    done = step_copy.run("bias")
+    assert done.returncode != 0
+    assert "published odds ratio" in done.stderr and target in done.stderr, done.stderr
+
+
+@pytest.mark.realdata
+@pytest.mark.parametrize("how", ["blank", "absent"])
+def test_bias_stops_on_a_missing_published_count(step_copy, how):
+    target = "t2.new_pain.walkers.events"
+
+    def spoil(df):
+        if how == "absent":
+            return df.filter(pl.col("metric") != target)
+        return df.with_columns(
+            pl.when(pl.col("metric") == target)
+            .then(None)
+            .otherwise(pl.col("published"))
+            .alias("published")
+        )
+
+    _edit_published(step_copy, spoil)
+    done = step_copy.run("bias")
+    assert done.returncode != 0
+    assert "published count" in done.stderr and target in done.stderr, done.stderr
+
+
+@pytest.mark.realdata
+def test_bias_stops_when_a_prior_stratum_disagrees_with_the_model_frame(step_copy):
+    # a validated person whose any-knee event differs from the complete-case model frame's
+    def flip(df):
+        first = df.filter(pl.col("in_lo") & pl.col("new_pain_any").is_not_null())["ID"][0]
+        return df.with_columns(
+            pl.when(pl.col("ID") == first)
+            .then(~pl.col("new_pain_any"))
+            .otherwise(pl.col("new_pain_any"))
+            .alias("new_pain_any")
+        )
+
+    _edit_frame(step_copy, flip)
+    done = step_copy.run("bias")
+    assert done.returncode != 0
+    assert "new_pain" in done.stderr and "case/noncase" in done.stderr, done.stderr
+
+
+@pytest.mark.realdata
+def test_bias_stops_when_a_prior_person_is_not_in_the_model_frame(step_copy):
+    # a validated participant outside the Lo cohort's knee frame would feed the priors only
+    def add(df):
+        outside = df.filter(~pl.col("in_lo"))["ID"][0]
+        return df.with_columns(
+            (pl.col("in_lo") | (pl.col("ID") == outside)).alias("in_lo"),
+            pl.when(pl.col("ID") == outside)
+            .then(False)
+            .otherwise(pl.col("new_pain_any"))
+            .alias("new_pain_any"),
+        )
+
+    _edit_frame(step_copy, add)
+    done = step_copy.run("bias")
+    assert done.returncode != 0
+    assert "not in the complete-case model frame" in done.stderr, done.stderr
+
+
+@pytest.fixture
+def bare_bias_step(tmp_path):
+    """A way to run the bias step before it reads anything, for what it checks first."""
+    if not _ready():
+        pytest.skip("the R report profile with quantreg, geepack and ggplot2 is unavailable")
+    settings = load_settings(
+        env={"OAI_WORK_DIR": str(tmp_path / "work"), "OAI_RESULTS_DIR": str(tmp_path / "results")},
+        repo_root=REPO,
+    )
+    analysis = find_analysis("walking_validation", settings.analyses_dir)
+    step = select_steps(analysis, step_id="bias")[0]
+
+    def run(**env: str) -> subprocess.CompletedProcess:
+        base = {**os.environ, "OAI_FRAME_DIR": str(tmp_path / "none"), **r_profile_env(settings)}
+        base.pop("OAI_R_CORES", None)
+        return subprocess.run(
+            step_command(step, analysis),
+            cwd=analysis.root,
+            env=process_env(step, analysis, {**base, **env}),
+            capture_output=True,
+            text=True,
+        )
+
+    return run
+
+
+@pytest.mark.parametrize("value", ["0", "1.5", "abc"])
+def test_bias_rejects_a_bad_r_cores(bare_bias_step, value):
+    done = bare_bias_step(OAI_R_CORES=value)
+    assert done.returncode != 0
+    assert f"OAI_R_CORES must be a positive integer, got '{value}'" in done.stderr, done.stderr
+
+
+def test_bias_accepts_a_positive_integer_r_cores(bare_bias_step):
+    # it then fails for want of a frame, which is the next thing the step reads
+    done = bare_bias_step(OAI_R_CORES="4")
+    assert done.returncode != 0
+    assert "OAI_R_CORES" not in done.stderr, done.stderr
 
 
 def _report_tools_ready() -> bool:
