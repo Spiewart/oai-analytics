@@ -1,6 +1,5 @@
 # Step `models`: knee-level GEE logistic models (Lo 2022 Table 2 and Supplementary Tables 2-3).
 # Knees are clustered on participant; settings come from assumptions.toml.
-suppressPackageStartupMessages(library(geepack))
 
 A <- oaimodels::assumptions()
 outcomes <- c("new_pain", "kl_worse", "jsn_worse", "improved_pain")
