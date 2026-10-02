@@ -1,7 +1,7 @@
 # Walking Validation Study — Design
 
 **Date:** 2026-10-01
-**Status:** Implemented (see §15 Amendments)
+**Status:** Implemented through amendment 10 (§15); amendments 11–12 (§15b) approved 2026-10-02, not yet implemented
 **Builds on:**
 - `2026-09-30-assumptions-and-lo2022-replication-design.md`
 - `2026-09-30-reporting-module-and-lo2022-comparison-design.md`
@@ -114,6 +114,7 @@ Analyses:
    - Logistic regression of correct classification on stratum, reporting the difference with its CI.
    - Labelled exploratory where cells are small.
 6. **PASE benchmark.** Items 1, 3 and 4 for the PASE walking subscore at V06 and V08 (adjacent to the device weeks) and at V10 (same visit as the walking item).
+7. **Answer-level sub-analyses (secondary).** PASE item 2's two walking answers, separately and combined into estimated weekly walking, and the 96-month item's amount answers. See amendment 12 (§15b).
 
 **Framing in Methods:** the device measures current activity, while the item asks about walking since age 50. The device is therefore an imperfect reference. Sensitivity and specificity are convergent-validity estimates, and the bias analysis uses them as distributions, not as truth.
 
@@ -171,6 +172,7 @@ If the original authors confirm their coding, the primary becomes "as published"
   - sensitivity and specificity by stratum;
   - tipping-point heatmap (sequential blue);
   - known-groups distributions.
+- **Legends:** every table and figure carries a short legend defining its labels, abbreviations and population (amendment 11, §15b).
 
 **Shared code**
 - **`oai.derive.walking`:** the walking-exposure coding moves here from `analyses/lo2022_walking/lo2022.py`. A regression test requires the replication's `comparison.csv` (`default` and `walker_requires_amount`) to be identical before and after.
@@ -286,3 +288,95 @@ These supersede the sections they name.
 8. **PASE walking subscore (§6).** Computed with the Washburn et al. 1993 constants: days 0/1.5/3.5/6, hours 0.5/1.5/3/5, weight 20. The constants are ledgered.
 9. **Parallelism (§7).** Bias-analysis iterations run with `parallel::mclapply`, using cores from `OAI_R_CORES`. Iteration i uses `set.seed(seed + i)`, so results do not depend on the core count.
 10. **Lo validation subset (§3, §10).** The Lo 2022 participants used for validation and for the bias-analysis priors are those who answered the walking item and have a valid device wave: 767, not 784. The replication codes 18 participants who never answered the item as non-walkers; their answers cannot be validated, so they are excluded from the 2×2 counts but remain in the bias analysis as classified non-walkers.
+
+## 15b. Amendments (2026-10-02, from review of the first report)
+
+11. **Every table and figure carries a legend (§8 report).**
+    - **Placement and length.** A short note in smaller type sits directly under each table and figure. It defines every row label, column label and abbreviation, and names the population the numbers come from. It runs to 1–3 sentences. Explanatory prose before a table does not replace it.
+    - **Core definitions.** These are used consistently in every legend that needs them:
+      - **Walker / non-walker (the item).** The answer to the 96-month question `V10WLKAR4`: walked for exercise for at least 20 minutes a day, at least 10 times, at age 50 or older. A walker answered yes and gave at least one amount. A "yes" with no amount follows `exposure.yes_without_amount_as`.
+      - **Device walker (the reference standard).** This is defined from the accelerometer alone. It is a person whose valid days include a purposeful bout on at least `reference.min_bout_days_per_week` days per week, averaged over their valid waves.
+        - A purposeful bout is at least `device.purposeful_bout_minutes` minutes at or above `device.mv_cutpoint` counts per minute. A bout starts when `device.bout_need` of `device.bout_window` minutes reach the cutpoint, and stops when `device.bout_stop_below` fall below it.
+        - Days per week is the share of the first 7 or fewer valid days that contain a bout, multiplied by 7.
+        - A valid day has at least `device.valid_day_hours` wear hours. A valid wave has at least `device.min_valid_days` valid days.
+      - **PASE walker.** A PASE walking subscore above `pase.walker_threshold` at that visit.
+      - **Device measures.** Purposeful-bout minutes, counts and light minutes per valid day.
+      - **Lifetime sessions.** Years × months per year × times per month, at the category midpoints.
+    - **Numbers come from the run.** Every number in a legend is read from the run's resolved assumptions or results, never typed in. A variant that changes a rule therefore changes its legend.
+    - **Implementation.** A small `oaireport` helper renders the notes, so they look the same in every report.
+
+12. **Answer-level sub-analyses (new §6 item 7; secondary, pre-specified 2026-10-02).**
+    - **Disclosure.** An exploratory look at PASE item 2's frequency answer at 48 and 72 months motivated this amendment, and the Methods say so. It showed:
+      - device-walker share rising across frequency categories, from 0.22 to 0.53;
+      - a Spearman ρ of about 0.31 with device bout-days per week;
+      - Youden's J of about 0.14–0.17 for "any walking", against about 0.24–0.29 at "3 or more days".
+    - **Framing.** All results are reported as receiver-operating points across pre-listed cuts. No cut is chosen as optimal from these data.
+
+    **12a. PASE item 2, the two walking answers separately and combined, at V06 and V08.**
+    - **Sample.** People valid at the adjacent device wave with a PASE answer (`pase.device_pairing`). The answers are read from the raw items, not decoded from the subscore.
+    - **Frequency alone** (`VxxPASE2`: never; 1–2; 3–4; 5–7 days in the past 7 days):
+      1. device-walker share in each category, with Wilson CIs;
+      2. a Jonckheere–Terpstra trend test of device bout-days per week across the four categories;
+      3. Spearman ρ between the frequency code and bout-days per week, with a Bonett–Wright CI;
+      4. Se, Sp, PPV, NPV and Youden's J against the same-wave device walker, at each cut (`components.pase_frequency_cuts`, default: at least 1–2, at least 3–4, and 5–7 days). Se, Sp, PPV and NPV get Wilson CIs. J gets a person-level bootstrap CI with `validity.bootstrap_reps`.
+    - **Duration alone** (`VxxPASE2HR`: under 1; 1–2; 2–4; over 4 hours, among PASE walkers): Spearman ρ with purposeful-bout minutes per day, and a Jonckheere–Terpstra test across the four codes.
+    - **Combined: estimated total weekly walking.**
+      - Weekly walking hours = days per week × hours per day, both at the ledgered midpoints (`pase.walking_scoring`: days 0/1.5/3.5/6, hours 0.5/1.5/3/5). This equals the PASE walking subscore × 7 / weight. It is expressed in minutes per week so it is on the device's scale.
+      - The device comparators are weekly minutes, defined as the per-valid-day mean × 7, at the same wave:
+        - **primary:** purposeful-bout minutes, i.e. walking-like moderate-to-vigorous activity in bouts of 10 minutes or more;
+        - **secondary:** all moderate-to-vigorous minutes, bouted or not;
+        - **secondary:** light minutes, because PASE "walking outside the home" includes slow walking.
+      - Analyses:
+        1. **Ranking.** Spearman ρ, with a Bonett–Wright CI, against each device comparator, in everyone and among PASE walkers. The ρ is also deattenuated with the single-wave device reliability (the between-wave ρ).
+        2. **Calibration.** Median and IQR of device weekly minutes within ordered bins of self-reported weekly walking (`components.pase_weekly_hours_bins`, default: 0, under 2, 2 to under 5, 5 to under 10, and 10 or more hours per week). Also a Jonckheere–Terpstra trend test across the bins.
+        3. **Absolute agreement.** For each person, self-report minus device (minutes per week): the median difference with a Hodges–Lehmann CI, and the 2.5th and 97.5th percentiles of the differences as nonparametric limits of agreement. The differences are also plotted against the mean of the two.
+        4. **Agreement at the guideline volume.** Self-reported weekly walking of at least `reference.min_bout_minutes_per_week` (150) minutes, against device purposeful-bout minutes of at least that volume: Se, Sp, PPV, NPV, J and Cohen's κ.
+      - **Framing.** PASE counts walking of any intensity outside the home. The device comparator counts moderate-to-vigorous bouts. A systematic difference is therefore partly a difference of construct, not only error, and the Methods say so.
+
+    **12b. Components of the 96-month item.**
+    - **Samples.** The validation sample and the Lo subset. The reference is the person-level device walker over combined waves, as in §6 item 4.
+    - **Times per month** (`V10WKTMAR4`: three bands, coded 1–3, at midpoints 2, 6 and 10 per month; the codebook gives only the format name, so the band labels are confirmed from the questionnaire before the report shows them). Walkers fall into the three bands, and non-walkers form a fourth "none" level.
+      - Device-walker share by level, with Wilson CIs.
+      - A Jonckheere–Terpstra test of bout-days per week across the levels.
+      - Se, Sp, PPV, NPV and J of frequency-restricted walker definitions: a walker who reported band ≥ k, for k = 1 (the current definition), 2 and 3 (`components.item_times_cuts`).
+    - **Months per year** (`V10WKMOAR4`, three bands): the same descriptive analysis, as a secondary.
+    - **Years** (`V10WKYRAR4`): device-walker share by band, descriptive only. Duration since age 50 is not something a one-week device can confirm.
+    - **Walkers with no band.** Walkers who reported no band for the component analysed are excluded from that component's levels and counted in the legend.
+
+    **12c. Implications for the bias analysis.** This part is descriptive only; the bias analysis is not re-run.
+    - In the Lo subset, for each frequency-restricted definition in 12b, report Se, Sp, J and the correction factor 1/J that a record-level correction would apply.
+    - The Lo 2022 exposure, and the bias analysis of it, keep the published definition.
+    - A re-analysis of the Lo 2022 outcomes with a frequency-restricted exposure is a different study. It is listed in TODO.md for the co-authors, not done here.
+
+    **Outputs**
+    - `validity_components_pase.csv` with the columns visit, component (frequency, duration or weekly), comparator, level or cut, statistic, estimate, lo, hi, n.
+    - `validity_components_item.csv` with the columns sample, component, level or cut, statistic, estimate, lo, hi, n.
+    - Report: a new section "Answer-level sub-analyses". It has:
+      - one table per component;
+      - one figure of receiver-operating points: Se against 1 − Sp for every cut, for PASE frequency at both visits and for item times per month. The current item and PASE definitions are marked, and J contours are shown.
+      - for the combined weekly estimate, a calibration figure (device weekly minutes by self-reported weekly-walking bin, as medians and IQRs) and a difference-against-mean agreement figure. The agreement figure is drawn from binned aggregates (hexagonal bins with counts of 10 or more), not individual points, so the PDF stays aggregate.
+      - Every table and figure has a legend, per amendment 11.
+
+    **Ledger**
+    - `components.pase_frequency_cuts`, value [1, 2, 3], status assumed.
+    - `components.pase_weekly_hours_bins`, value [0, 2, 5, 10] (bin edges in hours per week), status assumed.
+    - `components.item_times_cuts`, value [1, 2, 3], status assumed.
+    - `components.item_months_cuts`, value [1, 2, 3], status assumed.
+    - Each source cites this amendment.
+
+    **Precision**
+    - PASE frequency: n = 1,481 at V06 and 1,184 at V08, giving Se and Sp half-widths of about ±0.03–0.04.
+    - Item bands: the levels hold several hundred people each in the validation sample, and roughly half that in the Lo subset.
+
+    **Testing**
+    - Unit tests:
+      - decoding of `VxxPASE2` and `VxxPASE2HR`, including skips;
+      - cut-based classification, against hand-computed 2×2 tables;
+      - level assignment for the item's bands, including walkers with no band and the "yes without amount" coding;
+      - the bootstrap CI for J.
+    - A realdata test checks the per-level n's against the frame and that each cut's 2×2 adds up to n.
+
+    **Out of scope**
+    - Choosing a new walker definition for Lo 2022.
+    - Re-running the bias analysis with a different exposure.
+    - PASE items other than item 2.

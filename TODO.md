@@ -40,6 +40,12 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 - **Report the device-reference bias analysis as unstable, or replace it** — <!-- skip --> Every probabilistic bias analysis cell exceeded the pre-specified 10% discard threshold (37–99% discarded), because the item's device-based specificity (~0.26) puts Se + Sp near 1. Decide with the co-authors whether the paper keeps the PBA as a pre-specified sensitivity analysis or uses only the tipping-point grid, and whether a better reference (step-based cadence) is needed first. Part of the instability is transport: the priors come from the 767 validated participants, whose "yes" share is 78%, but they are applied to knee frames whose "yes" share is lower (about 71% among new-pain cases), and with Se + Sp − 1 ≈ 0.13 a 1-point shift in the "yes" share moves the implied true prevalence by about 8 points. A differential tipping display (Se fixed, Sp varied separately in cases and non-cases) would address differential misclassification without relying on the device.
   [analyses/walking_validation/bias.R](analyses/walking_validation/bias.R)
 
+- **Implement spec amendment 12 (answer-level sub-analyses)** — PASE item 2's two walking answers (days per week, hours per day) separately and combined into estimated weekly walking, against same-wave device measures, plus the 96-month item's amount answers (times per month, months per year, years) as frequency-restricted walker definitions. Pre-specified 2026-10-02; plan before building. Confirm the `V10WKTMAR4` band labels from the questionnaire first.
+  [docs/superpowers/specs/2026-10-01-walking-validation-design.md](docs/superpowers/specs/2026-10-01-walking-validation-design.md)
+
+- **Re-analyse Lo 2022 with a frequency-restricted exposure** — <!-- skip --> A separate study, out of scope for walking_validation (spec amendment 12c). If amendment 12 shows a stricter, frequency-based walker definition has much better specificity against the device, decide with the co-authors whether to re-run the Lo 2022 outcome models with it.
+  [analyses/lo2022_walking/assumptions.toml](analyses/lo2022_walking/assumptions.toml)
+
 ### Analyst questions (resolve when each project starts)
 
 - **Nominal months for visits V11–V14** — <!-- skip --> Confirm from `AllClinical13_ReleaseComments_Yr14.pdf` / `AllClinical14_ReleaseComments_Y16.pdf`, then fill in `[visits]` in `config/oai.toml`. Low impact: those visits have `V##VISDYS`.
