@@ -26,6 +26,35 @@ def test_count_tolerance(published, ours, verdict):
     )
 
 
+@pytest.mark.parametrize("ours, verdict", [(0, "replicated"), (1, "drift"), (None, "missing")])
+def test_exact_count(ours, verdict):
+    published = {"m.days": {"count": 0, "tol": 0}}  # the default tolerance would allow 2
+    t = grade(published, {} if ours is None else {"m.days": ours})
+    assert row(t, "m.days")["verdict"] == verdict
+    assert row(t, "m.days")["published"] == "0" and row(t, "m.days")["kind"] == "count"
+
+
+def test_count_with_an_absolute_tolerance():
+    published = {"m.days": {"count": 100, "tol": 5}}
+    assert row(grade(published, {"m.days": 105}), "m.days")["verdict"] == "replicated"
+    assert row(grade(published, {"m.days": 106}), "m.days")["verdict"] == "drift"
+    assert row(grade(published, {"m.days": 94}), "m.days")["verdict"] == "drift"
+
+
+def test_count_within_a_share_of_another_metric():
+    published = {"m.wear": {"count": 0, "tol_share": 0.005, "of": "m.matched"}}
+    at_limit = grade(published, {"m.wear": 65, "m.matched": 13040})  # 0.5% of 13,040 is 65.2
+    assert row(at_limit, "m.wear")["verdict"] == "replicated"
+    assert row(at_limit, "m.wear")["published"] == "0 (within 0.5% of m.matched)"
+    assert row(grade(published, {"m.wear": 66, "m.matched": 13040}), "m.wear")["verdict"] == "drift"
+    assert row(grade(published, {"m.wear": 1}), "m.wear")["verdict"] == "missing"  # no base
+
+
+def test_count_table_needs_a_tolerance():
+    with pytest.raises(ValueError, match="m.days.*tol"):
+        grade({"m.days": {"count": 3}}, {"m.days": 3})
+
+
 def test_mean_tolerance_and_missing():
     t = grade({"t1.age_mean.all": 63.2, "t1.bmi_mean.all": 29.4}, {"t1.age_mean.all": 63.6})
     assert row(t, "t1.age_mean.all")["verdict"] == "replicated"

@@ -3,17 +3,24 @@ link to the Lo 2022 replication's knee frame."""
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
+from collections.abc import Mapping
 from pathlib import Path
+from typing import Any
 
 import polars as pl
 
+from oai.derive.accel import DeviceRules
 from oai.errors import OAIError
 
 MEASURES = ("purposeful_min", "counts_per_day", "light_min", "bout_days_per_week")
 OUTCOMES = ("new_pain", "kl_worse", "jsn_worse", "improved_pain")
 LO2022 = "lo2022_walking"
+# The assumptions that change how the minute files are processed (every DeviceRules field).
+# device.wave_combination is not one: it only chooses which waves the cohort step combines.
+DEVICE_RULE_KEYS = tuple(f"device.{f.name}" for f in dataclasses.fields(DeviceRules))
 
 
 class CohortError(OAIError):
@@ -162,3 +169,20 @@ def lo_model(values: dict) -> dict[str, str]:
         "corstr": values["model.corstr"],
         "covariates": ",".join(values["model.covariates"]),
     }
+
+
+def without_ungradable_device_rows(
+    published: Mapping[str, Any], values: Mapping[str, Any], defaults: Mapping[str, Any]
+) -> tuple[dict[str, Any], list[str], list[str]]:
+    """The published rows a run can be graded against: (rows, changed rules, omitted rows).
+
+    The device.* rows are the release's own counts, produced by the ledger's device rules. A run
+    that changes one of those rules (for example `nonwear60`) would be graded against counts it
+    cannot be expected to match, so its device.* rows are dropped. oai.replication has no "not
+    graded" verdict; the caller reports what was omitted.
+    """
+    changed = [key for key in DEVICE_RULE_KEYS if values[key] != defaults[key]]
+    if not changed:
+        return dict(published), [], []
+    omitted = [metric for metric in published if metric.startswith("device.")]
+    return {m: v for m, v in published.items() if m not in omitted}, changed, omitted

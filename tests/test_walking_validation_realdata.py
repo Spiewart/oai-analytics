@@ -54,7 +54,7 @@ def test_walking_validation_end_to_end():
     out = run_results_dir(analysis, settings, resolve_assumptions(analysis, None, fast).label)
     comparison = pl.read_csv(out / "comparison.csv")
     device = comparison.filter(pl.col("metric").str.starts_with("device."))
-    assert device.height == 8, device
+    assert device.height == 10, device  # 2 waves x (valid persons, matched, wear, MV, bout)
     assert (device["verdict"] == "replicated").all(), device
     # R writes NA unquoted, so polars needs null_values or it reads the columns as strings
     pba = pl.read_csv(out / "bias_pba.csv", null_values=["NA"])

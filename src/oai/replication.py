@@ -4,6 +4,10 @@ Published values: int = count, float = mean, {or, lo, hi, sig} = odds ratio.
 A count replicates within max(3%, 2), a mean within 0.5, and an odds ratio within 0.1
 with the same significance. The published `sig` flag is authoritative, because rounded
 bounds such as "0.6-1.0" can hide an upper bound below 1.
+
+A count that needs its own tolerance is a table instead of an int:
+  {count, tol}                 within `tol` of `count` (tol = 0 is exact)
+  {count, tol_share, of}       within `tol_share` x our value of the metric `of`
 """
 
 from __future__ import annotations
@@ -48,6 +52,29 @@ def _grade_or(
     return verdict, f"{o:.2f} ({lo:.2f}-{hi:.2f}){' *' if sig else ''}", diff
 
 
+def _grade_toleranced_count(
+    pub: Mapping[str, Any], ours: Mapping[str, float], metric: str
+) -> tuple[str, str, str | None, float | None]:
+    """(published text, verdict, our text, diff) of a {count, tol} or {count, tol_share, of}."""
+    target = pub["count"]
+    tol: float | None
+    if "tol" in pub:
+        tol = float(pub["tol"])
+        pub_text = str(target) if tol == 0 else f"{target} (within {tol:g})"
+    elif "tol_share" in pub and "of" in pub:
+        base = ours.get(pub["of"])
+        tol = None if base is None else pub["tol_share"] * base
+        pub_text = f"{target} (within {pub['tol_share']:.1%} of {pub['of']})"
+    else:
+        raise ValueError(f"{metric}: a count table needs `tol`, or `tol_share` and `of`")
+    value = ours.get(metric)
+    if value is None or tol is None:
+        return pub_text, "missing", None, None
+    diff = float(value) - float(target)
+    verdict = "replicated" if abs(diff) <= tol + EPS else "drift"
+    return pub_text, verdict, f"{value:g}", diff
+
+
 def grade(
     published: Mapping[str, Any],
     ours: Mapping[str, float],
@@ -58,7 +85,10 @@ def grade(
     for metric, pub in published.items():
         keys = related_for(metric, related or {})
         related_text = ", ".join(f"{k} ({(statuses or {}).get(k, '?')})" for k in keys)
-        if isinstance(pub, Mapping):
+        if isinstance(pub, Mapping) and "count" in pub:
+            kind = "count"
+            pub_text, verdict, ours_text, diff = _grade_toleranced_count(pub, ours, metric)
+        elif isinstance(pub, Mapping):
             kind = "or"
             pub_text = f"{pub['or']} ({pub['lo']}-{pub['hi']}){' *' if pub['sig'] else ''}"
             verdict, ours_text, diff = _grade_or(pub, ours, metric)
