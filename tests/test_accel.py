@@ -8,6 +8,7 @@ from oai.derive import accel
 from oai.derive.accel import (
     DeviceRules,
     bout_mask,
+    bout_spans,
     daily_summary,
     nonwear_mask,
     person_summary,
@@ -142,13 +143,32 @@ def test_daily_and_person_summaries():
 LOOSE = DeviceRules(bout_window=3, bout_need=2, bout_stop_below=1, purposeful_bout_minutes=3)
 
 
+def spans(counts, rules):
+    c = np.array(counts, dtype=float)
+    return bout_spans(c, np.zeros(len(c), dtype=np.int64), np.ones(len(c), dtype=bool), rules)
+
+
+def never_touch(starts, ends):
+    """True when every bout starts at least one minute after the previous one ended."""
+    return bool((starts[1:] > ends[:-1]).all())
+
+
 def test_adjacent_bouts_are_counted_separately():
     # minutes 1-3 (high, low, high) and 4-6 (high x 3) are two bouts that touch
     frame = minutes_frame({1: [HI, 0.0, HI, HI, HI, HI]})
     day = daily_summary(frame, LOOSE).row(0, named=True)
     assert day["bout_min"] == 6 and day["purposeful_min"] == 6
     assert day["purposeful_bouts"] == 2
-    assert daily_summary(frame, RULES).row(0, named=True)["purposeful_bouts"] == 0
+
+
+def test_release_rule_bouts_are_separate_and_counted_separately():
+    # two real release-rule bouts: ten high minutes, three low, ten high
+    counts = [HI] * 10 + [0.0] * 3 + [HI] * 10
+    starts, ends = spans(counts, RULES)
+    assert (starts.tolist(), ends.tolist()) == ([0, 13], [10, 23])
+    assert never_touch(starts, ends)
+    day = daily_summary(minutes_frame({1: counts}), RULES).row(0, named=True)
+    assert (day["bout_min"], day["purposeful_min"], day["purposeful_bouts"]) == (20, 20, 2)
 
 
 def test_purposeful_bouts_need_the_minimum_length_each():
@@ -159,15 +179,26 @@ def test_purposeful_bouts_need_the_minimum_length_each():
     assert (day["purposeful_min"], day["purposeful_bouts"]) == (0, 0)
 
 
+def random_counts(n=300, seed=20261002):
+    rng = np.random.default_rng(seed)
+    for _ in range(n):
+        yield np.where(rng.random(rng.integers(20, 60)) < 0.75, HI, 0.0)
+
+
 def test_release_rules_never_place_bouts_back_to_back():
-    rng = np.random.default_rng(20261002)
-    for _ in range(300):
-        counts = np.where(rng.random(rng.integers(20, 60)) < 0.75, HI, 0.0)
-        key = np.zeros(len(counts), dtype=np.int64)
-        mask = bout_mask(counts, key, np.ones(len(counts), dtype=bool), RULES)
-        starts = np.flatnonzero(mask & ~np.r_[False, mask[:-1]])
-        ends = np.flatnonzero(mask & ~np.r_[mask[1:], False]) + 1
-        assert (starts[1:] > ends[:-1]).all()
+    several = 0
+    for counts in random_counts():
+        starts, ends = spans(counts, RULES)
+        assert never_touch(starts, ends)
+        several += len(starts) >= 2
+    assert several > 50  # the check has something to compare in most sequences
+
+
+def test_the_back_to_back_check_fails_where_bouts_touch():
+    starts, ends = spans([HI, 0.0, HI, HI, HI, HI], LOOSE)
+    assert (starts.tolist(), ends.tolist()) == ([0, 3], [3, 6])
+    assert not never_touch(starts, ends)
+    assert sum(not never_touch(*spans(counts, LOOSE)) for counts in random_counts()) > 50
 
 
 # reproduction(): a null on either side of a comparison is a mismatch.
