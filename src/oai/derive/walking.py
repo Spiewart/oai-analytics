@@ -15,6 +15,7 @@ from oai.loader import read_table
 
 WALKER_ITEM = "V10WLKAR4"  # walked for exercise >= 20 min a day, >= 10 times, at age >= 50
 AMOUNT_ITEMS = {"years": "V10WKYRAR4", "months": "V10WKMOAR4", "times": "V10WKTMAR4"}
+AMOUNT_CODES = {"years": 4, "months": 3, "times": 3}  # answer categories, coded 1..n
 WALKER_VALUES = {"non-walker": False, "walker": True, "exclude": None}
 
 
@@ -48,6 +49,11 @@ def walker_status(*, yes_without_amount_as: str, missing_as: str) -> pl.Expr:
 
 
 def _amount(name: str, midpoints: Sequence[float]) -> pl.Expr:
+    if len(midpoints) != AMOUNT_CODES[name]:
+        raise ValueError(
+            f"midpoints for {name!r} need {AMOUNT_CODES[name]} values (one per answer code), "
+            f"got {len(midpoints)}"
+        )
     mapping = {code + 1: float(value) for code, value in enumerate(midpoints)}
     return pl.col(f"amount_{name}").replace_strict(mapping, default=None, return_dtype=pl.Float64)
 

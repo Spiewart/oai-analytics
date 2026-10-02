@@ -21,7 +21,13 @@ from oai.derive.knee import (
     with_fallback,
     xray_readings,
 )
-from oai.derive.walking import AMOUNT_ITEMS, WALKER_VALUES, walker_status, walking_sessions
+from oai.derive.walking import (
+    AMOUNT_ITEMS,
+    WALKER_VALUES,
+    walker_status,
+    walking_answers,
+    walking_sessions,
+)
 from oai.loader import read_table
 from oai.visits import nominal_month
 
@@ -68,15 +74,11 @@ def _people(A: Resolved) -> pl.DataFrame:
         .str.to_date("%m/%d/%Y", strict=False)
         .alias("visit96"),
         answered.alias("answered"),
-        pl.col(find_col(ac10, A["exposure.walker_item"])).alias("walk_item"),
-        *[
-            pl.col(find_col(ac10, item)).alias(f"amount_{name}")
-            for name, item in AMOUNT_ITEMS.items()
-        ],
     )
     return (
         enrollees.join(baseline, on="ID", how="left")
         .join(survey, on="ID", how="left")
+        .join(walking_answers(A["exposure.walker_item"]), on="ID", how="left")
         .with_columns(
             pl.col("age").cast(pl.Float64),
             pl.col("bmi").cast(pl.Float64),
