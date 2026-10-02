@@ -161,7 +161,6 @@ item_def <- switch(yes_without,
 no_amount_group <- if (yes_without == "walker") {
   "walkers who gave no amount or only some of the amount items"
 } else "walkers who answered some but not all of the amount items"
-sessions_def <- "Lifetime sessions: years × months per year × times per month, at the midpoints of the answer categories (walkers only)."
 
 # The device reference standard, defined in full once (Classification)
 walker_rule <- assumption("reference.walker_rule")
@@ -195,7 +194,6 @@ reps_text <- if (assumption("validity.median_regression_se") == "boot") {
   sprintf("bootstrap 95%% CI, %s resamples", fmt(assumption("validity.bootstrap_reps")))
 } else "95% CI from sandwich standard errors"
 adjusted_def <- sprintf("median regression adjusting for age, sex and body-mass index (BMI) (%s)", reps_text)
-jt_permutations <- assumption("validity.jt_permutations")
 
 legend <- list()
 legend$flow <- sprintf("Validation sample (first two rows): participants who answered the walking item, and of those the ones with a valid device wave at %s (%s). Lo 2022 cohort (last three rows): the cohort of the replication, then its members who answered the item, then those who also have a valid device wave, the Lo 2022 subset.",
@@ -203,15 +201,16 @@ legend$flow <- sprintf("Validation sample (first two rows): participants who ans
 legend$reproduction <- sprintf("Release days: person-days in the release's by-day accelerometry file; matched: those also among our first %s valid days. Wear, MV and bout differs: matched days on which our wear minutes (by half a minute or more), moderate-to-vigorous (MV) minutes or MV-bout minutes differ from the release's. Valid persons: participants with at least %s valid days, ours / the release's own count.",
                                fmt(assumption("device.max_valid_days")), fmt(assumption("device.min_valid_days")))
 legend$known_groups_figure <- sprintf("Point: median; bar: interquartile range, by walking-item status, in the validation sample. %s %s", item_def, measures_def)
-legend$known_groups <- sprintf("Validation sample and Lo 2022 subset; walkers and device measures as defined in the figure legend above. Hodges–Lehmann: median of all walker − non-walker differences (95%% confidence interval, CI); rank-biserial: effect size from −1 to 1; adjusted median difference: walkers minus non-walkers from %s.",
+legend$known_groups <- sprintf("Validation sample and Lo 2022 subset; walkers and device measures as defined in the figure legend above. Hodges–Lehmann: median of all walker − non-walker differences (95%% confidence interval, CI); rank-biserial: effect size from −1 to 1, positive when walkers are higher; adjusted median difference: walkers minus non-walkers from %s.",
                                adjusted_def)
-legend$convergent <- "Walkers with a known amount (n), in the validation sample and the Lo 2022 subset; walkers, lifetime sessions and device measures as defined under Known groups and dose–response. Spearman ρ: rank correlation (95% CI) between lifetime sessions and the device measure; between-wave ρ: correlation of that measure between 48 and 72 months in participants valid at both waves, estimated in the validation sample and used for both samples; deattenuated ρ: ρ corrected for that unreliability."
-legend$classification <- sprintf("Validation sample and Lo 2022 subset; walkers by the item as defined under Known groups. Se (sensitivity): share of device walkers who are walkers by the item; Sp (specificity): share of device non-walkers who are non-walkers by the item; PPV and NPV (positive and negative predictive value): share of item walkers and of item non-walkers who are device walkers and non-walkers; AUC (area under the ROC curve): chance that a device walker has more lifetime sessions than a device non-walker (non-walkers score 0, and %s are left out); k / n: count over its denominator. %s %s",
+legend$convergent <- "Walkers with a known amount (n), in the validation sample and the Lo 2022 subset; walkers, lifetime sessions and device measures as defined under Known groups and dose–response. Spearman ρ: rank correlation (95% CI) between lifetime sessions and the device measure; between-wave ρ: Spearman correlation of that measure between 48 and 72 months in participants valid at both waves, estimated in the validation sample and used for both samples; reliability: that of each walker's device mean over their one or two valid waves, from the between-wave ρ by Spearman–Brown, given the share of these walkers with two valid waves; deattenuated ρ = ρ\u00a0/\u00a0√reliability (capped at 1), which corrects for the device measure's unreliability only."
+legend$classification <- sprintf("Validation sample and Lo 2022 subset; walkers by the item as defined under Known groups. Se (sensitivity): share of device walkers who are walkers by the item; Sp (specificity): share of device non-walkers who are non-walkers by the item; PPV and NPV (positive and negative predictive value): share of item walkers and of item non-walkers who are device walkers and non-walkers; AUC (area under the receiver operating characteristic curve): chance that a device walker has more lifetime sessions than a device non-walker (item non-walkers score 0, and %s are left out); k / n: count over its denominator. %s %s",
                                  no_amount_group, device_def, device_detail)
 legend$strata <- "Se and Sp (95% CI) against the device walker (as defined under Classification), within subgroups of the validation sample and the Lo 2022 subset: KL 0–1, KL 2 and KL 3–4 are the baseline Kellgren–Lawrence (KL) grade of the worse knee; frequent pain and no frequent pain refer to either knee at baseline; event and no event (Lo 2022 subset only) mean the outcome occurred in either knee during follow-up. The four outcomes are new frequent knee pain, KL grade worsening, medial joint-space narrowing (JSN) worsening and resolution of frequent knee pain."
-legend$tipping <- sprintf("Knees of the Lo 2022 cohort with the outcome observed, one panel per outcome (outcomes as named in the subgroup figure legend). Rows: the walking item's assumed sensitivity (Se); columns: its assumed specificity (Sp), taken to be the same in participants with and without the outcome (non-differential). Each cell is the median adjusted odds ratio over %s draws; shaded cells have a 95%% simulation interval that excludes 1; “–” marks a combination that is infeasible (every draw discarded).",
+legend$tipping <- sprintf("Knees of the Lo 2022 cohort with the outcome and the model's covariates observed (the replication's complete cases), one panel per outcome (outcomes as named in the subgroup figure legend). Rows: the walking item's assumed sensitivity (Se); columns: its assumed specificity (Sp), taken to be the same in participants with and without the outcome (non-differential). Each cell is the median adjusted odds ratio over %s draws; shaded cells have a 95%% simulation interval that excludes 1; “–” marks a combination that is infeasible (every draw discarded).",
                           fmt(assumption("bias.tipping_iterations")))
-legend$summary_level <- "Published Table 2 counts of knees in the Lo 2022 cohort (events and total knees among walkers and non-walkers; clustering ignored), by outcome. Crude OR (odds ratio): from those counts; Corrected (95% SI, simulation interval): median corrected odds ratio over the kept draws with its 95% simulation interval, “–” when every draw was discarded. Scenario, discarded and flagged are as in the table above."
+legend$summary_level <- sprintf("Published Table 2 counts of knees in the Lo 2022 cohort (events and total knees among walkers and non-walkers; clustering ignored), by outcome. Crude OR (odds ratio): from those counts; Corrected (95%% SI, simulation interval): median corrected odds ratio over the kept draws with its 95%% simulation interval, “–” when every draw was discarded. Scenario is as in the probabilistic bias analysis table. Discarded: share of the %s draws with Se + Sp ≤ 1 in either outcome group or a corrected 2×2 cell count of zero or less; ✓ (flagged) = more than %s discarded.",
+                                 count(run$bias_summary_level$n[1]), pct(threshold))
 ```
 
 ```{=typst}
@@ -339,7 +338,7 @@ oaireport::compare_table(data.frame(
   `Upper, median (n)` = level_cell(dz$median_upper, dz$n_upper),
   `Trend p (JT)` = jt_text,
   `Upper vs none, adjusted` = sprintf("%s (%s to %s)", dnum(dz$adj_upper, m), dnum(dz$adj_upper_lo, m), dnum(dz$adj_upper_hi, m)),
-  check.names = FALSE), widths = c(54, 112, 64, 64, 64, 47, 77), multipage = FALSE)
+  check.names = FALSE), widths = c(1.08, 2.24, 1.28, 1.28, 1.28, 0.94, 1.54), multipage = FALSE)
 no_level <- tapply(dz$n_walkers_no_level, dz$sample, max)  # the same in every measure
 no_level <- no_level[intersect(names(sample_names), names(no_level))]
 sample_phrase <- c(validation = "the validation sample", lo_subset = "the Lo 2022 subset")
@@ -354,7 +353,7 @@ no_level_text <- if (all(no_level == 0)) {
 
 ```{r note-dose}
 #| results: asis
-dose_note <- sprintf("Validation sample and Lo 2022 subset; walkers and device measures as defined under Known groups. Median (n) of the device measure: none = non-walkers; lower and upper = walkers at or below and above the %s of lifetime sessions (years × months per year × times per month, at the midpoints of the answer categories) among walkers; n = participants with the measure. %s Trend p: Jonckheere–Terpstra permutation test (%s permutations, so the smallest p-value is 1/%s, shown as “≤ %s”); upper vs none, adjusted: %s.",
+dose_note <- sprintf("Validation sample and Lo 2022 subset; walkers and device measures as defined under Known groups. Median (n) of the device measure: none = non-walkers; lower and upper = walkers at or below and above the validation sample's %s of lifetime sessions (years × months per year × times per month, at the midpoints of the answer categories) among its walkers (the same cut in both samples); n = participants with the measure. %s Trend p: Jonckheere–Terpstra permutation test (%s permutations, so the smallest p-value is 1/%s, shown as “≤ %s”); upper vs none, adjusted: %s.",
                      assumption("exposure.amount_split"), no_level_text, count(jt_b), count(jt_b + 1),
                      formatC(round_up(jt_floor), format = "g", digits = 2), adjusted_def)
 cat(oaireport::table_note(dose_note), sep = "\n")
@@ -367,8 +366,9 @@ cv <- run$validity_convergent
 oaireport::compare_table(data.frame(
   Sample = named(cv$sample, sample_names), Measure = named(cv$measure, measure_names), n = count(cv$n),
   `Spearman ρ (95% CI)` = sprintf("%s (%s to %s)", num(cv$rho), num(cv$lo), num(cv$hi)),
-  `Between-wave ρ` = num(cv$between_wave_rho), `Deattenuated ρ` = num(cv$rho_deattenuated),
-  check.names = FALSE), widths = c(1.4, 2, 0.8, 2, 1.2, 1.2), multipage = FALSE)
+  `Between-wave ρ` = num(cv$between_wave_rho), Reliability = num(cv$reliability),
+  `Deattenuated ρ` = num(cv$rho_deattenuated),
+  check.names = FALSE), widths = c(1.55, 2.3, 0.75, 2, 1, 1.1, 1.35), multipage = FALSE)
 ```
 
 ```{r note-convergent}
@@ -417,7 +417,7 @@ st_plot
 cat(oaireport::table_note(legend$strata, close_group = TRUE), sep = "\n")
 ```
 
-```{r kl-reference}
+```{r kl-strata}
 kl <- run$validity_strata[run$validity_strata$variable == "kl", ]
 kl_first <- function(sample) gsub("-", "–", sort(unique(kl$stratum[kl$sample == sample]))[1])
 kl_lo <- kl_first("lo_subset")
@@ -428,8 +428,8 @@ kl_text <- if (is.na(kl_lo) || is.na(kl_val)) {
 } else if (kl_lo == kl_val) {
   sprintf("Both samples' KL strata start at %s.", kl_val)
 } else {
-  sprintf("The Lo 2022 subset's KL strata start at %s%s, so its reference stratum differs from the validation sample's %s.",
-          kl_lo, if (kl_lo == "KL 2") ", because the cohort requires radiographic OA" else "", kl_val)
+  sprintf("The Lo 2022 subset's KL strata start at %s%s; the validation sample's start at %s.",
+          kl_lo, if (kl_lo == "KL 2") " because the cohort requires radiographic OA" else "", kl_val)
 }
 ```
 
@@ -498,7 +498,7 @@ tinytable::group_tt(
 pairing_short <- if (pairing == "adjacent_wave") {
   sprintf("48 and 72 months are paired with the device wave of the same visit and 96 months with %s", combined_text)
 } else sprintf("every visit is paired with %s", combined_text)
-pase_note <- sprintf("Validation sample only. %s Each block is a device measure (as defined under Known groups) or the device walker (as defined under Classification); each visit shows the estimate (95%% CI) and n, which is each statistic's own denominator: for Hodges–Lehmann, rank-biserial, adjusted difference and AUC, the participants with a PASE walking subscore and valid device data at that visit; for Spearman ρ and deattenuated ρ, the PASE walkers among them; for Se, the device walkers; for Sp, the device non-walkers; for PPV, the PASE walkers; for NPV, the PASE non-walkers. The statistics are otherwise defined as in the known-groups and classification legends, with PASE walkers in place of item walkers and the subscore (0 for no walking) in place of lifetime sessions. Visits: %s.",
+pase_note <- sprintf("Validation sample only. %s Each block is a device measure (as defined under Known groups) or the device walker (as defined under Classification); each visit shows the estimate (95%% CI) and n, which is each statistic's own denominator: for Hodges–Lehmann, rank-biserial, adjusted difference and AUC, the participants with a PASE walking subscore and valid device data at that visit; for Spearman ρ and deattenuated ρ, the PASE walkers among them; for Se, the device walkers; for Sp, the device non-walkers; for PPV, the PASE walkers; for NPV, the PASE non-walkers. The statistics are otherwise defined as in the known-groups legend (Hodges–Lehmann, rank-biserial, adjusted difference), the convergent legend (Spearman ρ, deattenuated ρ) and the classification legend (Se, Sp, PPV, NPV, AUC), with PASE walkers in place of item walkers and the subscore (0 for no walking) in place of lifetime sessions. Visits: %s.",
                      pase_def, pairing_short)
 cat(oaireport::table_note(pase_note), sep = "\n")
 ```
@@ -598,7 +598,7 @@ oaireport::compare_table(data.frame(
   Discarded = pct(pba$discarded, 1), Flagged = flag_mark(pba$flagged),
   Observed = num(pba$observed_or), `Bias-adjusted (95% SI)` = or_interval(pba$or, pba$lo_total, pba$hi_total),
   `Conclusion holds` = ifelse(is.na(pba$conclusion_share), "–", pct(pba$conclusion_share)),
-  check.names = FALSE), widths = c(86, 50, 76, 42, 40, 42, 88, 58))
+  check.names = FALSE), widths = c(2.15, 1.25, 1.9, 1.05, 1, 1.05, 2.2, 1.45))
 ```
 
 ```{r note-pba}

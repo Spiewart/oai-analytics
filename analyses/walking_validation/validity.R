@@ -48,7 +48,9 @@ for (sample in names(samples)) {
     )
     level <- factor(d$amount_level, levels = levels_amount)
     # n behind each median: participants at that level with the measure. Walkers with no amount
-    # level (they gave no amount) are in no level and so are left out of the lower/upper groups.
+    # level (they answered only some of the amount items, so have no lifetime sessions; under
+    # walker coding, also a "yes" with no amount at all) are in no level and so are left out of the
+    # lower/upper groups.
     n_at <- function(lv) sum(level %in% lv & !is.na(d[[m]]))
     jt <- oaimodels::jonckheere(d[[m]], level, permutations = perms, seed = seed)
     dd <- d[!is.na(level), ]
