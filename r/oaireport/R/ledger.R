@@ -3,9 +3,12 @@
 #' The assumptions ledger as Markdown lines for a `results: asis` chunk
 #'
 #' Drops the title and the generated-by comment (the report has its own headings) and makes the
-#' keys wrap in narrow table cells: an identifier in backticks becomes plain text with break
-#' points after "." and "_", and the key of a variant's `key = value` span gets the same break
-#' points while the span stays code. Values are left as they are.
+#' keys wrap in narrow table cells: any span in backticks that looks like an identifier (a letter,
+#' then letters, digits, "_", ".", "{" or "}") becomes plain text, with break points after "." and
+#' "_". That covers keys, identifiers named in a source, and identifier-like values such as
+#' `walker_requires_amount`, `mean` or `boot`, which lose their code formatting. Other values, such
+#' as numbers, JSON or `non-walker` (a hyphen), stay code spans, untouched. The key of a variant's
+#' `key = value` span gets the same break points while the span stays code.
 #'
 #' @param path The ledger file; `ASSUMPTIONS.md` in the report's folder by default.
 #' @return The lines, to be written with `cat(lines, sep = "\n")`.

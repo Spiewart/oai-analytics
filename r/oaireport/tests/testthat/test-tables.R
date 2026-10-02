@@ -56,8 +56,8 @@ test_that("compare_table lets identifiers break after dots and underscores", {
   typst <- tinytable::save_tt(compare_table(data.frame(
     metric = "t2.new_pain", run = "walker_requires_amount", value = "0.82", text = "Medial JSN"
   )), "typst")
-  expect_match(typst, "t2.​new\\_​pain", fixed = TRUE)
-  expect_match(typst, "walker\\_​requires\\_​amount", fixed = TRUE)
+  expect_match(typst, "t2.\u200bnew\\_\u200bpain", fixed = TRUE)
+  expect_match(typst, "walker\\_\u200brequires\\_\u200bamount", fixed = TRUE)
   expect_match(typst, "[0.82]", fixed = TRUE)
   expect_match(typst, "[Medial JSN]", fixed = TRUE)
 })

@@ -43,12 +43,25 @@ test_that("a key or identifier span becomes plain text with break points after .
   expect_true(any(grepl(paste0("as lo2022.", zwsp, "walker_", zwsp, "item"), out, fixed = TRUE)))
 })
 
-test_that("values stay code spans, untouched", {
+test_that("values that do not look like identifiers (numbers, JSON) stay code spans, untouched", {
   out <- ledger_markdown(write_ledger(ledger_lines))
   expect_true(any(grepl("`50`", out, fixed = TRUE)))
   expect_true(any(grepl("`{\"years\": [3.0, 8.0]}`", out, fixed = TRUE)))
   # the 0.5 in prose is not an identifier and gets no break point
   expect_true(any(grepl("uses 0.5 |", out, fixed = TRUE)))
+})
+
+test_that("an identifier-like value loses its code formatting; a value with a hyphen keeps it", {
+  out <- ledger_markdown(write_ledger(c(
+    "| Key | Value | Source | Rationale |",
+    "|---|---|---|---|",
+    "| `a.b` | `walker_requires_amount` | | |",
+    "| `c.d` | `mean` (choices: mean, 06) | | |",
+    "| `e.f` | `non-walker` | | |"
+  )))
+  expect_equal(out[3], paste0("| a.", zwsp, "b | walker_", zwsp, "requires_", zwsp, "amount | | |"))
+  expect_equal(out[4], paste0("| c.", zwsp, "d | mean (choices: mean, 06) | | |"))
+  expect_equal(out[5], paste0("| e.", zwsp, "f | `non-walker` | | |"))
 })
 
 test_that("a variant's key = value spans stay code, with break points in the key only", {
