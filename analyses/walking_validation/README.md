@@ -16,3 +16,9 @@ Spec: [docs/superpowers/specs/2026-10-01-walking-validation-design.md](../../doc
 Needs the replication's frame for the matching exposure coding:
 `oai run lo2022_walking --variant walker_requires_amount` (primary) or `oai run lo2022_walking`
 (variant `exposure_replication_coding`). R steps run under the `report` renv profile (`[r]`).
+
+## Running it
+
+`oai run walking_validation` takes about 8 minutes on a laptop.
+
+`OAI_R_CORES` sets how many cores the `bias` step uses for its draws (each refits the replication's GEE models). It must be a positive integer, otherwise the step stops with `OAI_R_CORES must be a positive integer, got ...`. Unset, it defaults to the detected cores minus one (at least 1). Results do not depend on it: each iteration seeds its own random numbers (`bias.seed`).

@@ -165,7 +165,7 @@ If the original authors confirm their coding, the primary becomes "as published"
   - `allclinical:00`, `allclinical:06`, `allclinical:08`, `allclinical:10`;
   - `kxr_sq_bu:00`;
   - `enrollees`.
-- **Lo cohort and outcomes come from the replication's frame.** The `cohort` step reads `OAI_WORK_DIR/lo2022_walking/<label>/frame.parquet`, where `<label>` is the replication run matching the exposure coding (`walker_requires_amount` for the primary). If that frame is missing, it stops with "run `oai run lo2022_walking --variant <label>` first". This reuses the replication's cohort, knee-level outcomes and covariates exactly, rather than rebuilding them. The shared `oai.derive.walking` is still needed, for the wider validation sample (every walking-item respondent).
+- **Lo cohort and outcomes come from the replication's frame.** The `cohort` step reads `OAI_WORK_DIR/lo2022_walking/<label>/frame.parquet`, where `<label>` is the replication run matching the exposure coding (`walker_requires_amount` for the primary). If that frame is missing, it stops with "run `oai run lo2022_walking` first" for the default label, or "run `oai run lo2022_walking --variant <label>` first" for any other. This reuses the replication's cohort, knee-level outcomes and covariates exactly, rather than rebuilding them. The shared `oai.derive.walking` is still needed, for the wider validation sample (every walking-item respondent).
 - **Report:** `[report]` → `report.qmd`, using `oaireport`. Figures:
   - forest plot of bias-adjusted ORs beside the published and replicated ORs, per scenario;
   - sensitivity and specificity by stratum;
