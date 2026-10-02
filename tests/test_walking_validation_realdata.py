@@ -6,6 +6,7 @@ One run is shared by the tests in this module: it is made in throwaway work and 
 
 import dataclasses
 import functools
+import json
 import os
 import shutil
 import subprocess
@@ -124,6 +125,14 @@ def test_walking_validation_end_to_end(fast_run):
     # a discarded cell has a null odds ratio, which the comparison below would let through
     assert identity["or"].is_not_null().all(), f"cells at Se = Sp = 1 were discarded:\n{identity}"
     assert ((identity["or"] - identity["observed_or"]).abs() < 1e-8).all(), identity
+    # validated participants outside an outcome's complete-case model frame feed its priors only
+    metrics = pl.read_csv(out / "metrics_bias.csv", null_values=["NA"])
+    outside = metrics.filter(pl.col("metric").str.ends_with("prior_persons_outside_model"))
+    assert sorted(outside["metric"]) == sorted(
+        f"bias.{o}.prior_persons_outside_model"
+        for o in ("new_pain", "kl_worse", "jsn_worse", "improved_pain")
+    )
+    assert (outside["value"] == 0).all(), outside
     egress = settings.project["egress"]
     report = check_egress(
         out,
@@ -181,6 +190,18 @@ def step_copy(fast_run, tmp_path):
 def _edit_frame(step_copy, edit):
     path = step_copy.frames / "frame.parquet"
     pl.read_parquet(path).pipe(edit).write_parquet(path)
+
+
+def _edit_knees(step_copy, edit):
+    path = step_copy.frames / "lo_knees.parquet"
+    pl.read_parquet(path).pipe(edit).write_parquet(path)
+
+
+def _set_assumption(step_copy, key, value):
+    path = step_copy.results / "assumptions.resolved.json"
+    resolved = json.loads(path.read_text())
+    resolved["assumptions"][key]["value"] = value
+    path.write_text(json.dumps(resolved))
 
 
 def _edit_published(step_copy, edit):
@@ -283,6 +304,29 @@ def test_bias_stops_on_a_missing_published_count(step_copy, how):
 
 
 @pytest.mark.realdata
+def test_bias_names_the_knee_columns_a_frame_lacks(step_copy):
+    # the knee frame's outcome and covariate columns are read by knee_data(), so they are required
+    _edit_knees(step_copy, lambda df: df.drop("kl0", "jsn_worse"))
+    done = step_copy.run("bias")
+    assert done.returncode != 0
+    assert "Frame is missing required columns" in done.stderr, done.stderr
+    assert "kl0" in done.stderr and "jsn_worse" in done.stderr, done.stderr
+
+
+@pytest.mark.realdata
+def test_bias_checks_every_published_value_before_any_fitting(step_copy):
+    # The last outcome's published count is missing and the iterations are invalid, which the
+    # first PBA call would reject. The published-value guard must be what stops the step.
+    _set_assumption(step_copy, "bias.iterations", 0)
+    target = "t2.improved_pain.nonwalkers.n"
+    _edit_published(step_copy, lambda df: df.filter(pl.col("metric") != target))
+    done = step_copy.run("bias")
+    assert done.returncode != 0
+    assert "published count" in done.stderr and target in done.stderr, done.stderr
+    assert "iterations must be" not in done.stderr, done.stderr
+
+
+@pytest.mark.realdata
 def test_bias_stops_when_a_prior_stratum_disagrees_with_the_model_frame(step_copy):
     # a validated person whose any-knee event differs from the complete-case model frame's
     def flip(df):
@@ -301,8 +345,10 @@ def test_bias_stops_when_a_prior_stratum_disagrees_with_the_model_frame(step_cop
 
 
 @pytest.mark.realdata
-def test_bias_stops_when_a_prior_person_is_not_in_the_model_frame(step_copy):
-    # a validated participant outside the Lo cohort's knee frame would feed the priors only
+def test_bias_counts_prior_persons_outside_the_model_frame(step_copy):
+    # bias.prior_population admits any validated Lo participant with the outcome observed, also one
+    # the complete-case model frame later drops (a missing covariate). Such a person feeds the
+    # priors only: the step counts them and goes on.
     def add(df):
         outside = df.filter(~pl.col("in_lo"))["ID"][0]
         return df.with_columns(
@@ -315,8 +361,14 @@ def test_bias_stops_when_a_prior_person_is_not_in_the_model_frame(step_copy):
 
     _edit_frame(step_copy, add)
     done = step_copy.run("bias")
-    assert done.returncode != 0
-    assert "not in the complete-case model frame" in done.stderr, done.stderr
+    assert done.returncode == 0, done.stderr
+    metrics = pl.read_csv(step_copy.results / "metrics_bias.csv", null_values=["NA"])
+    outside = {
+        m.split(".")[1]: v
+        for m, v in metrics.iter_rows()
+        if m.endswith("prior_persons_outside_model")
+    }
+    assert outside == {"new_pain": 1, "kl_worse": 0, "jsn_worse": 0, "improved_pain": 0}
 
 
 @pytest.fixture
