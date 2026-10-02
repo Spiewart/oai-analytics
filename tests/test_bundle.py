@@ -66,8 +66,6 @@ def _git(repo, *args):
             "user.email=t@example.com",
             "-c",
             "commit.gpgsign=false",
-            "-c",
-            "tag.gpgsign=false",
             *args,
         ],
         cwd=repo,
