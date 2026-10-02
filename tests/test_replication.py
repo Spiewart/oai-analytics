@@ -55,6 +55,22 @@ def test_count_table_needs_a_tolerance():
         grade({"m.days": {"count": 3}}, {"m.days": 3})
 
 
+@pytest.mark.parametrize(
+    ("table", "message"),
+    [
+        ({"count": 3, "tol": 1, "tol_share": 0.1, "of": "m.n"}, "`tol` or `tol_share`, not both"),
+        ({"count": 3, "tol": 1, "tolerance": 2}, r"unknown key\(s\) tolerance"),
+        ({"count": 3, "tol": 1, "of": "m.n"}, r"unknown key\(s\) of"),
+        ({"count": 3, "tol_share": 0.1, "of": "m.n", "sig": True}, r"unknown key\(s\) sig"),
+        ({"count": 3, "tol_share": 0.1}, "`tol_share` needs `of`"),
+    ],
+)
+def test_count_table_rejects_unknown_keys_and_conflicting_tolerances(table, message):
+    # also when our value is missing: the published table is checked before it is used
+    with pytest.raises(ValueError, match=f"m.days: .*{message}"):
+        grade({"m.days": table}, {})
+
+
 def test_mean_tolerance_and_missing():
     t = grade({"t1.age_mean.all": 63.2, "t1.bmi_mean.all": 29.4}, {"t1.age_mean.all": 63.6})
     assert row(t, "t1.age_mean.all")["verdict"] == "replicated"

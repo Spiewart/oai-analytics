@@ -29,6 +29,18 @@ Settings resolve in this order: environment → `.env` → `[paths]` in `config/
 
 `config/oai.toml` holds the visit-code map and the egress rules.
 
+`oai run` gives each step its own folders through these variables, set by the runner. In a step `OAI_RESULTS_DIR` is the run's own folder, not the configured one above:
+
+| Variable | In a step |
+|---|---|
+| `OAI_ANALYSIS`, `OAI_RUN_LABEL` | The analysis name and the run label (`default`, `<variant>` or `<base>+custom-<hash>`) |
+| `OAI_FRAME_DIR` | This run's frames: `$OAI_WORK_DIR/<analysis>/<label>/` |
+| `OAI_RESULTS_DIR` | This run's aggregate outputs: `<results folder>/<analysis>/<label>/` |
+| `OAI_RESULTS_BASE` | The configured results folder, the parent of every analysis's results. A step that reads another analysis's results (`walking_validation` reads `lo2022_walking`'s) looks in `$OAI_RESULTS_BASE/<analysis>/<label>/` |
+| `OAI_ASSUMPTIONS` | The run's `assumptions.resolved.json` |
+
+`oai report` sets `OAI_RESULTS_ROOT` for the report's R code. That is `<results folder>/<analysis>`, one level above a run's folder, so it holds every run label the report reads. It is not `OAI_RESULTS_BASE` ([docs/reporting.md](docs/reporting.md)).
+
 ## Commands
 
 | Command | Does |

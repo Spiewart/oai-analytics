@@ -27,8 +27,15 @@ LEDGER = load_assumptions(ANALYSIS)
 LABEL = LEDGER.items["bias.lo2022_label"].value  # the replication run matching the default coding
 
 # ID: (walk_item, amount codes) for the 96-month item. 4 and 7 did not answer.
-ANSWERS = {1: (1, 2), 2: (1, None), 3: (0, None), 4: (None, None), 5: (1, 2), 6: (0, None)}
-ANSWERS[7] = (None, None)
+ANSWERS = {
+    1: (1, 2),
+    2: (1, None),
+    3: (0, None),
+    4: (None, None),
+    5: (1, 2),
+    6: (0, None),
+    7: (None, None),
+}
 DEVICE_IDS = [1, 2, 3, 4]  # valid device wave; 5 and 6 have none
 LO_WALKER = {1: True, 2: False, 4: False, 5: True, 7: False}  # the replication's cohort
 
@@ -161,6 +168,8 @@ def test_cohort_step_writes_the_frames_results_and_flow(cohort):
     ]
     metrics = dict(pl.read_csv(cohort.results / "metrics_cohort.csv").iter_rows())
     assert metrics["sample.validation.persons"] == 3 and metrics["sample.lo_subset.persons"] == 2
+    # of the Lo participants who did not answer (4 and 7) only 4 has a valid device wave
+    assert metrics["flow.lo2022_unanswered_with_device"] == 1
     persons = pl.read_parquet(cohort.frames / "frame.parquet")
     assert persons["ID"].to_list() == [1, 2, 3] and persons["in_lo"].to_list() == [
         True,

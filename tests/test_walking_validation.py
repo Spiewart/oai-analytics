@@ -25,6 +25,7 @@ from wv import (  # noqa: E402
     combine_waves,
     lo_knee_columns,
     lo_model,
+    lo_unanswered_with_device,
     person_outcomes,
     read_lo_frame,
     read_lo_results,
@@ -285,6 +286,16 @@ def test_check_walker_coding_counts_differences():
     assert "bias.lo2022_label" in str(err.value)
 
 
+def test_lo_unanswered_with_device_counts_only_those_with_a_device_wave():
+    answered = pl.DataFrame({"ID": [1, 2, 3, 5, 6]})
+    combined = pl.DataFrame({"ID": [1, 2, 3, 4, 8]})  # a valid device wave
+    lo_people = pl.DataFrame({"ID": [1, 2, 4, 5, 7, 8]})
+    # 4 and 8 are in the Lo cohort with a device wave and did not answer; 7 did not answer either
+    # but has no device wave, and 5 answered but has none
+    assert lo_unanswered_with_device(answered, combined, lo_people) == 2
+    assert lo_unanswered_with_device(answered, combined, lo_people.head(2)) == 0
+
+
 def test_cohort_flow_shows_who_the_lo_cohort_loses():
     answered = pl.DataFrame({"ID": [1, 2, 3, 5, 6]})
     persons = pl.DataFrame({"ID": [1, 2, 3], "in_lo": [True, True, False]})
@@ -338,12 +349,32 @@ def test_wear_must_match_on_99_5_percent_of_matched_days(wave, matched, limit):
     assert verdicts(**{**smaller, metric: 5})[metric] == "replicated"
 
 
+@pytest.mark.parametrize(("wave", "released"), [("06", 1927), ("08", 1394)])
+def test_valid_persons_must_be_within_one_of_the_release(wave, released):
+    metric = f"device.{wave}.valid_persons"
+    for ours, verdict in [
+        (released - 2, "drift"),
+        (released - 1, "replicated"),
+        (released, "replicated"),
+        (released + 1, "replicated"),
+        (released + 2, "drift"),  # max(3%, 2) would have passed this
+    ]:
+        assert verdicts(**{metric: ours})[metric] == verdict, ours
+
+
+@pytest.mark.parametrize(("wave", "released"), [("06", 13040), ("08", 9399)])
+def test_every_release_person_day_must_be_matched(wave, released):
+    metric = f"device.{wave}.matched_days"
+    assert verdicts(**{metric: released})[metric] == "replicated"
+    assert verdicts(**{metric: released - 1})[metric] == "drift"  # 3% would be hundreds of days
+    assert verdicts(**{metric: released + 1})[metric] == "drift"
+
+
 def test_device_rule_keys_are_the_ledgered_device_rules():
     assert set(DEVICE_RULE_KEYS) <= set(DEFAULTS)
-    assert "device.wave_combination" in DEFAULTS and "device.wave_combination" not in (
-        DEVICE_RULE_KEYS
-    )
-    assert "device.nonwear_minutes" in DEVICE_RULE_KEYS
+    # every other device.* ledger key is not a processing rule: only the wave choice
+    ledgered = {key for key in DEFAULTS if key.startswith("device.")}
+    assert ledgered - set(DEVICE_RULE_KEYS) == {"device.wave_combination"}
 
 
 def resolved_values(variant=None, **overrides):
@@ -363,22 +394,22 @@ def test_device_rows_are_graded_under_the_ledger_device_rules():
         assert len(rows) == len(EXPECTED["default"]) and not omitted, variant
 
 
-@pytest.mark.parametrize(
-    ("variant", "overrides", "rule"),
-    [
-        ("nonwear60", {}, "device.nonwear_minutes"),
-        (None, {"device.mv_cutpoint": 2000}, "device.mv_cutpoint"),
-        (None, {"device.min_valid_days": 5}, "device.min_valid_days"),
-    ],
-)
-def test_device_rows_are_not_graded_when_a_device_rule_changes(variant, overrides, rule):
+def check_device_rows_are_omitted(values, rule):
     published = EXPECTED["default"]
-    rows, changed, omitted = without_ungradable_device_rows(
-        published, resolved_values(variant, **overrides), DEFAULTS
-    )
+    rows, changed, omitted = without_ungradable_device_rows(published, values, DEFAULTS)
     assert changed == [rule]
     assert omitted == [m for m in published if m.startswith("device.")] and len(omitted) == 10
     assert set(rows) == {"sample.validation.persons", "sample.lo_subset.persons"}
+
+
+def test_device_rows_are_not_graded_under_the_nonwear60_variant():
+    check_device_rows_are_omitted(resolved_values("nonwear60"), "device.nonwear_minutes")
+
+
+@pytest.mark.parametrize("rule", DEVICE_RULE_KEYS)
+def test_device_rows_are_not_graded_when_any_device_rule_changes(rule):
+    # a changed value of the same type (every device rule is a number)
+    check_device_rows_are_omitted(resolved_values(None, **{rule: DEFAULTS[rule] + 1}), rule)
 
 
 def run_compare(tmp_path, monkeypatch, capsys, variant=None, **overrides):

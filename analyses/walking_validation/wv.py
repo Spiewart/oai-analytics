@@ -228,6 +228,15 @@ def cohort_flow(
     return pl.DataFrame({"step": list(steps), "persons": list(steps.values())})
 
 
+def lo_unanswered_with_device(
+    answered: pl.DataFrame, combined: pl.DataFrame, lo_people: pl.DataFrame
+) -> int:
+    """Lo 2022 cohort members with a valid device wave (in `combined`) who did not answer the
+    walking item (are not in `answered`): the people the validation sample cannot use."""
+    with_device = lo_people.join(combined.select("ID"), on="ID", how="semi")
+    return with_device.join(answered.select("ID"), on="ID", how="anti").height
+
+
 def lo_model(values: dict) -> dict[str, str]:
     """The replication's Table 2 model, as models.R builds it."""
     kl_term = "factor(kl0)" if values["model.kl_covariate"] == "factor" else "kl0"

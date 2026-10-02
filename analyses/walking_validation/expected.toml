@@ -1,8 +1,11 @@
 # Reference values for the compare step: the release's own accelerometry counts and the
-# spec's sample sizes (spec 3). Graded by oai.replication (counts within 3% or 2), except the
-# day-level agreement with the release's by-day files (spec 9, plan Global Constraints):
-#   MV and bout minutes are equal on every matched day (exact, `tol = 0`);
-#   wear minutes are equal on at least 99.5% of matched days (`tol_share = 0.005`).
+# spec's sample sizes (spec 3). The device.* rows follow the plan's Global Constraints for
+# reproducing the release's by-day files; the sample.* rows are graded by oai.replication's
+# default (counts within 3% or 2):
+#   valid persons are within 1 of the release (`tol = 1`);
+#   every release person-day is matched (matched days are exact, `tol = 0`);
+#   wear minutes are equal on at least 99.5% of matched days (`tol_share = 0.005`);
+#   MV and bout minutes are equal on every matched day (exact, `tol = 0`).
 # The device.* rows are the release's own counts, so compare.py grades them only for runs
 # that keep the ledger's device rules (see wv.without_ungradable_device_rows).
 
@@ -11,10 +14,10 @@
 "sample" = ["exposure.yes_without_amount_as", "device.wave_combination", "bias.lo2022_label"]
 
 [default]
-"device.06.valid_persons" = 1927
-"device.08.valid_persons" = 1394
-"device.06.matched_days" = 13040
-"device.08.matched_days" = 9399
+"device.06.valid_persons" = { count = 1927, tol = 1 }
+"device.08.valid_persons" = { count = 1394, tol = 1 }
+"device.06.matched_days" = { count = 13040, tol = 0 }
+"device.08.matched_days" = { count = 9399, tol = 0 }
 "device.06.wear_mismatch_days" = { count = 0, tol_share = 0.005, of = "device.06.matched_days" }
 "device.08.wear_mismatch_days" = { count = 0, tol_share = 0.005, of = "device.08.matched_days" }
 "device.06.mv_mismatch_days" = { count = 0, tol = 0 }

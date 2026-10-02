@@ -15,6 +15,7 @@ from wv import (
     combine_waves,
     lo_knee_columns,
     lo_model,
+    lo_unanswered_with_device,
     person_outcomes,
     read_lo_frame,
     read_lo_results,
@@ -121,6 +122,11 @@ metrics = [
     ("sample.lo_subset.persons", lo_subset.height),
     ("sample.lo_subset.walkers", lo_subset["walker"].sum()),
     ("sample.lo_subset.device_walkers", lo_subset["device_walker"].sum()),
+    # Lo cohort members with a valid device wave who did not answer the item (not validated)
+    (
+        "flow.lo2022_unanswered_with_device",
+        lo_unanswered_with_device(answered, combined, lo_people),
+    ),
 ]
 metrics_table = pl.DataFrame(
     [(m, float(v)) for m, v in metrics], schema=["metric", "value"], orient="row"

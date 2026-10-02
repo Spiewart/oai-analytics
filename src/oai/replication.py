@@ -52,16 +52,31 @@ def _grade_or(
     return verdict, f"{o:.2f} ({lo:.2f}-{hi:.2f}){' *' if sig else ''}", diff
 
 
+def _check_keys(pub: Mapping[str, Any], allowed: set[str], metric: str) -> None:
+    unknown = sorted(set(pub) - allowed)
+    if unknown:
+        raise ValueError(
+            f"{metric}: unknown key(s) {', '.join(unknown)} in a count table "
+            f"(it takes {', '.join(sorted(allowed))})"
+        )
+
+
 def _grade_toleranced_count(
     pub: Mapping[str, Any], ours: Mapping[str, float], metric: str
 ) -> tuple[str, str, str | None, float | None]:
     """(published text, verdict, our text, diff) of a {count, tol} or {count, tol_share, of}."""
     target = pub["count"]
+    if "tol" in pub and "tol_share" in pub:
+        raise ValueError(f"{metric}: a count table takes `tol` or `tol_share`, not both")
     tol: float | None
     if "tol" in pub:
+        _check_keys(pub, {"count", "tol"}, metric)
         tol = float(pub["tol"])
         pub_text = str(target) if tol == 0 else f"{target} (within {tol:g})"
-    elif "tol_share" in pub and "of" in pub:
+    elif "tol_share" in pub:
+        _check_keys(pub, {"count", "tol_share", "of"}, metric)
+        if "of" not in pub:
+            raise ValueError(f"{metric}: `tol_share` needs `of`, the metric it is a share of")
         base = ours.get(pub["of"])
         tol = None if base is None else pub["tol_share"] * base
         pub_text = f"{target} (within {pub['tol_share']:.1%} of {pub['of']})"
