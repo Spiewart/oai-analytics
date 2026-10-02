@@ -192,15 +192,31 @@ def test_r_profile_parsed(tmp_path):
     )
 
 
-@pytest.mark.parametrize(
-    ("text", "message"),
-    [
-        (REPORT_MANIFEST + '\n[r]\nprofile = "Bad Name"\n', "[r] profile"),
-        (VALID + '\n[r]\nprofile = "report"\n', "enclave"),
-    ],
-)
+R_PROFILE_NAME = '[r] profile must be a lowercase renv profile name, e.g. "report"'
+R_PROFILE_ENCLAVE = "[r] profile is local-only: enclave bundles restore only the default R library"
+
+
+R_PROFILES = {
+    "uppercase and space": (REPORT_MANIFEST + '\n[r]\nprofile = "Bad Name"\n', R_PROFILE_NAME),
+    "trailing newline": (REPORT_MANIFEST + '\n[r]\nprofile = "report\\n"\n', R_PROFILE_NAME),
+    "leading digit": (REPORT_MANIFEST + '\n[r]\nprofile = "1report"\n', R_PROFILE_NAME),
+    "not a string": (REPORT_MANIFEST + "\n[r]\nprofile = 3\n", R_PROFILE_NAME),
+    "empty table": (REPORT_MANIFEST + "\n[r]\n", R_PROFILE_NAME),
+    "not a table": ('r = "report"\n' + REPORT_MANIFEST, R_PROFILE_NAME),
+    "enclave step": (VALID + '\n[r]\nprofile = "report"\n', R_PROFILE_ENCLAVE),
+}
+
+
+@pytest.mark.parametrize(("text", "message"), R_PROFILES.values(), ids=R_PROFILES.keys())
 def test_invalid_r_profile(tmp_path, text, message):
     root = write_analysis(tmp_path, text, files=("frame.py", "models.R", "report.qmd", "notes.md"))
     (root / "assumptions.toml").write_text(REPORT_ASSUMPTIONS)
-    with pytest.raises(ManifestError, match=re.escape(message)):
+    with pytest.raises(ManifestError) as raised:
         load_analysis(root)
+    assert str(raised.value) == f"{root / 'analysis.toml'}: {message}"
+
+
+@pytest.mark.parametrize("profile", ["report", "report-2", "a_b", "x"])
+def test_valid_r_profile_names(tmp_path, profile):
+    text = REPORT_MANIFEST + f'\n[r]\nprofile = "{profile}"\n'
+    assert load_analysis(write_report_analysis(tmp_path, text)).r_profile == profile

@@ -1,6 +1,7 @@
 import json
 import re
 import subprocess
+import sys
 import textwrap
 from pathlib import Path
 
@@ -326,3 +327,37 @@ def test_process_env_sets_renv_profile_for_r_steps_only(tmp_path):
     py, r = analysis.steps
     assert "RENV_PROFILE" not in runner.process_env(py, analysis, {"X": "1"})
     assert runner.process_env(r, analysis, {"X": "1"}) == {"X": "1", "RENV_PROFILE": "report"}
+
+
+PROBE = (
+    "import os, pathlib\n"
+    "pathlib.Path(os.environ['OAI_RESULTS_DIR'], '{step}.profile')"
+    ".write_text(os.environ.get('RENV_PROFILE', '<unset>'))\n"
+)
+
+
+@pytest.mark.parametrize(
+    ("base_env", "python_step_sees"),
+    [({}, "<unset>"), ({"RENV_PROFILE": "outer"}, "outer")],
+)
+def test_run_analysis_gives_only_r_steps_the_analysis_renv_profile(
+    tmp_path, monkeypatch, base_env, python_step_sees
+):
+    # No R needed: the Python interpreter stands in for Rscript, and the "R" entry is
+    # Python source that reports the RENV_PROFILE its process was started with.
+    root = tmp_path / "analyses" / "prof"
+    root.mkdir(parents=True)
+    (root / "analysis.toml").write_text(
+        'name = "prof"\n\n[r]\nprofile = "report"\n\n'
+        '[[steps]]\nid = "a"\nlang = "python"\nentry = "a.py"\n\n'
+        '[[steps]]\nid = "b"\nlang = "r"\nentry = "b.R"\n'
+    )
+    (root / "a.py").write_text(PROBE.replace("{step}", "a"))
+    (root / "b.R").write_text(PROBE.replace("{step}", "b"))
+    monkeypatch.setattr(runner.shutil, "which", lambda name: sys.executable)
+    run_analysis(
+        load_analysis(root), make_settings(tmp_path), base_env=base_env, echo=lambda _: None
+    )
+    results = tmp_path / "results" / "prof" / "default"
+    assert (results / "b.profile").read_text() == "report"  # also replaces an outer value
+    assert (results / "a.profile").read_text() == python_step_sees

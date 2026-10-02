@@ -128,7 +128,9 @@ def test_step_profile_loads_oaireport_only_in_report_profile(tmp_path, profile, 
 
 
 @pytest.mark.skipif(not _report_profile_ready(), reason="the r/ report profile is not restored")
-def test_r_steps_run_under_the_analysis_r_profile(tmp_path):
+def test_r_steps_run_under_the_analysis_r_profile(tmp_path, monkeypatch):
+    # An exported RENV_PROFILE=report would make the probe pass without run_analysis's help.
+    monkeypatch.delenv("RENV_PROFILE", raising=False)
     root = tmp_path / "analyses" / "profiled"
     root.mkdir(parents=True)
     (root / "analysis.toml").write_text(

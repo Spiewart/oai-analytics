@@ -176,7 +176,7 @@ def _parse_report(raw: Any, root: Path, fail: Callable[[str], NoReturn]) -> Repo
 
 def _parse_r(raw: Any, steps: list[Step], fail: Callable[[str], NoReturn]) -> str:
     profile = raw.get("profile") if isinstance(raw, dict) else None
-    if not isinstance(profile, str) or not re.match(r"^[a-z][a-z0-9_-]*$", profile):
+    if not isinstance(profile, str) or not re.fullmatch(r"[a-z][a-z0-9_-]*", profile):
         fail('[r] profile must be a lowercase renv profile name, e.g. "report"')
     if any(s.stage == "enclave" for s in steps):
         fail("[r] profile is local-only: enclave bundles restore only the default R library")
