@@ -8,6 +8,10 @@ the analysis folder with:
   OAI_FRAME_DIR    frames: OAI_WORK_DIR/<analysis>/<label> (a bundle's run.sh sets it
                    explicitly to the bundle's data/, which is then used as-is)
   OAI_RESULTS_DIR  aggregate outputs: <results_dir>/<analysis>/<label>
+  OAI_RESULTS_BASE the configured results folder, the parent of every analysis's results (a
+                   step that reads another analysis's results looks in
+                   OAI_RESULTS_BASE/<analysis>/<label>). `oai report` has its own
+                   OAI_RESULTS_ROOT, which is <results_dir>/<analysis>.
   OAI_ASSUMPTIONS  the per-label assumptions.resolved.json in OAI_RESULTS_DIR
 Each run also writes OAI_RESULTS_DIR/run_info.json (analysis, label, variant, git commit,
 start/finish times, oai version, steps); finished_utc stays null unless every step succeeds.
@@ -167,6 +171,7 @@ def step_env(
         OAI_ANALYSIS=analysis.name,
         OAI_FRAME_DIR=str(frames),
         OAI_RESULTS_DIR=str(results),
+        OAI_RESULTS_BASE=str(settings.results_dir),
         OAI_ASSUMPTIONS=str(assumptions_path),
         OAI_RUN_LABEL=resolved.label,
     )

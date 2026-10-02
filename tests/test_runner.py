@@ -75,6 +75,22 @@ def test_runs_local_steps_with_step_env(toy, tmp_path):
     assert not (tmp_path / "work" / "toy" / "default" / "b.done").exists()
 
 
+def test_steps_get_the_results_base_beside_their_own_results_folder(toy, tmp_path):
+    (toy.root / "a.py").write_text(
+        "import os, pathlib\n"
+        "pathlib.Path(os.environ['OAI_FRAME_DIR'], 'seen.txt').write_text(\n"
+        "    os.environ['OAI_RESULTS_BASE'] + '|' + os.environ['OAI_RESULTS_DIR'])\n"
+    )
+    settings = make_settings(tmp_path)
+    run_analysis(
+        toy, settings, stage="local", base_env={"OAI_RESULTS_BASE": "stale"}, echo=lambda _: None
+    )
+    base, results = (tmp_path / "work" / "toy" / "default" / "seen.txt").read_text().split("|")
+    assert Path(base) == settings.results_dir  # the configured folder that holds every analysis
+    assert Path(results) == Path(base) / "toy" / "default"  # not the same as OAI_RESULTS_ROOT:
+    # `oai report` sets that one to <results_dir>/<analysis>
+
+
 def test_enclave_steps_need_geno_dir_and_nothing_runs_without_it(toy, tmp_path):
     with pytest.raises(RunnerError, match="OAI_GENO_DIR"):
         run_analysis(toy, make_settings(tmp_path), echo=lambda _: None)

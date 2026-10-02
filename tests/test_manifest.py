@@ -68,6 +68,8 @@ def test_valid_manifest(tmp_path):
     "old, new, message",
     [
         ('name = "demo"', 'name = "other"', "must match its directory"),
+        ('name = "demo"', 'name = "demo\\n"', "'name' must be a lowercase identifier"),
+        ('id = "frame"', 'id = "frame\\n"', r"steps\[0\].id must be a lowercase identifier"),
         ('"allclinical:00"', '"AllClinical:0"', "bad input spec"),
         ('lang = "r"', 'lang = "julia"', "lang must be one of"),
         ('stage = "enclave"', 'stage = "cloud"', "stage must be one of"),

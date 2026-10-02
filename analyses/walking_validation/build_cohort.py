@@ -30,6 +30,7 @@ from oai.loader import read_table
 A = current()
 settings = get_settings()
 frames, results = Path(os.environ["OAI_FRAME_DIR"]), Path(os.environ["OAI_RESULTS_DIR"])
+results_base = Path(os.environ["OAI_RESULTS_BASE"])
 
 
 def select(df: pl.DataFrame, **columns: str) -> pl.DataFrame:
@@ -112,9 +113,9 @@ lo_knees.select([c for c in keep if c in lo_knees.columns]).write_parquet(
 )
 (frames / "lo_model.json").write_text(json.dumps(lo_model(lo_values), indent=2))
 
-# The runner points OAI_RESULTS_DIR at <results_dir>/<analysis>/<label>, so settings.results_dir
-# inside a step is that per-run folder; the replication's results are its sibling analysis.
-copy_lo_results(results.parent.parent / LO2022 / label, label, results)
+# The runner points OAI_RESULTS_DIR at this run's own folder; the replication's results are in
+# its sibling analysis under the configured results folder, OAI_RESULTS_BASE.
+copy_lo_results(results_base / LO2022 / label, label, results)
 
 lo_subset = persons.filter("in_lo")
 flow = pl.DataFrame(

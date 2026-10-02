@@ -16,7 +16,7 @@ from oai.errors import OAIError
 MANIFEST_NAME = "analysis.toml"
 LANGS = ("python", "r")
 STAGES = ("local", "enclave")
-_IDENT = re.compile(r"^[a-z][a-z0-9_]*$")
+_IDENT = re.compile(r"[a-z][a-z0-9_]*")  # matched with fullmatch: `$` accepts a trailing newline
 
 
 class ManifestError(OAIError):
@@ -83,7 +83,7 @@ def _parse(data: dict[str, Any], root: Path, where: Path) -> Analysis:
         raise ManifestError(f"{where}: {message}")
 
     name = data.get("name")
-    if not isinstance(name, str) or not _IDENT.match(name):
+    if not isinstance(name, str) or not _IDENT.fullmatch(name):
         fail("'name' must be a lowercase identifier")
     if name != root.name:
         fail(f"name {name!r} must match its directory name {root.name!r}")
@@ -100,7 +100,7 @@ def _parse(data: dict[str, Any], root: Path, where: Path) -> Analysis:
     seen: set[str] = set()
     for i, raw in enumerate(raw_steps):
         sid = raw.get("id")
-        if not isinstance(sid, str) or not _IDENT.match(sid):
+        if not isinstance(sid, str) or not _IDENT.fullmatch(sid):
             fail(f"steps[{i}].id must be a lowercase identifier")
         if sid in seen:
             fail(f"duplicate step id {sid!r}")
