@@ -1,7 +1,7 @@
 # Walking Validation Study — Design
 
 **Date:** 2026-10-01
-**Status:** Implemented through amendment 10 (§15); amendments 11–12 (§15b) approved 2026-10-02, not yet implemented
+**Status:** Implemented through amendment 11 (§15, §15b); amendment 12 (§15b) approved 2026-10-02, not yet implemented
 **Builds on:**
 - `2026-09-30-assumptions-and-lo2022-replication-design.md`
 - `2026-09-30-reporting-module-and-lo2022-comparison-design.md`
@@ -292,7 +292,7 @@ These supersede the sections they name.
 ## 15b. Amendments (2026-10-02, from review of the first report)
 
 11. **Every table and figure carries a legend (§8 report).**
-    - **Placement and length.** A short note in smaller type sits directly under each table and figure. It defines every row label, column label and abbreviation, and names the population the numbers come from. It runs to 1–3 sentences. Explanatory prose before a table does not replace it.
+    - **Placement and length.** A short note in smaller type sits directly under each table and figure. It defines every row label, column label and abbreviation, and names the population the numbers come from. It is concise: each definition is stated in full once, at its first legend, and later legends refer back to it. The assumptions-ledger appendix carries one legend for its tables. Explanatory prose before a table does not replace it.
     - **Core definitions.** These are used consistently in every legend that needs them:
       - **Walker / non-walker (the item).** The answer to the 96-month question `V10WLKAR4`: walked for exercise for at least 20 minutes a day, at least 10 times, at age 50 or older. A walker answered yes and gave at least one amount. A "yes" with no amount follows `exposure.yes_without_amount_as`.
       - **Device walker (the reference standard).** This is defined from the accelerometer alone. It is a person whose valid days include a purposeful bout on at least `reference.min_bout_days_per_week` days per week, averaged over their valid waves.
@@ -346,7 +346,7 @@ These supersede the sections they name.
     **12c. Implications for the bias analysis.** This part is descriptive only; the bias analysis is not re-run.
     - In the Lo subset, for each frequency-restricted definition in 12b, report Se, Sp, J and the correction factor 1/J that a record-level correction would apply.
     - The Lo 2022 exposure, and the bias analysis of it, keep the published definition.
-    - A re-analysis of the Lo 2022 outcomes with a frequency-restricted exposure is a different study. It is listed in TODO.md for the co-authors, not done here.
+    - A re-analysis of the Lo 2022 outcomes with a frequency-restricted exposure is a different study. It is listed in TODO.md for the study team, not done here.
 
     **Outputs**
     - `validity_components_pase.csv` with the columns visit, component (frequency, duration or weekly), comparator, level or cut, statistic, estimate, lo, hi, n.
