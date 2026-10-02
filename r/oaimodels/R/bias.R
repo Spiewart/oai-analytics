@@ -72,8 +72,9 @@ pba <- function(persons, knees, fit, priors, differential = FALSE, iterations = 
                 cores = 1, exposure = "walker") {
   if (!is.numeric(iterations) || length(iterations) != 1 || is.na(iterations) ||
       iterations < 1 || iterations != round(iterations)) {
-    stop("pba(): iterations must be a whole number >= 1, got ",
-         paste(format(iterations), collapse = ", "), call. = FALSE)
+    # deparse() and the class show what was passed: the string "3" must not read like the number 3
+    stop("pba(): iterations must be a whole number >= 1, got ", deparse1(iterations), " (",
+         class(iterations)[1], ")", call. = FALSE)
   }
   no_observed <- sum(is.na(persons$observed))
   if (no_observed) {

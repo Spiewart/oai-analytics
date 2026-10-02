@@ -54,17 +54,21 @@ jonckheere <- function(x, group, permutations = 2000, seed = 1) {
   c(statistic = observed, p = (1 + sum(perm >= observed)) / (permutations + 1))
 }
 
-# Muffle only the warnings whose message contains `fixed`; any other warning still surfaces.
-muffle_warning <- function(expr, fixed) {
+# Muffle only the warnings whose message contains the text `pattern`; any other warning still
+# surfaces.
+muffle_warning <- function(expr, pattern) {
   withCallingHandlers(expr, warning = function(w) {
-    if (grepl(fixed, conditionMessage(w), fixed = TRUE)) invokeRestart("muffleWarning")
+    if (grepl(pattern, conditionMessage(w), fixed = TRUE)) invokeRestart("muffleWarning")
   })
 }
 
 # quantreg's "Solution may be nonunique"
 quiet_nonunique <- function(expr) muffle_warning(expr, "nonunique")
 
-# wilcox.test()'s "cannot compute exact p-value / confidence interval(s) with ties (or zeroes)"
+# wilcox.test()'s "cannot compute exact p-value / confidence interval(s) with ties (or zeroes)".
+# Defensive: hodges_lehmann() calls it with exact = FALSE, and then wilcox.test.default() does not
+# raise these (only the exact path does), so nothing is muffled today. Any other wilcox.test()
+# warning, such as the one for all-tied observations, still surfaces.
 quiet_exact_ties <- function(expr) muffle_warning(expr, "cannot compute exact")
 
 #' Median (quantile 0.5) regression coefficient for one term, with a 95% CI (estimate +/- 1.96 SE)

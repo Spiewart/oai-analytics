@@ -227,6 +227,20 @@ test_that("pba needs at least one whole iteration", {
   }
 })
 
+test_that("pba's iterations error shows what was passed, with its class", {
+  d <- person_data()
+  priors <- data.frame(stratum = "all", se = 0.9, sp = 0.9)
+  shown <- function(bad) {
+    tryCatch(pba(d$persons, d$knees, glm_fit, priors, iterations = bad),
+             error = function(e) conditionMessage(e))
+  }
+  # a string "3" must not read like the number 3
+  expect_match(shown("3"), 'got "3" (character)', fixed = TRUE)
+  expect_match(shown(2.5), "got 2.5 (numeric)", fixed = TRUE)
+  expect_match(shown(c(2, 3)), "got c(2, 3) (numeric)", fixed = TRUE)
+  expect_match(shown(NA), "got NA (logical)", fixed = TRUE)
+})
+
 test_that("differential pba uses each stratum's own draw", {
   d <- person_data()
   priors <- data.frame(stratum = c("noncase", "case"), se1 = c(90, 85), se2 = c(10, 15),
@@ -278,6 +292,23 @@ test_that("pba leaves the caller's random-number stream alone and repeats under 
   expect_identical(stats::runif(3), expected)
   rm(".Random.seed", envir = globalenv())
   expect_identical(pba(d$persons, d$knees, glm_fit, priors, iterations = 4, seed = 3, cores = 1), first)
+  expect_false(exists(".Random.seed", envir = globalenv(), inherits = FALSE))
+  set.seed(1)
+})
+
+test_that("pba(cores = 2) restores the caller's random-number stream too", {
+  skip_on_os("windows")  # mclapply forks; Windows runs on one core
+  d <- person_data()
+  priors <- data.frame(stratum = "all", se1 = 90, se2 = 10, sp1 = 80, sp2 = 20)
+  run <- function() pba(d$persons, d$knees, glm_fit, priors, iterations = 4, seed = 3, cores = 2)
+  set.seed(99)
+  expected <- stats::runif(3)
+  set.seed(99)
+  first <- run()
+  expect_identical(stats::runif(3), expected)
+  # an absent .Random.seed stays absent, and the draws repeat
+  rm(".Random.seed", envir = globalenv())
+  expect_identical(run(), first)
   expect_false(exists(".Random.seed", envir = globalenv(), inherits = FALSE))
   set.seed(1)
 })
