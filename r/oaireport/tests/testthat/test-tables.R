@@ -26,6 +26,13 @@ test_that("compare_table returns a tinytable and checks widths", {
   expect_error(compare_table(comparison, widths = c(1, 1)), "one value per column")
 })
 
+test_that("compare_table breaks across pages unless multipage = FALSE", {
+  typst <- function(tab) tinytable::save_tt(tab, "typst")
+  expect_match(typst(compare_table(comparison)), "set block(breakable: true)", fixed = TRUE)
+  expect_match(typst(compare_table(comparison, multipage = FALSE)), "set block(breakable: false)",
+               fixed = TRUE)
+})
+
 test_that("compare_table escapes Typst markup in cell text", {
   typst <- tinytable::save_tt(
     compare_table(data.frame(metric = "t2.new_pain.or_adj", published = "0.6 (0.4-0.8) *")),

@@ -34,7 +34,9 @@ breakable_ids <- function(x) {
 }
 
 # `labels`: display headers (one per column); verdict columns are found by their names in df.
-compare_table <- function(df, widths = NULL, compact = FALSE, labels = NULL) {
+# `multipage = FALSE` keeps a short table in one piece: it moves to the next page rather than
+# splitting across two.
+compare_table <- function(df, widths = NULL, compact = FALSE, labels = NULL, multipage = TRUE) {
   df <- as.data.frame(df)
   if (!is.null(widths) && length(widths) != ncol(df)) {
     stop("widths needs one value per column (", ncol(df), ")", call. = FALSE)
@@ -51,7 +53,7 @@ compare_table <- function(df, widths = NULL, compact = FALSE, labels = NULL) {
   args <- list(shown)
   if (length(verdict_cols)) args$notes <- verdict_note
   if (!is.null(widths)) args$width <- widths
-  tab <- tinytable::theme_typst(do.call(tinytable::tt, args), multipage = TRUE)
+  tab <- tinytable::theme_typst(do.call(tinytable::tt, args), multipage = multipage)
   # Cell text such as "0.6 (0.4-0.8) *" or "t2.new_pain" is Typst markup unless escaped.
   tab <- tinytable::format_tt(tab, escape = TRUE)
   for (j in verdict_cols) {

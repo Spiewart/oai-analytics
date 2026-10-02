@@ -53,8 +53,10 @@ unhyphenated (the body text is justified and hyphenated, which garbles narrow ce
 | `save_figure(plot, name, "1col"/"2col")` | `figures/<name>.pdf` + 300 dpi `.png` at 3.5 in / 7 in |
 | `forest_plot(estimates, facet = , sources = )` | Odds ratios by outcome, up to four sources |
 | `flow_diagram(flow, labels, published)` | Cohort flow from `flow.csv`, "ours [published]" |
-| `compare_table(df, widths, labels)` | tinytable with ✓ / △ / – verdicts (columns named `verdict*`), display headers, Typst-escaped cells; breaks across pages |
+| `compare_table(df, widths, labels, multipage)` | tinytable with ✓ / △ / – verdicts (columns named `verdict*`), display headers, Typst-escaped cells; breaks across pages unless `multipage = FALSE` |
 | `parse_or(text)` | `"0.6 (0.4-0.8) *"` → or, lo, hi, sig |
+| `table_note(text, close_group)`, `figure_group()` | A legend in small type under a table or figure, built in R from the run's assumptions and results; `figure_group()` keeps a figure and its legend on one page |
+| `ledger_markdown(path)` | `ASSUMPTIONS.md` as lines for a `results: asis` chunk: title and comment dropped, keys given break points so they wrap in table cells |
 
 Give long tables a Markdown heading, not a caption: captions do not survive page breaks in Typst.
 
