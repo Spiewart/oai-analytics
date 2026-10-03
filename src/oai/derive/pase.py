@@ -57,3 +57,26 @@ def score_pase(
         pl.col(col(f"V{v}PASE")).cast(pl.Float64).alias("pase_total"),
         subscore.alias("pase_walking"),
     )
+
+
+DAYS_CODES = (0, 1, 2, 3)  # VxxPASE2: never, 1-2, 3-4, 5-7 days (77 refused, 88 don't know)
+HOURS_CODES = (1, 2, 3, 4)  # VxxPASE2HR: <1, 1 to <2, 2-4, >4 hours (88 don't know)
+
+
+def pase_walking_answers(allclinical: pl.DataFrame, visit: str) -> pl.DataFrame:
+    """ID, pase_days_<v>, pase_hours_<v>: PASE item 2's answer codes (walking outside the home).
+
+    A code outside the answer codes (refused, don't know) is no answer (null). Hours are asked
+    only after a days answer other than never, so they are null when days is 0 or missing.
+    """
+    v = visit.removeprefix("V")
+    col = partial(find_col, allclinical, where=f"allclinical{v}")
+    raw_days = pl.col(col(f"V{v}PASE2")).cast(pl.Int64)
+    raw_hours = pl.col(col(f"V{v}PASE2HR")).cast(pl.Int64)
+    days = pl.when(raw_days.is_in(DAYS_CODES)).then(raw_days)
+    hours = pl.when(raw_days.is_in(DAYS_CODES[1:]) & raw_hours.is_in(HOURS_CODES)).then(raw_hours)
+    return allclinical.select(
+        pl.col(col("ID")).alias("ID"),
+        days.alias(f"pase_days_{v}"),
+        hours.alias(f"pase_hours_{v}"),
+    )

@@ -26,7 +26,7 @@ from wv import (
 from oai.assumptions import current
 from oai.config import get_settings
 from oai.derive.knee import find_col, frequent_knee_pain, xray_readings
-from oai.derive.pase import score_pase
+from oai.derive.pase import pase_walking_answers, score_pase
 from oai.derive.walking import walker_status, walking_answers, walking_sessions
 from oai.loader import read_table
 
@@ -53,9 +53,12 @@ answered = (
 )
 pase = None
 for visit in ("06", "08", "10"):
-    scored = score_pase(read_table("allclinical", visit), visit, A["pase.walking_scoring"]).select(
+    table = read_table("allclinical", visit)
+    scored = score_pase(table, visit, A["pase.walking_scoring"]).select(
         "ID", pl.col("pase_walking").alias(f"pase_walking_{visit}")
     )
+    if visit in ("06", "08"):  # the visits with a device wave of their own (spec amendment 12a)
+        scored = scored.join(pase_walking_answers(table, visit), on="ID", how="full", coalesce=True)
     pase = scored if pase is None else pase.join(scored, on="ID", how="full", coalesce=True)
 
 people = select(read_table("enrollees"), ID="ID", sex="P02SEX").join(

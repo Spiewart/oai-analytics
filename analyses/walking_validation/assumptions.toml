@@ -187,6 +187,36 @@ value = 0.10
 status = "assumed"
 source = "Spec 12: cells discarding more than this share of draws are flagged"
 
+[components.pase_frequency_cuts]
+value = [1, 2, 3]
+status = "assumed"
+source = "Spec amendment 12a: PASE item 2 frequency cuts on the days code (>= 1: at least 1-2 days; >= 2: at least 3-4 days; = 3: 5-7 days)"
+
+[components.pase_weekly_hours_bins]
+value = [0.0, 2.0, 5.0, 10.0]
+status = "assumed"
+source = "Spec amendment 12a: bin edges of estimated weekly walking hours (0; under 2; 2 to under 5; 5 to under 10; 10 or more)"
+
+[components.item_times_cuts]
+value = [1, 2, 3]
+status = "assumed"
+source = "Spec amendment 12b: frequency-restricted walker = a walker whose times-per-month band is at least k"
+
+[components.item_months_cuts]
+value = [1, 2, 3]
+status = "assumed"
+source = "Spec amendment 12b: the same for the months-per-year band (secondary)"
+
+[components.min_cell_count]
+value = 10
+status = "assumed"
+source = "Spec amendment 12 outputs: hexagonal cells of the agreement figure with fewer participants are not written, so the report stays aggregate"
+
+[components.answer_labels]
+value = { pase_days = ["Never", "1–2 days", "3–4 days", "5–7 days"], pase_hours = ["Under 1 hour", "1 to under 2 hours", "2–4 hours", "Over 4 hours"], times = ["1–3 times/month", "4–8 times/month", "9 or more times/month"], months = ["1–4 months/year", "5–8 months/year", "9–12 months/year"], years = ["1–5 years", "6–10 years", "11–20 years", "Over 20 years"] }
+status = "confirmed"
+source = "formats.pdf in the OAI release: TIME10X (VxxPASE2), TIME18X (VxxPASE2HR), TMSMNTH (V10WKTMAR4), MNTHYR (V10WKMOAR4), YEAR7Z (V10WKYRAR4); codes 77 (refused) and 88 (don't know) are no answer"
+
 [variants.wave48]
 description = "Device = 48-month wave only"
 set = { "device.wave_combination" = "06" }

@@ -50,9 +50,9 @@ def answers_frame():
 
 
 def device_frame():
-    rows = [(i, "06", True, 30.0, 100000.0, 200.0, 3.0) for i in DEVICE_IDS]
-    rows += [(1, "08", True, 35.0, 110000.0, 210.0, 2.0)]  # person 1 has both waves
-    measures = ["purposeful_min", "counts_per_day", "light_min", "bout_days_per_week"]
+    rows = [(i, "06", True, 30.0, 100000.0, 200.0, 3.0, 45.0) for i in DEVICE_IDS]
+    rows += [(1, "08", True, 35.0, 110000.0, 210.0, 2.0, 50.0)]  # person 1 has both waves
+    measures = ["purposeful_min", "counts_per_day", "light_min", "bout_days_per_week", "mv_min"]
     return pl.DataFrame(rows, schema=["ID", "wave", "valid", *measures], orient="row")
 
 
@@ -98,6 +98,13 @@ def cohort(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(walking, "walking_answers", lambda *a, **k: answers_frame())
     monkeypatch.setattr(
         pase, "score_pase", lambda df, visit, *a: pl.DataFrame({"ID": [1], "pase_walking": [5.0]})
+    )
+    monkeypatch.setattr(
+        pase,
+        "pase_walking_answers",
+        lambda df, visit: pl.DataFrame(
+            {"ID": [1, 2], f"pase_days_{visit}": [3, 0], f"pase_hours_{visit}": [2, None]}
+        ),
     )
     monkeypatch.setattr(
         knee, "xray_readings", lambda *a, **k: pl.DataFrame({"ID": [1, 2], "KL": [2, 3]})
@@ -202,3 +209,16 @@ def test_a_failed_check_leaves_no_partial_outputs(cohort, what, message):
         cohort(knees, comparison)
     assert written(cohort.frames) == ["device.parquet"]  # the step's input only
     assert written(cohort.results) == []
+
+
+def test_cohort_frame_carries_pase_answers_and_mv_minutes(cohort):
+    cohort()
+    frame = pl.read_parquet(cohort.frames / "frame.parquet").sort("ID")
+    for visit in ("06", "08"):
+        assert frame.filter(pl.col("ID") == 1)[f"pase_days_{visit}"].item() == 3
+        assert frame.filter(pl.col("ID") == 1)[f"pase_hours_{visit}"].item() == 2
+        # person 2 has answers but no PASE subscore row in this fixture: the answers must survive
+        assert frame.filter(pl.col("ID") == 2)[f"pase_days_{visit}"].item() == 0
+        assert frame.filter(pl.col("ID") == 2)[f"pase_hours_{visit}"].item() is None
+    assert "pase_days_10" not in frame.columns  # 96 months has no device wave to pair with
+    assert {"mv_min", "mv_min_06", "mv_min_08"} <= set(frame.columns)

@@ -43,6 +43,7 @@ MEASURE = {
     "counts_per_day": 0.0,
     "light_min": 0.0,
     "bout_days_per_week": 0.0,
+    "mv_min": 0.0,
 }
 
 
@@ -72,6 +73,25 @@ def test_combine_waves_keeps_single_wave_persons():
     assert first_wave["ID"].to_list() == [1, 2] and first_wave["n_waves"].to_list() == [1, 1]
     with pytest.raises(ValueError, match="combination"):
         combine_waves(device, "both")
+
+
+def test_combine_waves_carries_mv_minutes_per_wave():
+    device = pl.DataFrame(
+        {
+            "ID": [1, 1, 2],
+            "wave": ["06", "08", "06"],
+            "valid": [True, True, True],
+            "purposeful_min": [10.0, 20.0, 5.0],
+            "counts_per_day": [1.0, 1.0, 1.0],
+            "light_min": [1.0, 1.0, 1.0],
+            "bout_days_per_week": [1.0, 1.0, 1.0],
+            "mv_min": [30.0, 50.0, 12.0],
+        }
+    )
+    out = combine_waves(device, "mean").sort("ID")
+    assert out["mv_min"].to_list() == [40.0, 12.0]
+    assert out["mv_min_06"].to_list() == [30.0, 12.0]
+    assert out["mv_min_08"].to_list() == [50.0, None]
 
 
 def test_device_walker_rules():

@@ -14,7 +14,9 @@ import polars as pl
 from oai.derive.accel import DeviceRules
 from oai.errors import OAIError
 
-MEASURES = ("purposeful_min", "counts_per_day", "light_min", "bout_days_per_week")
+# Device measures carried into the frame, combined and per wave. mv_min (all moderate-to-vigorous
+# minutes, bouted or not) is a comparator for estimated weekly walking (spec amendment 12a).
+MEASURES = ("purposeful_min", "counts_per_day", "light_min", "bout_days_per_week", "mv_min")
 OUTCOMES = ("new_pain", "kl_worse", "jsn_worse", "improved_pain")
 LO2022 = "lo2022_walking"
 # The assumptions that change how the minute files are processed (every DeviceRules field).

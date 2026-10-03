@@ -4,7 +4,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from oai.derive.pase import DEFAULT_WALKING, score_pase
+from oai.derive.pase import DEFAULT_WALKING, pase_walking_answers, score_pase
 from oai.derive.walking import WALKER_ITEM, walker_status, walking_sessions
 
 REPO = Path(__file__).resolve().parents[1]
@@ -156,3 +156,21 @@ def test_walking_sessions_rejects_midpoints_with_the_wrong_number_of_values(item
 def test_walker_item_is_the_lo2022_ledgered_item():
     ledger = tomllib.loads((REPO / "analyses/lo2022_walking/assumptions.toml").read_text())
     assert WALKER_ITEM == ledger["exposure"]["walker_item"]["value"]
+
+
+def test_pase_walking_answers_keeps_the_answer_codes():
+    ac = pase_frame([0, 1, 2, 3, 77, 88, None], [None, 1, 4, 2, 3, 2, 1])
+    out = pase_walking_answers(ac, "V06")
+    assert out.columns == ["ID", "pase_days_06", "pase_hours_06"]
+    assert out["pase_days_06"].to_list() == [0, 1, 2, 3, None, None, None]
+    assert out["pase_hours_06"].to_list() == [None, 1, 4, 2, None, None, None]
+
+
+def test_pase_walking_answers_ignores_hours_after_never():
+    ac = pase_frame([0, 0], [2, 4])
+    assert pase_walking_answers(ac, "V06")["pase_hours_06"].to_list() == [None, None]
+
+
+def test_pase_walking_answers_drops_hours_codes_outside_the_answers():
+    ac = pase_frame([1, 2, 3], [88, 5, 0])
+    assert pase_walking_answers(ac, "V06")["pase_hours_06"].to_list() == [None, None, None]
