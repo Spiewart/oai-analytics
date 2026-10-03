@@ -212,6 +212,11 @@ value = 10
 status = "assumed"
 source = "Spec amendment 12 outputs: hexagonal cells of the agreement figure with fewer participants are not written, so the report stays aggregate"
 
+[components.hex_bins]
+value = 30
+status = "assumed"
+source = "Spec amendment 12 outputs: hexagonal grid size of the agreement figure (cells per axis); with components.min_cell_count it decides which cells are shown"
+
 [components.answer_labels]
 value = { pase_days = ["Never", "1–2 days", "3–4 days", "5–7 days"], pase_hours = ["Under 1 hour", "1 to under 2 hours", "2–4 hours", "Over 4 hours"], times = ["1–3 times/month", "4–8 times/month", "9 or more times/month"], months = ["1–4 months/year", "5–8 months/year", "9–12 months/year"], years = ["1–5 years", "6–10 years", "11–20 years", "Over 20 years"] }
 status = "confirmed"

@@ -3,6 +3,17 @@
 # same visit (12a); the 96-month item's amount answers as frequency-restricted walker definitions
 # (12b); and the record-level correction factor each definition would bring (12c, descriptive).
 A <- oaimodels::assumptions()
+# This step reads PASE at 48 and 72 months against that wave's own device measures, and takes any
+# walking outside the home as a PASE walker (days >= 1); a ledger value asking for anything else
+# would be silently ignored, so it stops here.
+if (!identical(A[["pase.device_pairing"]], "adjacent_wave")) {
+  stop("the components step implements only the adjacent-wave pairing and the any-walking PASE walker: ",
+       "pase.device_pairing is ", A[["pase.device_pairing"]], ", not adjacent_wave", call. = FALSE)
+}
+if (!isTRUE(A[["pase.walker_threshold"]] == 0)) {
+  stop("the components step implements only the adjacent-wave pairing and the any-walking PASE walker: ",
+       "pase.walker_threshold is ", A[["pase.walker_threshold"]], ", not 0", call. = FALSE)
+}
 visits <- c("06", "08")
 weekly <- c(purposeful_week = "purposeful_min", mv_week = "mv_min", light_week = "light_min")
 persons <- oaimodels::read_frame(required = c(
@@ -22,6 +33,7 @@ hour_edges <- A[["components.pase_weekly_hours_bins"]]
 guideline <- A[["reference.min_bout_minutes_per_week"]]
 item_cuts <- list(times = A[["components.item_times_cuts"]], months = A[["components.item_months_cuts"]])
 min_cell <- A[["components.min_cell_count"]]
+hex_bins <- A[["components.hex_bins"]]
 n_codes <- c(times = 3, months = 3, years = 4)
 q <- function(x, p) if (any(!is.na(x))) unname(stats::quantile(x, p, na.rm = TRUE)) else NA_real_
 # Small or empty selections give NA rather than an error or a misleading p = 1
@@ -35,14 +47,15 @@ safe_jt <- function(x, group) {
   if (length(unique(group[ok])) < 2) return(NA_real_)
   oaimodels::jonckheere(x[ok], droplevels(group[ok]), permutations = perms, seed = seed)[["p"]]
 }
-# Between-wave Spearman correlation of a device measure among everyone valid at both waves; for a
-# single wave's measure this is its reliability (wave_reliability(r, 0) = r).
+# Between-wave Spearman correlation of a device measure among everyone valid at both waves, and
+# how many that is; for a single wave's measure the correlation is its reliability
+# (wave_reliability(r, 0) = r).
 between_wave <- function(m) {
   a <- persons[[paste0(m, "_06")]]
   b <- persons[[paste0(m, "_08")]]
   both <- !is.na(a) & !is.na(b)
-  if (sum(both) < 4) return(NA_real_)
-  stats::cor(a[both], b[both], method = "spearman")
+  r <- if (sum(both) < 4) NA_real_ else stats::cor(a[both], b[both], method = "spearman")
+  list(r = r, n = sum(both))
 }
 
 pase <- list(); item <- list(); hex <- list()
@@ -101,20 +114,21 @@ for (v in visits) {
 
   # Combined: estimated weekly walking (days x hours/day at the ledgered midpoints), in min/week
   report_min <- ifelse(is.na(days), NA,
-                       ifelse(days == 0, 0, scoring$days[days + 1] * scoring$hours[hours] * 60))
+                       ifelse(days == 0, 0, scoring$days[match(days, 0:3)] * scoring$hours[match(hours, 1:4)] * 60))
   for (comp in names(weekly)) {
     device_min <- persons[[paste0(weekly[[comp]], "_", v)]] * 7
     ok <- at & !is.na(report_min) & !is.na(device_min)
-    reliability <- oaimodels::wave_reliability(between_wave(weekly[[comp]]), 0)
+    waves <- between_wave(weekly[[comp]])
+    reliability <- oaimodels::wave_reliability(waves$r, 0)
     add(visit = v, component = "weekly", comparator = comp, level = "all", statistic = "reliability",
-        estimate = reliability, lo = NA, hi = NA, n = NA)
+        estimate = reliability, lo = NA, hi = NA, n = waves$n)
     for (who in c("all", "pase_walkers")) {
       sel <- ok & (who == "all" | days >= 1)
       rho <- safe_rho(report_min[sel], device_min[sel])
       add(visit = v, component = "weekly", comparator = comp, level = who, statistic = "rho",
           estimate = rho[["rho"]], lo = rho[["lo"]], hi = rho[["hi"]], n = rho[["n"]])
       add(visit = v, component = "weekly", comparator = comp, level = who, statistic = "rho_deattenuated",
-          estimate = if (is.na(rho[["rho"]]) || is.na(reliability)) NA else
+          estimate = if (is.na(rho[["rho"]]) || is.na(reliability) || reliability <= 0) NA else
             oaimodels::deattenuate(rho[["rho"]], reliability_y = reliability),
           lo = NA, hi = NA, n = rho[["n"]])
     }
@@ -143,7 +157,7 @@ for (v in visits) {
                                      lo = c(j[["lo"]], kap[["lo"]]), hi = c(j[["hi"]], kap[["hi"]]),
                                      n = c(j[["n"]], kap[["n"]])))
       cells <- oaimodels::hex_cells((report_min[ok] + device_min[ok]) / 2, report_min[ok] - device_min[ok],
-                                    bins = 30, min_count = min_cell)
+                                    bins = hex_bins, min_count = min_cell)
       if (nrow(cells)) hex[[length(hex) + 1]] <- data.frame(visit = v, cells)
     }
   }

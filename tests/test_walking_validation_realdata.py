@@ -16,6 +16,7 @@ from types import SimpleNamespace
 import polars as pl
 import pytest
 
+from oai.assumptions import load_assumptions
 from oai.config import ConfigError, Settings, load_settings
 from oai.export.egress import check_egress
 from oai.manifest import Analysis, find_analysis
@@ -470,6 +471,12 @@ def test_walking_validation_report_renders(fast_run):
 
 
 COMPONENTS_SCHEMA = {"visit": pl.Utf8, "level": pl.Utf8, "sample": pl.Utf8}
+# the weekly comparators, and the frame column prefix of the device measure behind each
+WEEKLY_MEASURES = {
+    "purposeful_week": "purposeful_min",
+    "mv_week": "mv_min",
+    "light_week": "light_min",
+}
 
 
 def _components(results: Path, name: str) -> pl.DataFrame:
@@ -498,6 +505,36 @@ def test_e2e_components_reconcile(fast_run):
             sp_n = rows.filter(pl.col("statistic") == "sp")["n"].item()
             assert se_n + sp_n == paired.height  # the cut's 2x2 adds up to n
             assert se_n == paired[f"device_walker_{v}"].sum()
+        # estimated weekly walking needs days == 0 or an hours answer, as well as the pairing
+        weekly_paired = paired.filter(
+            (pl.col(f"pase_days_{v}") == 0) | pl.col(f"pase_hours_{v}").is_not_null()
+        )
+        weekly = at.filter(pl.col("component") == "weekly")
+        for comparator, measure in WEEKLY_MEASURES.items():
+            rows = weekly.filter(pl.col("comparator") == comparator)
+            for statistic in ("rho", "jt_p", "median_diff", "loa"):
+                n = rows.filter((pl.col("level") == "all") & (pl.col("statistic") == statistic))[
+                    "n"
+                ].item()
+                assert n == weekly_paired.height, (v, comparator, statistic)
+            # a reliability is the between-wave correlation, so its n is the people valid at both
+            both_waves = frame.filter(
+                pl.col(f"{measure}_06").is_not_null() & pl.col(f"{measure}_08").is_not_null()
+            )
+            reliability = rows.filter(pl.col("statistic") == "reliability")["n"].item()
+            assert reliability == both_waves.height, (v, comparator)
+        # duration is asked of PASE walkers (days >= 1) who gave an hours answer
+        walkers = paired.filter(
+            (pl.col(f"pase_days_{v}") >= 1) & pl.col(f"pase_hours_{v}").is_not_null()
+        )
+        duration = at.filter(pl.col("component") == "duration")
+        for statistic in ("jt_p", "rho"):
+            n = duration.filter((pl.col("level") == "all") & (pl.col("statistic") == statistic))[
+                "n"
+            ].item()
+            assert n == walkers.height, (v, statistic)
+        medians = duration.filter(pl.col("statistic") == "median")
+        assert medians["n"].sum() == walkers.height, v
     for sample, rows in (("validation", frame), ("lo_subset", frame.filter("in_lo"))):
         for component in ("times", "months", "years"):
             sel = item.filter((pl.col("sample") == sample) & (pl.col("component") == component))
@@ -509,7 +546,8 @@ def test_e2e_components_reconcile(fast_run):
     )
     assert correction.height == 3
     assert hexes.height > 0
-    assert (hexes["count"] >= 10).all()
+    min_cell = load_assumptions(fast_run.analysis.root).items["components.min_cell_count"].value
+    assert (hexes["count"] >= min_cell).all()
 
 
 @pytest.mark.realdata
@@ -526,3 +564,58 @@ def test_components_handles_a_visit_without_paired_participants(step_copy):
     shares = later.filter(pl.col("statistic") == "share")
     assert (shares["n"] == 0).all()
     assert shares["estimate"].is_null().all()
+
+
+@pytest.mark.realdata
+@pytest.mark.parametrize(
+    ("key", "value", "other"),
+    [
+        ("pase.device_pairing", "two_wave_mean", "pase.walker_threshold"),
+        ("pase.walker_threshold", 0.5, "pase.device_pairing"),
+    ],
+)
+def test_components_stops_on_an_assumption_it_does_not_implement(step_copy, key, value, other):
+    # the step reads each wave's own device measures and takes any walking as a PASE walker; a
+    # ledger value asking for anything else must stop it, not be ignored
+    _set_assumption(step_copy, key, value)
+    done = step_copy.run("components")
+    assert done.returncode != 0
+    assert "only the adjacent-wave pairing and the any-walking PASE walker" in done.stderr, (
+        done.stderr
+    )
+    assert key in done.stderr, done.stderr
+    assert other not in done.stderr, done.stderr
+
+
+@pytest.mark.realdata
+def test_components_hex_size_comes_from_the_ledger(step_copy):
+    before = _components(step_copy.results, "hex")
+    _set_assumption(step_copy, "components.hex_bins", 10)
+    done = step_copy.run("components")
+    assert done.returncode == 0, done.stderr
+    after = _components(step_copy.results, "hex")
+    assert after.height > 0
+
+    def width(cells):  # half-width of a cell, which is the same for every cell of a visit
+        return cells.group_by("visit").agg(pl.col("dx").first()).sort("visit")["dx"]
+
+    assert (width(after) > width(before)).all()  # a third of the bins make wider cells
+
+
+@pytest.mark.realdata
+def test_components_deattenuation_needs_a_positive_reliability(step_copy):
+    # a device measure that reverses between the waves has a negative reliability, which cannot
+    # correct a correlation (it would give NaN): the corrected value is left out instead
+    _edit_frame(step_copy, lambda f: f.with_columns((-pl.col("mv_min_06")).alias("mv_min_08")))
+    done = step_copy.run("components")
+    assert done.returncode == 0, done.stderr
+    assert "NaNs produced" not in done.stderr, done.stderr  # no square root of a negative number
+    pase = _components(step_copy.results, "pase")
+    rows = pase.filter(pl.col("comparator") == "mv_week")
+    reliability = rows.filter(pl.col("statistic") == "reliability")
+    assert (reliability["estimate"] < 0).all()
+    assert (reliability["n"] > 0).all()
+    corrected = rows.filter(pl.col("statistic") == "rho_deattenuated")
+    assert corrected.height > 0
+    assert corrected["estimate"].is_null().all()  # NA, not NaN
+    assert not rows["estimate"].is_nan().any()
