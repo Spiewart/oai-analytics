@@ -9,5 +9,5 @@ License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.4)
 Imports: nanoparquet, jsonlite, parallel, stats
-Suggests: testthat (>= 3.0.0), lme4, ordinal, geepack, survival, quantreg
+Suggests: testthat (>= 3.0.0), lme4, ordinal, geepack, survival, quantreg, hexbin
 Config/testthat/edition: 3
