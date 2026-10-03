@@ -10,6 +10,7 @@ Spec: [docs/superpowers/specs/2026-10-01-walking-validation-design.md](../../doc
 | `device` | Python | device measures per person and wave (frame); agreement with the release (`device_reproduction.csv`) |
 | `cohort` | Python | validation frame, Lo 2022 subset and knee frame (frames); `flow.csv`; Lo Table 2 copies |
 | `validity` | R | known groups, dose-response, convergent ranking, Se/Sp, strata, PASE benchmark |
+| `components` | R | answer-level sub-analyses (spec amendment 12): PASE item 2's days and hours answers, alone and as weekly walking (`validity_components_pase.csv`); the item's amount answers as walker definitions, with their correction factors (`validity_components_item.csv`); hexagonal cells of the agreement figure (`validity_components_hex.csv`) |
 | `bias` | R | probabilistic bias analysis, tipping-point grid, summary-level correction |
 | `compare` | Python | `comparison.csv`: device reproduction and sample sizes against `expected.toml` |
 

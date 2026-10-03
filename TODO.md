@@ -46,6 +46,9 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 - **Re-analyse Lo 2022 with a frequency-restricted exposure** — <!-- skip --> A separate study, out of scope for walking_validation (spec amendment 12c). If amendment 12 shows a stricter, frequency-based walker definition has much better specificity against the device, decide with the study team whether to re-run the Lo 2022 outcome models with it.
   [analyses/lo2022_walking/assumptions.toml](analyses/lo2022_walking/assumptions.toml)
 
+- **Finish the amendment-12 outputs that are computed but not reported** — <!-- skip --> Two follow-ups from the answer-level sub-analyses, neither of them presentation: (1) the 12c correction-factor rows (Se, Sp, J and 1/J) for the months-per-year definitions as well as the times-per-month ones (their J is already in `validity_components_item.csv`); (2) statistics the components step computes but the report does not yet show: the Jonckheere–Terpstra trend across the weekly-walking bins and PPV and NPV at the guideline volume (12a), and the Lo 2022 subset's item shares and trend tests (12b). Report presentation polish is planned in the report redesign, not here.
+  [analyses/walking_validation/components.R](analyses/walking_validation/components.R)
+
 ### Analyst questions (resolve when each project starts)
 
 - **Nominal months for visits V11–V14** — <!-- skip --> Confirm from `AllClinical13_ReleaseComments_Yr14.pdf` / `AllClinical14_ReleaseComments_Y16.pdf`, then fill in `[visits]` in `config/oai.toml`. Low impact: those visits have `V##VISDYS`.

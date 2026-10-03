@@ -313,7 +313,7 @@ These supersede the sections they name.
     - **Framing.** All results are reported as receiver-operating points across pre-listed cuts. No cut is chosen as optimal from these data.
 
     **12a. PASE item 2, the two walking answers separately and combined, at V06 and V08.**
-    - **Sample.** People valid at the adjacent device wave with a PASE answer (`pase.device_pairing`). The answers are read from the raw items, not decoded from the subscore. The step stops unless `pase.device_pairing` is `adjacent_wave` and `pase.walker_threshold` is 0: it reads each visit against its own device wave and counts any walking (days ≥ 1) as a PASE walker.
+    - **Sample.** People valid at the adjacent device wave with a PASE answer (`pase.device_pairing`). The answers are read from the raw items, not decoded from the subscore. The device wave follows `pase.device_pairing` (the same visit's wave by default; the participant's combined waves under `two_wave_mean`), and a PASE walker is a subscore above `pase.walker_threshold`.
     - **Frequency alone** (`VxxPASE2`: never; 1–2; 3–4; 5–7 days in the past 7 days):
       1. device-walker share in each category, with Wilson CIs;
       2. a Jonckheere–Terpstra trend test of device bout-days per week across the four categories;
@@ -327,7 +327,7 @@ These supersede the sections they name.
         - **secondary:** all moderate-to-vigorous minutes, bouted or not;
         - **secondary:** light minutes, because PASE "walking outside the home" includes slow walking.
       - Analyses:
-        1. **Ranking.** Spearman ρ, with a Bonett–Wright CI, against each device comparator, in everyone and among PASE walkers. The ρ is also deattenuated with the single-wave device reliability (the between-wave ρ).
+        1. **Ranking.** Spearman ρ, with a Bonett–Wright CI, against each device comparator, in everyone and among PASE walkers. The ρ is also deattenuated with the device reliability: by default the single-wave reliability (the between-wave ρ); under `two_wave_mean`, the reliability of a mean over one or two waves, given the share of the people correlated who have two valid waves, as in the PASE benchmark.
         2. **Calibration.** Median and IQR of device weekly minutes within ordered bins of self-reported weekly walking (`components.pase_weekly_hours_bins`, default: 0, under 2, 2 to under 5, 5 to under 10, and 10 or more hours per week). Also a Jonckheere–Terpstra trend test across the bins.
         3. **Absolute agreement.** For each person, self-report minus device (minutes per week): the median of the per-person differences with a person-level bootstrap 95% CI (exact zero differences, common here, are kept), and the 2.5th and 97.5th percentiles of the differences as nonparametric limits of agreement. The differences are also plotted against the mean of the two.
         4. **Agreement at the guideline volume.** Self-reported weekly walking of at least `reference.min_bout_minutes_per_week` (150) minutes, against device purposeful-bout minutes of at least that volume: Se, Sp, PPV, NPV, J and Cohen's κ.
@@ -350,7 +350,7 @@ These supersede the sections they name.
 
     **Outputs**
     - `validity_components_pase.csv` with the columns visit, component (frequency, duration or weekly), comparator, level or cut, statistic, estimate, lo, hi, n.
-    - `validity_components_item.csv` with the columns sample, component, level or cut, statistic, estimate, lo, hi, n.
+    - `validity_components_item.csv` with the columns sample, component, level or cut, statistic, estimate, lo, hi, n. A correction-factor row with `hi` = NA has an interval unbounded above, because J's lower limit is ≤ 0.
     - `validity_components_hex.csv` with the columns visit, x, y, count, dx, dy. These are the aggregate hexagonal cells of the agreement figure, and only cells with at least `components.min_cell_count` participants are kept. The cells are binned in base R, with each axis anchored on rounded (pretty) bounds, so no cell centre or size reveals a participant's exact minimum or maximum.
     - Report: a new section "Answer-level sub-analyses". It has:
       - one table per component;
@@ -365,6 +365,7 @@ These supersede the sections they name.
     - `components.item_months_cuts`, value [1, 2, 3], status assumed.
     - `components.min_cell_count`, value 10, status assumed (the smallest cell count written to `validity_components_hex.csv`).
     - `components.hex_bins`, value 30, status assumed (about this many hexagonal cells per axis of the agreement figure).
+    - `components.answer_labels`, the label of each answer code, status confirmed (labels from the release's formats.pdf).
     - Each source cites this amendment.
 
     **Precision**
@@ -378,7 +379,7 @@ These supersede the sections they name.
       - level assignment for the item's bands, including walkers with no band and the "yes without amount" coding;
       - the bootstrap CI for J.
     - A realdata test checks the per-level n's against the frame and that each cut's 2×2 adds up to n.
-    - A realdata test shows the step stops, naming the key, when `pase.device_pairing` or `pase.walker_threshold` is changed.
+    - Realdata variant tests. Under `pase.device_pairing` = `two_wave_mean` the step runs, its weekly reliabilities differ from the adjacent-wave run's, and the frequency n's equal the people with a combined device walker and a days answer. Under a `pase.walker_threshold` above 0, the PASE-walker n's equal the people whose subscore is above it.
 
     **Out of scope**
     - Choosing a new walker definition for Lo 2022.
