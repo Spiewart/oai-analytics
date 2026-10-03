@@ -88,15 +88,62 @@ test_that("weekly_bins puts zero in its own bin and is left-closed", {
 })
 
 test_that("hex_cells keeps only cells with at least min_count points", {
-  skip_if_not_installed("hexbin")
   set.seed(3)
   x <- c(rep(1, 40), stats::runif(30, 0, 10))
   y <- c(rep(1, 40), stats::runif(30, 0, 10))
   cells <- hex_cells(x, y, bins = 10, min_count = 10)
+  expect_named(cells, c("x", "y", "count", "dx", "dy"))
   expect_true(nrow(cells) >= 1)
   expect_true(all(cells$count >= 10))
   expect_true(sum(cells$count) <= length(x))
   expect_true(any(abs(cells$x - 1) < 1 & abs(cells$y - 1) < 1))
   expect_true(all(cells$dx > 0 & cells$dy > 0))
   expect_equal(nrow(hex_cells(1:5, 1:5, bins = 10, min_count = 10)), 0)
+  expect_named(hex_cells(1:5, 1:5, bins = 10, min_count = 10), c("x", "y", "count", "dx", "dy"))
+})
+
+test_that("hex_cells puts every point in exactly one cell", {
+  set.seed(3)
+  x <- c(rep(1, 40), stats::runif(30, 0, 10), NA)
+  y <- c(rep(1, 40), stats::runif(30, 0, 10), 5)
+  all_cells <- hex_cells(x, y, bins = 10, min_count = 0)
+  expect_equal(sum(all_cells$count), 70)  # the row with an NA is left out
+  expect_equal(anyDuplicated(all_cells[c("x", "y")]), 0)
+  expect_true(all(all_cells$count >= 1))
+})
+
+test_that("hex_cells puts identical points in a single cell, however few distinct values there are", {
+  one <- hex_cells(rep(1, 40), rep(1, 40), bins = 10, min_count = 10)
+  expect_equal(nrow(one), 1)
+  expect_equal(one$count, 40)
+  expect_true(one$dx > 0 && one$dy > 0)
+  set.seed(3)
+  x <- c(rep(1, 40), stats::runif(30, 0, 10))
+  y <- c(rep(1, 40), stats::runif(30, 0, 10))
+  cells <- hex_cells(x, y, bins = 10, min_count = 0)
+  nearest <- which.min((cells$x - 1)^2 + (cells$y - 1)^2)
+  expect_true(cells$count[nearest] >= 40)
+})
+
+test_that("hex_cells matches a hand-checked three-point case", {
+  # Both axes span 10 over 10 bins, so one data unit is one lattice unit. In lattice units the rows
+  # are sqrt(3) / 2 apart, so the centres are (0, 0) and (10, 6 * sqrt(3)):
+  #   (0, 0) and (0.1, 0.1) are within 0.15 of (0, 0), the nearest centre of either lattice
+  #   (10, 10) is 0.39 from (10, 6 * sqrt(3)) and 0.69 from (10.5, 11 * sqrt(3) / 2)
+  cells <- hex_cells(c(0, 0.1, 10), c(0, 0.1, 10), bins = 10, min_count = 0)
+  expect_equal(nrow(cells), 2)
+  cells <- cells[order(cells$x), ]
+  expect_equal(cells$count, c(2, 1))
+  expect_equal(cells$x, c(0, 10))
+  expect_equal(cells$y, c(0, 6 * sqrt(3)))
+  expect_equal(cells$dx, c(0.5, 0.5))
+  expect_equal(cells$dy, rep(1 / (2 * sqrt(3)), 2))
+  expect_equal(hex_cells(c(0, 0.1, 10), c(0, 0.1, 10), bins = 10, min_count = 2)$count, 2)
+})
+
+test_that("hex_cells half-sizes follow each axis's own span", {
+  # x spans 10 and y spans 100 over 10 bins: a cell is 1 wide and 10 tall in data units
+  cells <- hex_cells(c(0, 10), c(0, 100), bins = 10, min_count = 0)
+  expect_equal(cells$dx, c(0.5, 0.5))
+  expect_equal(cells$dy, rep(10 / (2 * sqrt(3)), 2))
 })

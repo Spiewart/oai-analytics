@@ -101,17 +101,43 @@ weekly_bins <- function(hours, edges) {
 #' Hexagonal cells of a scatter, as aggregate counts: centres (x, y), count and the hexagon's
 #' half-width (dx) and vertex height (dy). Cells with fewer than `min_count` points are dropped,
 #' so no cell describes fewer participants than that.
+#'
+#' Pointy-top regular hexagons on a plane where each axis is scaled to span `bins` units, so a cell
+#' is one unit wide there and there are about `bins` cells across each range (an axis with no spread
+#' gets unit 1). Their centres lie on two offset lattices, even rows at (i, sqrt(3) * j) and odd
+#' rows at (i + 1/2, sqrt(3) * (j + 1/2)), and each point goes to the nearer of its two candidate
+#' centres, which is the hexagon that contains it. In data units a cell is 2 * dx wide, and its
+#' vertices lie at (ox * dx, oy * dy) from the centre for ox = c(1, 0, -1, -1, 0, 1) and
+#' oy = c(1, 2, 1, -1, -2, -1). Rows with a missing or infinite x or y are left out.
 hex_cells <- function(x, y, bins = 30, min_count = 10) {
   empty <- data.frame(x = numeric(), y = numeric(), count = integer(), dx = numeric(), dy = numeric())
-  ok <- !is.na(x) & !is.na(y)
-  if (sum(ok) < min_count) return(empty)
-  if (!requireNamespace("hexbin", quietly = TRUE)) stop("hex_cells() needs the hexbin package", call. = FALSE)
-  hb <- hexbin::hexbin(x[ok], y[ok], xbins = bins)
-  centres <- hexbin::hcell2xy(hb)
-  # hexbin's own drawing geometry: inner radius 0.5 and outer 1/sqrt(3) in bin units
-  sx <- hb@xbins / diff(hb@xbnds)
-  sy <- (hb@xbins * hb@shape) / diff(hb@ybnds)
-  cells <- data.frame(x = centres$x, y = centres$y, count = hb@count,
-                      dx = 0.5 / sx, dy = (1 / sqrt(3)) / (2 * sy))
+  ok <- is.finite(x) & is.finite(y)
+  x <- x[ok]
+  y <- y[ok]
+  if (!length(x) || length(x) < min_count) return(empty)
+  unit <- function(v) {
+    span <- diff(range(v)) / bins
+    if (is.finite(span) && span > 0) span else 1
+  }
+  w <- unit(x)
+  h <- unit(y)
+  u <- (x - min(x)) / w
+  v <- (y - min(y)) / h
+  s <- sqrt(3) / 2
+  # lattice A, even rows: centre (ia, 2 s ja); lattice B, odd rows: centre (ib + 1/2, s (2 jb + 1))
+  ia <- round(u)
+  ja <- round(v / (2 * s))
+  ib <- floor(u)
+  jb <- floor(v / (2 * s))
+  near_a <- (u - ia)^2 + (v - 2 * s * ja)^2 <= (u - (ib + 0.5))^2 + (v - s * (2 * jb + 1))^2
+  key <- paste(near_a, ifelse(near_a, ia, ib), ifelse(near_a, ja, jb))
+  counts <- table(factor(key, levels = unique(key)))
+  first <- match(names(counts), key)
+  cu <- ifelse(near_a, ia, ib + 0.5)[first]
+  cv <- ifelse(near_a, 2 * s * ja, s * (2 * jb + 1))[first]
+  cells <- data.frame(x = min(x) + cu * w, y = min(y) + cv * h, count = as.integer(counts),
+                      dx = 0.5 * w, dy = h / (2 * sqrt(3)))
+  cells <- cells[order(cells$y, cells$x), , drop = FALSE]
+  rownames(cells) <- NULL
   cells[cells$count >= min_count, , drop = FALSE]
 }
