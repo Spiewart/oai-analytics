@@ -1,7 +1,7 @@
 # Walking Validation Study — Design
 
 **Date:** 2026-10-01
-**Status:** Implemented through amendment 11 (§15, §15b); amendment 12 (§15b) approved 2026-10-02, not yet implemented
+**Status:** Implemented through amendment 12 (§15, §15b)
 **Builds on:**
 - `2026-09-30-assumptions-and-lo2022-replication-design.md`
 - `2026-09-30-reporting-module-and-lo2022-comparison-design.md`
@@ -329,13 +329,13 @@ These supersede the sections they name.
       - Analyses:
         1. **Ranking.** Spearman ρ, with a Bonett–Wright CI, against each device comparator, in everyone and among PASE walkers. The ρ is also deattenuated with the single-wave device reliability (the between-wave ρ).
         2. **Calibration.** Median and IQR of device weekly minutes within ordered bins of self-reported weekly walking (`components.pase_weekly_hours_bins`, default: 0, under 2, 2 to under 5, 5 to under 10, and 10 or more hours per week). Also a Jonckheere–Terpstra trend test across the bins.
-        3. **Absolute agreement.** For each person, self-report minus device (minutes per week): the median difference with a Hodges–Lehmann CI, and the 2.5th and 97.5th percentiles of the differences as nonparametric limits of agreement. The differences are also plotted against the mean of the two.
+        3. **Absolute agreement.** For each person, self-report minus device (minutes per week): the median of the per-person differences with a person-level bootstrap 95% CI (exact zero differences, common here, are kept), and the 2.5th and 97.5th percentiles of the differences as nonparametric limits of agreement. The differences are also plotted against the mean of the two.
         4. **Agreement at the guideline volume.** Self-reported weekly walking of at least `reference.min_bout_minutes_per_week` (150) minutes, against device purposeful-bout minutes of at least that volume: Se, Sp, PPV, NPV, J and Cohen's κ.
       - **Framing.** PASE counts walking of any intensity outside the home. The device comparator counts moderate-to-vigorous bouts. A systematic difference is therefore partly a difference of construct, not only error, and the Methods say so.
 
     **12b. Components of the 96-month item.**
     - **Samples.** The validation sample and the Lo subset. The reference is the person-level device walker over combined waves, as in §6 item 4.
-    - **Times per month** (`V10WKTMAR4`: three bands, coded 1–3, at midpoints 2, 6 and 10 per month; the codebook gives only the format name, so the band labels are confirmed from the questionnaire before the report shows them). Walkers fall into the three bands, and non-walkers form a fourth "none" level.
+    - **Times per month** (`V10WKTMAR4`: three bands, coded 1–3, at midpoints 2, 6 and 10 per month; labels from the release's formats.pdf (TMSMNTH): 1–3, 4–8 and 9 or more times per month; code 88 (don't know) is no band). Walkers fall into the three bands, and non-walkers form a fourth "none" level.
       - Device-walker share by level, with Wilson CIs.
       - A Jonckheere–Terpstra test of bout-days per week across the levels.
       - Se, Sp, PPV, NPV and J of frequency-restricted walker definitions: a walker who reported band ≥ k, for k = 1 (the current definition), 2 and 3 (`components.item_times_cuts`).
@@ -351,6 +351,7 @@ These supersede the sections they name.
     **Outputs**
     - `validity_components_pase.csv` with the columns visit, component (frequency, duration or weekly), comparator, level or cut, statistic, estimate, lo, hi, n.
     - `validity_components_item.csv` with the columns sample, component, level or cut, statistic, estimate, lo, hi, n.
+    - `validity_components_hex.csv` with the columns visit, x, y, count, dx, dy. These are the aggregate hexagonal cells of the agreement figure, and only cells with at least `components.min_cell_count` participants are kept. The cells are binned in base R, with each axis anchored on rounded (pretty) bounds, so no cell centre or size reveals a participant's exact minimum or maximum.
     - Report: a new section "Answer-level sub-analyses". It has:
       - one table per component;
       - one figure of receiver-operating points: Se against 1 − Sp for every cut, for PASE frequency at both visits and for item times per month. The current item and PASE definitions are marked, and J contours are shown.
@@ -362,6 +363,8 @@ These supersede the sections they name.
     - `components.pase_weekly_hours_bins`, value [0, 2, 5, 10] (bin edges in hours per week), status assumed.
     - `components.item_times_cuts`, value [1, 2, 3], status assumed.
     - `components.item_months_cuts`, value [1, 2, 3], status assumed.
+    - `components.min_cell_count`, value 10, status assumed (the smallest cell count written to `validity_components_hex.csv`).
+    - `components.hex_bins`, value 30, status assumed (hexagonal cells per axis of the agreement figure).
     - Each source cites this amendment.
 
     **Precision**
