@@ -38,3 +38,6 @@ bundles/
 
 # OS
 .DS_Store
+
+# Local brainstorming and plan-execution scratch (superpowers)
+.superpowers/
