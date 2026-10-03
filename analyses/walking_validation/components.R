@@ -1,27 +1,26 @@
 # Step `components`: answer-level sub-analyses (spec amendment 12). PASE item 2's days and hours
-# answers, separately and combined into estimated weekly walking, against the device wave of the
-# same visit (12a); the 96-month item's amount answers as frequency-restricted walker definitions
-# (12b); and the record-level correction factor each definition would bring (12c, descriptive).
+# answers, separately and combined into estimated weekly walking, against the device (by default
+# the device wave of the same visit) (12a); the 96-month item's amount answers as
+# frequency-restricted walker definitions (12b); and the record-level correction factor each
+# definition would bring (12c, descriptive).
 A <- oaimodels::assumptions()
-# This step reads PASE at 48 and 72 months against that wave's own device measures, and takes any
-# walking outside the home as a PASE walker (days >= 1); a ledger value asking for anything else
-# would be silently ignored, so it stops here.
-if (!identical(A[["pase.device_pairing"]], "adjacent_wave")) {
-  stop("the components step implements only the adjacent-wave pairing and the any-walking PASE walker: ",
-       "pase.device_pairing is ", A[["pase.device_pairing"]], ", not adjacent_wave", call. = FALSE)
-}
-if (!isTRUE(A[["pase.walker_threshold"]] == 0)) {
-  stop("the components step implements only the adjacent-wave pairing and the any-walking PASE walker: ",
-       "pase.walker_threshold is ", A[["pase.walker_threshold"]], ", not 0", call. = FALSE)
-}
 visits <- c("06", "08")
 weekly <- c(purposeful_week = "purposeful_min", mv_week = "mv_min", light_week = "light_min")
+# PASE at 48 and 72 months is read against the device as the validity step's PASE benchmark reads
+# it (pase.device_pairing): under adjacent_wave, that visit's own device wave (<measure>_<visit>);
+# under two_wave_mean, the participant's combined waves (<measure>). A PASE walker has a walking
+# subscore above pase.walker_threshold.
+pairing <- A[["pase.device_pairing"]]
+if (!pairing %in% c("adjacent_wave", "two_wave_mean")) {
+  stop("unknown pase.device_pairing: ", pairing, call. = FALSE)
+}
+paired <- pairing == "adjacent_wave"
+pase_threshold <- A[["pase.walker_threshold"]]
+device_measures <- c("device_walker", "bout_days_per_week", unname(weekly))
 persons <- oaimodels::read_frame(required = c(
-  "ID", "walker", "in_lo", "device_walker", "bout_days_per_week",
-  "amount_times", "amount_months", "amount_years",
-  paste0("pase_days_", visits), paste0("pase_hours_", visits),
-  paste0("device_walker_", visits), paste0("bout_days_per_week_", visits),
-  as.vector(outer(unname(weekly), visits, paste, sep = "_"))
+  "ID", "walker", "in_lo", "n_waves", "amount_times", "amount_months", "amount_years",
+  paste0("pase_days_", visits), paste0("pase_hours_", visits), paste0("pase_walking_", visits),
+  device_measures, as.vector(outer(device_measures, visits, paste, sep = "_"))
 ))
 out_dir <- Sys.getenv("OAI_RESULTS_DIR")
 reps <- A[["validity.bootstrap_reps"]]
@@ -49,7 +48,8 @@ safe_jt <- function(x, group) {
 }
 # Between-wave Spearman correlation of a device measure among everyone valid at both waves, and
 # how many that is; for a single wave's measure the correlation is its reliability
-# (wave_reliability(r, 0) = r).
+# (wave_reliability(r, 0) = r), and for a mean over one or two waves it gives the reliability with
+# the share of two-wave people (wave_reliability(r, share)).
 between_wave <- function(m) {
   a <- persons[[paste0(m, "_06")]]
   b <- persons[[paste0(m, "_08")]]
@@ -68,13 +68,16 @@ add_rows <- function(adder, base, rows) {
   }
 }
 
-# 12a: PASE item 2, at each visit with its own device wave
+# 12a: PASE item 2, at each visit, against the device as pase.device_pairing says
 for (v in visits) {
+  device <- function(m) persons[[if (paired) paste0(m, "_", v) else m]]
   days <- persons[[paste0("pase_days_", v)]]
   hours <- persons[[paste0("pase_hours_", v)]]
-  dw <- persons[[paste0("device_walker_", v)]]
-  bout_days <- persons[[paste0("bout_days_per_week_", v)]]
-  at <- !is.na(days) & !is.na(dw)  # a PASE answer and a valid device wave at this visit
+  subscore <- persons[[paste0("pase_walking_", v)]]
+  pase_walker <- !is.na(subscore) & subscore > pase_threshold
+  dw <- device("device_walker")
+  bout_days <- device("bout_days_per_week")
+  at <- !is.na(days) & !is.na(dw)  # a PASE answer and a valid device reference for this visit
 
   # Frequency alone
   freq <- factor(days[at], levels = 0:3)
@@ -97,10 +100,10 @@ for (v in visits) {
              cuts[cuts$cut == k, ])
   }
 
-  # Duration alone, among PASE walkers
-  walking <- at & days >= 1 & !is.na(hours)
+  # Duration alone, among PASE walkers with an hours answer
+  walking <- at & pase_walker & !is.na(hours)
   dur <- factor(hours[walking], levels = 1:4)
-  pm <- persons[[paste0("purposeful_min_", v)]][walking]
+  pm <- device("purposeful_min")[walking]
   for (lv in levels(dur)) {
     x <- pm[which(dur == lv)]
     add(visit = v, component = "duration", comparator = "purposeful_min", level = lv,
@@ -116,20 +119,26 @@ for (v in visits) {
   report_min <- ifelse(is.na(days), NA,
                        ifelse(days == 0, 0, scoring$days[match(days, 0:3)] * scoring$hours[match(hours, 1:4)] * 60))
   for (comp in names(weekly)) {
-    device_min <- persons[[paste0(weekly[[comp]], "_", v)]] * 7
+    device_min <- device(weekly[[comp]]) * 7
     ok <- at & !is.na(report_min) & !is.na(device_min)
     waves <- between_wave(weekly[[comp]])
-    reliability <- oaimodels::wave_reliability(waves$r, 0)
-    add(visit = v, component = "weekly", comparator = comp, level = "all", statistic = "reliability",
-        estimate = reliability, lo = NA, hi = NA, n = waves$n)
     for (who in c("all", "pase_walkers")) {
-      sel <- ok & (who == "all" | days >= 1)
+      sel <- ok & (who == "all" | pase_walker)
+      # The device measure's reliability among the people correlated, as in the validity step: a
+      # single wave's is the between-wave r; a mean over one or two waves' depends on the share of
+      # them with two. One row serves both groups when they share it (a single wave), else a row each.
+      share_two_waves <- if (paired) 0 else if (any(sel)) mean(persons$n_waves[sel] == 2) else NA_real_
+      reliability <- oaimodels::wave_reliability(waves$r, share_two_waves)
+      if (who == "all" || !paired) {
+        add(visit = v, component = "weekly", comparator = comp, level = who, statistic = "reliability",
+            estimate = reliability, lo = NA, hi = NA, n = waves$n)
+      }
       rho <- safe_rho(report_min[sel], device_min[sel])
       add(visit = v, component = "weekly", comparator = comp, level = who, statistic = "rho",
           estimate = rho[["rho"]], lo = rho[["lo"]], hi = rho[["hi"]], n = rho[["n"]])
+      # NA where the reliability is missing or not positive (deattenuate() guards it)
       add(visit = v, component = "weekly", comparator = comp, level = who, statistic = "rho_deattenuated",
-          estimate = if (is.na(rho[["rho"]]) || is.na(reliability) || reliability <= 0) NA else
-            oaimodels::deattenuate(rho[["rho"]], reliability_y = reliability),
+          estimate = oaimodels::deattenuate(rho[["rho"]], reliability_y = reliability),
           lo = NA, hi = NA, n = rho[["n"]])
     }
     bins <- oaimodels::weekly_bins(report_min[ok] / 60, hour_edges)

@@ -566,25 +566,94 @@ def test_components_handles_a_visit_without_paired_participants(step_copy):
     assert shares["estimate"].is_null().all()
 
 
+def _spearman(df: pl.DataFrame, a: str, b: str) -> float:
+    """Spearman correlation among the rows where both are present (average ranks for ties, as R)."""
+    both = df.filter(pl.col(a).is_not_null() & pl.col(b).is_not_null())
+    return both.select(pl.corr(pl.col(a).rank("average"), pl.col(b).rank("average"))).item()
+
+
 @pytest.mark.realdata
-@pytest.mark.parametrize(
-    ("key", "value", "other"),
-    [
-        ("pase.device_pairing", "two_wave_mean", "pase.walker_threshold"),
-        ("pase.walker_threshold", 0.5, "pase.device_pairing"),
-    ],
-)
-def test_components_stops_on_an_assumption_it_does_not_implement(step_copy, key, value, other):
-    # the step reads each wave's own device measures and takes any walking as a PASE walker; a
-    # ledger value asking for anything else must stop it, not be ignored
-    _set_assumption(step_copy, key, value)
+def test_components_follows_the_two_wave_mean_pairing(step_copy):
+    # Under two_wave_mean each visit's PASE answers are read against the participant's combined
+    # device waves, and the device reliability is that of a mean over one or two waves
+    adjacent = _components(step_copy.results, "pase")
+    _set_assumption(step_copy, "pase.device_pairing", "two_wave_mean")
     done = step_copy.run("components")
-    assert done.returncode != 0
-    assert "only the adjacent-wave pairing and the any-walking PASE walker" in done.stderr, (
-        done.stderr
+    assert done.returncode == 0, done.stderr
+    combined = _components(step_copy.results, "pase")
+    frame = pl.read_parquet(step_copy.frames / "frame.parquet")
+
+    def reliability(df, level="all"):
+        return df.filter(
+            (pl.col("component") == "weekly")
+            & (pl.col("statistic") == "reliability")
+            & (pl.col("level") == level)
+        ).sort("visit", "comparator")
+
+    before, after = reliability(adjacent), reliability(combined)
+    assert before.height == after.height == 2 * len(WEEKLY_MEASURES)
+    assert (after["n"] == before["n"]).all()  # the same between-wave correlation behind both
+    assert (after["estimate"] > before["estimate"]).all(), after  # a mean is more reliable
+    for v in ("06", "08"):
+        paired = frame.filter(
+            pl.col(f"pase_days_{v}").is_not_null() & pl.col("device_walker").is_not_null()
+        )
+        at = combined.filter(pl.col("visit") == v)
+        shares = at.filter((pl.col("component") == "frequency") & (pl.col("statistic") == "share"))
+        assert shares["n"].sum() == paired.height, v
+        weekly = paired.filter(
+            (pl.col(f"pase_days_{v}") == 0) | pl.col(f"pase_hours_{v}").is_not_null()
+        )
+        walkers = weekly.filter(pl.col(f"pase_walking_{v}") > 0)
+        for comparator, measure in WEEKLY_MEASURES.items():
+            r = _spearman(frame, f"{measure}_06", f"{measure}_08")
+            for level, people in (("all", weekly), ("pase_walkers", walkers)):
+                # wave_reliability(r, share): the share with two valid waves among those correlated
+                share = (people["n_waves"] == 2).mean()
+                expected = r / (r + (1 - r) * (1 - share / 2))
+                row = at.filter(
+                    (pl.col("comparator") == comparator)
+                    & (pl.col("level") == level)
+                    & (pl.col("statistic") == "reliability")
+                )
+                assert row["estimate"].item() == pytest.approx(expected, abs=1e-9), (v, level)
+                rho = at.filter(
+                    (pl.col("comparator") == comparator)
+                    & (pl.col("level") == level)
+                    & (pl.col("statistic") == "rho")
+                )
+                assert rho["n"].item() == people.height, (v, comparator, level)
+
+
+@pytest.mark.realdata
+def test_components_follows_the_pase_walker_threshold(step_copy):
+    frame = pl.read_parquet(step_copy.frames / "frame.parquet")
+    positive = frame.filter(pl.col("pase_walking_06") > 0)["pase_walking_06"]
+    threshold = float(positive.quantile(0.25))
+    assert threshold > 0
+    _set_assumption(step_copy, "pase.walker_threshold", threshold)
+    done = step_copy.run("components")
+    assert done.returncode == 0, done.stderr
+    pase = _components(step_copy.results, "pase").filter(pl.col("visit") == "06")
+    paired = frame.filter(
+        pl.col("pase_days_06").is_not_null() & pl.col("device_walker_06").is_not_null()
     )
-    assert key in done.stderr, done.stderr
-    assert other not in done.stderr, done.stderr
+    walkers = paired.filter(pl.col("pase_walking_06") > threshold)
+    # the threshold leaves out some who walked (days >= 1), so it is the threshold that counts
+    assert 0 < walkers.height < paired.filter(pl.col("pase_days_06") >= 1).height
+    for comparator in WEEKLY_MEASURES:
+        n = pase.filter(
+            (pl.col("comparator") == comparator)
+            & (pl.col("level") == "pase_walkers")
+            & (pl.col("statistic") == "rho")
+        )["n"].item()
+        assert n == walkers.height, comparator
+    duration = pase.filter(
+        (pl.col("component") == "duration")
+        & (pl.col("level") == "all")
+        & (pl.col("statistic") == "rho")
+    )["n"].item()
+    assert duration == walkers.height  # PASE walkers by the threshold (all have an hours answer)
 
 
 @pytest.mark.realdata
