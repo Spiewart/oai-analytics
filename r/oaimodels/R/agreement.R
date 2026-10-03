@@ -92,10 +92,12 @@ paired_agreement <- function(x, y, reps = 1000, seed = 1) {
   c(estimate = stats::median(d), lo = q[1], hi = q[2], loa_lo = loa[1], loa_hi = loa[2], n = length(d))
 }
 
-#' Bins of weekly hours from edges c(0, e2, ..., eK): "0", "<e2", "e2–e3", ..., "eK+" (left-closed)
+#' Bins of weekly hours from strictly increasing edges c(0, e2, ..., eK): "0", "<e2", "e2–e3", ...,
+#' "eK+" (left-closed)
 weekly_bins <- function(hours, edges) {
   if (length(edges) < 2) stop("weekly_bins(): edges need at least two values, 0 and the first cut", call. = FALSE)
   if (edges[1] != 0) stop("weekly_bins(): edges must start at 0", call. = FALSE)
+  if (anyNA(edges) || is.unsorted(edges, strictly = TRUE)) stop("weekly_bins(): edges must be increasing", call. = FALSE)
   if (any(hours < 0, na.rm = TRUE)) stop("weekly_bins(): hours must not be negative", call. = FALSE)
   inner <- edges[-1]
   fmt <- function(x) format(x, trim = TRUE, drop0trailing = TRUE)

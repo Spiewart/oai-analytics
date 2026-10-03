@@ -58,9 +58,21 @@ test_that("spearman_ci, deattenuate and wave_reliability", {
   expect_true(s[["lo"]] < s[["rho"]] && s[["hi"]] > s[["rho"]])
   expect_equal(deattenuate(0.3, reliability_y = 0.36), 0.5)
   expect_equal(deattenuate(0.9, reliability_y = 0.25), 1)
+  expect_equal(deattenuate(-0.9, reliability_y = 0.25), -1)
   expect_equal(wave_reliability(0.6, 1), 2 * 0.6 / 1.6)
   expect_equal(wave_reliability(0.6, 0), 0.6)
   expect_equal(wave_reliability(0.6, 0.5), 0.6 / (0.6 + 0.4 * 0.75))
+})
+
+test_that("deattenuate gives NA, without a warning, for a reliability that is missing or not positive", {
+  for (r in list(-1, 0, NA_real_, NaN)) {
+    expect_no_warning(y <- deattenuate(0.3, reliability_y = r))
+    expect_identical(y, NA_real_)
+    expect_identical(deattenuate(0.3, reliability_x = r), NA_real_)
+  }
+  # both negative would give a positive product, which must not pass for a reliability
+  expect_identical(deattenuate(0.3, reliability_x = -0.5, reliability_y = -0.5), NA_real_)
+  expect_equal(deattenuate(c(0.3, 0.3), reliability_y = c(0.36, -1)), c(0.5, NA))
 })
 
 test_that("wilson and classification", {

@@ -1,9 +1,10 @@
 test_that("answer_levels treats codes outside the answers as no level", {
-  walker <- c(FALSE, TRUE, TRUE, TRUE, NA)
-  code <- c(NA, 2, 88, 3, 1)
+  # the last walker has no code at all: a "yes" with no amount, under walker coding
+  walker <- c(FALSE, TRUE, TRUE, TRUE, NA, TRUE)
+  code <- c(NA, 2, 88, 3, 1, NA)
   lv <- answer_levels(walker, code, n_codes = 3)
   expect_equal(levels(lv), c("none", "1", "2", "3"))
-  expect_equal(as.character(lv), c("none", "2", NA, "3", NA))
+  expect_equal(as.character(lv), c("none", "2", NA, "3", NA, NA))
 })
 
 test_that("level_shares gives each level's share with Wilson intervals, in factor order", {
@@ -125,6 +126,11 @@ test_that("weekly_bins puts zero in its own bin and is left-closed", {
   expect_equal(levels(b), c("0", "<2", "2–5", "5–10", "10+"))
   expect_equal(as.character(b), c("0", "<2", "2–5", "2–5", "5–10", "5–10", "10+", "10+", NA))
   expect_error(weekly_bins(1, c(1, 2)), "start at 0")
+})
+
+test_that("weekly_bins stops on edges that do not increase", {
+  expect_error(weekly_bins(1, c(0, 5, 2)), "weekly_bins\\(\\): edges must be increasing")
+  expect_error(weekly_bins(1, c(0, 2, 2, 5)), "weekly_bins\\(\\): edges must be increasing")
 })
 
 test_that("weekly_bins stops on edges with no cut and on negative hours", {

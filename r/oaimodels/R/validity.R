@@ -115,8 +115,13 @@ spearman_ci <- function(x, y) {
 }
 
 #' A correlation corrected for unreliability, capped at +/-1
+#'
+#' NA, without a warning, where either reliability is missing or not positive: such a reliability
+#' cannot correct a correlation (its square root is undefined or the ratio unbounded).
 deattenuate <- function(rho, reliability_x = 1, reliability_y = 1) {
-  pmax(pmin(rho / sqrt(reliability_x * reliability_y), 1), -1)
+  usable <- !is.na(reliability_x) & !is.na(reliability_y) & reliability_x > 0 & reliability_y > 0
+  product <- ifelse(usable, reliability_x * reliability_y, NA_real_)
+  pmax(pmin(rho / sqrt(product), 1), -1)
 }
 
 #' Reliability of a person's mean over one or two waves, from the between-wave correlation r
