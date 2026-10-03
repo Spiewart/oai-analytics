@@ -313,7 +313,7 @@ These supersede the sections they name.
     - **Framing.** All results are reported as receiver-operating points across pre-listed cuts. No cut is chosen as optimal from these data.
 
     **12a. PASE item 2, the two walking answers separately and combined, at V06 and V08.**
-    - **Sample.** People valid at the adjacent device wave with a PASE answer (`pase.device_pairing`). The answers are read from the raw items, not decoded from the subscore.
+    - **Sample.** People valid at the adjacent device wave with a PASE answer (`pase.device_pairing`). The answers are read from the raw items, not decoded from the subscore. The step stops unless `pase.device_pairing` is `adjacent_wave` and `pase.walker_threshold` is 0: it reads each visit against its own device wave and counts any walking (days ≥ 1) as a PASE walker.
     - **Frequency alone** (`VxxPASE2`: never; 1–2; 3–4; 5–7 days in the past 7 days):
       1. device-walker share in each category, with Wilson CIs;
       2. a Jonckheere–Terpstra trend test of device bout-days per week across the four categories;
@@ -335,7 +335,7 @@ These supersede the sections they name.
 
     **12b. Components of the 96-month item.**
     - **Samples.** The validation sample and the Lo subset. The reference is the person-level device walker over combined waves, as in §6 item 4.
-    - **Times per month** (`V10WKTMAR4`: three bands, coded 1–3, at midpoints 2, 6 and 10 per month; labels from the release's formats.pdf (TMSMNTH): 1–3, 4–8 and 9 or more times per month; code 88 (don't know) is no band). Walkers fall into the three bands, and non-walkers form a fourth "none" level.
+    - **Times per month** (`V10WKTMAR4`: three bands, coded 1–3, at midpoints 2, 6 and 10 per month). Labels from the release's formats.pdf (TMSMNTH): 1–3, 4–8 and 9 or more times per month; code 88 (don't know) is no band. Walkers fall into the three bands, and non-walkers form a fourth "none" level.
       - Device-walker share by level, with Wilson CIs.
       - A Jonckheere–Terpstra test of bout-days per week across the levels.
       - Se, Sp, PPV, NPV and J of frequency-restricted walker definitions: a walker who reported band ≥ k, for k = 1 (the current definition), 2 and 3 (`components.item_times_cuts`).
@@ -355,7 +355,7 @@ These supersede the sections they name.
     - Report: a new section "Answer-level sub-analyses". It has:
       - one table per component;
       - one figure of receiver-operating points: Se against 1 − Sp for every cut, for PASE frequency at both visits and for item times per month. The current item and PASE definitions are marked, and J contours are shown.
-      - for the combined weekly estimate, a calibration figure (device weekly minutes by self-reported weekly-walking bin, as medians and IQRs) and a difference-against-mean agreement figure. The agreement figure is drawn from binned aggregates (hexagonal bins with counts of 10 or more), not individual points, so the PDF stays aggregate.
+      - for the combined weekly estimate, a calibration figure (device weekly minutes by self-reported weekly-walking bin, as medians and IQRs) and a difference-against-mean agreement figure. The agreement figure is drawn from binned aggregates (hexagonal bins with counts of at least `components.min_cell_count`), not individual points, so the PDF stays aggregate.
       - Every table and figure has a legend, per amendment 11.
 
     **Ledger**
@@ -364,7 +364,7 @@ These supersede the sections they name.
     - `components.item_times_cuts`, value [1, 2, 3], status assumed.
     - `components.item_months_cuts`, value [1, 2, 3], status assumed.
     - `components.min_cell_count`, value 10, status assumed (the smallest cell count written to `validity_components_hex.csv`).
-    - `components.hex_bins`, value 30, status assumed (hexagonal cells per axis of the agreement figure).
+    - `components.hex_bins`, value 30, status assumed (about this many hexagonal cells per axis of the agreement figure).
     - Each source cites this amendment.
 
     **Precision**
@@ -378,6 +378,7 @@ These supersede the sections they name.
       - level assignment for the item's bands, including walkers with no band and the "yes without amount" coding;
       - the bootstrap CI for J.
     - A realdata test checks the per-level n's against the frame and that each cut's 2×2 adds up to n.
+    - A realdata test shows the step stops, naming the key, when `pase.device_pairing` or `pase.walker_threshold` is changed.
 
     **Out of scope**
     - Choosing a new walker definition for Lo 2022.
