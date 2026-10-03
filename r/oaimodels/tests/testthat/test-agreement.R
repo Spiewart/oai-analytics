@@ -34,6 +34,17 @@ test_that("youden_ci is Se + Sp - 1 with a reproducible bootstrap interval", {
   expect_equal(empty[["n"]], 0)
 })
 
+test_that("youden_ci and kappa_ci leave the caller's random-number stream alone", {
+  test <- c(rep(TRUE, 8), rep(FALSE, 2), rep(TRUE, 3), rep(FALSE, 7))
+  ref <- c(rep(TRUE, 10), rep(FALSE, 10))
+  set.seed(42)
+  before <- get(".Random.seed", envir = globalenv())
+  youden_ci(test, ref, reps = 20, seed = 5)
+  expect_identical(get(".Random.seed", envir = globalenv()), before)
+  kappa_ci(test, ref, reps = 20, seed = 5)
+  expect_identical(get(".Random.seed", envir = globalenv()), before)
+})
+
 test_that("kappa_ci matches a hand-computed Cohen's kappa", {
   a <- c(rep(TRUE, 20), rep(TRUE, 5), rep(FALSE, 10), rep(FALSE, 15))
   b <- c(rep(TRUE, 20), rep(FALSE, 5), rep(TRUE, 10), rep(FALSE, 15))
@@ -64,20 +75,49 @@ test_that("cut_classification matches hand-computed tables at each cut", {
   expect_equal(at(3, "j")$estimate, 0.5)
 })
 
-test_that("paired_agreement gives the Hodges-Lehmann difference and percentile limits", {
+test_that("paired_agreement gives the median difference, a bootstrap interval and percentile limits", {
   x <- c(10, 12, 15, 20, 30)
   y <- c(8, 11, 10, 25, 20)
   d <- x - y  # 2, 1, 5, -5, 10
-  walsh <- outer(d, d, "+") / 2
-  # n = 5 is too few for a 95% Wilcoxon interval, and wilcox.test() says so; that one warning is
-  # expected here (paired_agreement() lets it surface), any other still fails the test
-  a <- muffle_warning(paired_agreement(x, y), "conf.level not achievable")
-  expect_equal(a[["estimate"]], stats::median(walsh[upper.tri(walsh, diag = TRUE)]))
+  a <- paired_agreement(x, y, reps = 200, seed = 1)
+  expect_named(a, c("estimate", "lo", "hi", "loa_lo", "loa_hi", "n"))
+  expect_equal(a[["estimate"]], stats::median(d))
   expect_equal(a[["loa_lo"]], unname(stats::quantile(d, 0.025)))
   expect_equal(a[["loa_hi"]], unname(stats::quantile(d, 0.975)))
   expect_equal(a[["n"]], 5)
   expect_true(a[["lo"]] <= a[["estimate"]] && a[["estimate"]] <= a[["hi"]])
   expect_true(is.na(paired_agreement(1, NA)[["estimate"]]))
+  expect_equal(paired_agreement(1, NA)[["n"]], 0)
+  one <- paired_agreement(c(1, NA), c(0, 3))
+  expect_true(all(is.na(one[c("estimate", "lo", "hi", "loa_lo", "loa_hi")])))
+  expect_equal(one[["n"]], 1)
+})
+
+test_that("paired_agreement's interval holds its estimate when most differences are exactly zero", {
+  # 60 people agree exactly and 40 report more than the device: the median is 0, which a
+  # Wilcoxon interval (it drops zero differences) would not contain
+  x <- c(rep(0, 60), 1:40)
+  y <- rep(0, 100)
+  a <- paired_agreement(x, y, reps = 200, seed = 1)
+  expect_equal(a[["estimate"]], 0)
+  expect_true(a[["lo"]] <= a[["estimate"]] && a[["estimate"]] <= a[["hi"]])
+  expect_equal(a[["n"]], 100)
+})
+
+test_that("paired_agreement is reproducible and leaves the caller's random-number stream alone", {
+  x <- c(10, 12, 15, 20, 30, 7, 9)
+  y <- c(8, 11, 10, 25, 20, 7, 12)
+  expect_identical(paired_agreement(x, y, reps = 100, seed = 3), paired_agreement(x, y, reps = 100, seed = 3))
+  set.seed(42)
+  before <- get(".Random.seed", envir = globalenv())
+  paired_agreement(x, y, reps = 100, seed = 3)
+  expect_identical(get(".Random.seed", envir = globalenv()), before)
+})
+
+test_that("paired_agreement drops pairs whose difference is not finite", {
+  a <- paired_agreement(c(1, 2, 3, Inf, Inf, NA), c(0, 1, 1, Inf, 0, 1), reps = 50)
+  expect_equal(a[["n"]], 3)  # Inf - Inf is NaN and Inf - 0 is Inf: both dropped
+  expect_equal(a[["estimate"]], 1)
 })
 
 test_that("weekly_bins puts zero in its own bin and is left-closed", {
@@ -85,6 +125,15 @@ test_that("weekly_bins puts zero in its own bin and is left-closed", {
   expect_equal(levels(b), c("0", "<2", "2–5", "5–10", "10+"))
   expect_equal(as.character(b), c("0", "<2", "2–5", "2–5", "5–10", "5–10", "10+", "10+", NA))
   expect_error(weekly_bins(1, c(1, 2)), "start at 0")
+})
+
+test_that("weekly_bins stops on edges with no cut and on negative hours", {
+  expect_error(weekly_bins(1, 0), "at least two")
+  expect_error(weekly_bins(1, numeric(0)), "at least two")
+  expect_error(weekly_bins(c(1, -0.5, NA), c(0, 2)), "negative")
+  b <- weekly_bins(c(0, 1, 2, 7, NA), c(0, 2))  # a single cut still works
+  expect_equal(levels(b), c("0", "<2", "2+"))
+  expect_equal(as.character(b), c("0", "<2", "2+", "2+", NA))
 })
 
 test_that("hex_cells keeps only cells with at least min_count points", {
@@ -126,7 +175,7 @@ test_that("hex_cells puts identical points in a single cell, however few distinc
 })
 
 test_that("hex_cells matches a hand-checked three-point case", {
-  # Both axes span 10 over 10 bins, so one data unit is one lattice unit. In lattice units the rows
+  # Both axes round to 0..10 over 10 bins, so one data unit is one lattice unit. In lattice units the rows
   # are sqrt(3) / 2 apart, so the centres are (0, 0) and (10, 6 * sqrt(3)):
   #   (0, 0) and (0.1, 0.1) are within 0.15 of (0, 0), the nearest centre of either lattice
   #   (10, 10) is 0.39 from (10, 6 * sqrt(3)) and 0.69 from (10.5, 11 * sqrt(3) / 2)
@@ -146,4 +195,72 @@ test_that("hex_cells half-sizes follow each axis's own span", {
   cells <- hex_cells(c(0, 10), c(0, 100), bins = 10, min_count = 0)
   expect_equal(cells$dx, c(0.5, 0.5))
   expect_equal(cells$dy, rep(10 / (2 * sqrt(3)), 2))
+})
+
+test_that("hex_cells puts a point on an odd-row centre in its own cell, apart from the even-row cells around it", {
+  # Both axes round to 0..10 over 10 bins, so u = x and v = y. The second point is exactly the centre of
+  # an odd-row cell, (1/2, sqrt(3) / 2), which is 1 from the even-row centres (0, 0) and (1, 0).
+  # Assigning everything to the even rows would merge it into the cell of the first point.
+  cells <- hex_cells(c(0, 0.5, 10), c(0, sqrt(3) / 2, 10), bins = 10, min_count = 0)
+  expect_equal(nrow(cells), 3)
+  cells <- cells[order(cells$x), ]
+  expect_equal(cells$count, c(1, 1, 1))
+  expect_equal(cells$x, c(0, 0.5, 10))
+  expect_equal(cells$y, c(0, sqrt(3) / 2, 6 * sqrt(3)))
+})
+
+test_that("hex_cells puts each point in the cell with the nearest centre on either lattice", {
+  set.seed(7)
+  n <- 2000
+  bins <- 12
+  x <- stats::runif(n, 3.37, 96.81)
+  y <- exp(stats::rnorm(n, 3, 0.8))
+  bx <- range(pretty(x, bins))
+  by <- range(pretty(y, bins))
+  w <- diff(bx) / bins
+  h <- diff(by) / bins
+  u <- (x - bx[1]) / w
+  v <- (y - by[1]) / h
+  s <- sqrt(3) / 2
+  grid <- expand.grid(i = -1:(bins + 1), j = -1:(ceiling(bins / s) + 1))
+  centres <- rbind(cbind(grid$i, 2 * s * grid$j), cbind(grid$i + 0.5, s * (2 * grid$j + 1)))
+  d2 <- outer(u, centres[, 1], "-")^2 + outer(v, centres[, 2], "-")^2
+  near <- d2 <= apply(d2, 1, min) + 1e-9           # the nearest centre of each point, with its ties
+  strict <- colSums(near[rowSums(near) == 1, , drop = FALSE])
+  loose <- colSums(near)
+  cells <- hex_cells(x, y, bins = bins, min_count = 0)
+  cu <- (cells$x - bx[1]) / w
+  cv <- (cells$y - by[1]) / h
+  idx <- vapply(seq_len(nrow(cells)), function(k) which.min((centres[, 1] - cu[k])^2 + (centres[, 2] - cv[k])^2), 1L)
+  expect_true(all((centres[idx, 1] - cu)^2 + (centres[idx, 2] - cv)^2 < 1e-18))  # each cell is a lattice centre
+  expect_equal(anyDuplicated(idx), 0)
+  expect_equal(sum(cells$count), n)
+  # a cell holds every point whose nearest centre it is, and no point that has a nearer one
+  expect_true(all(cells$count >= strict[idx] & cells$count <= loose[idx]))
+  expect_equal(sum(strict[-idx]), 0)
+  expect_equal(sum(loose[-idx] > 0), 0)
+  odd_row <- abs(cv / (2 * s) - round(cv / (2 * s))) > 0.25
+  expect_true(any(odd_row) && any(!odd_row))        # both lattices are used
+})
+
+test_that("hex_cells sizes and anchors its cells on rounded bounds, not on the data's own extremes", {
+  set.seed(5)
+  x <- c(3.37, 96.81, stats::runif(200, 10, 90))
+  y <- c(-12.43, 41.27, stats::runif(200, 0, 40))
+  bins <- 10
+  cells <- hex_cells(x, y, bins = bins, min_count = 0)
+  bx <- range(pretty(x, bins))
+  by <- range(pretty(y, bins))
+  width <- unique(cells$dx) * 2 * bins
+  height <- unique(cells$dy) * 2 * sqrt(3) * bins
+  expect_length(width, 1)
+  expect_equal(width, diff(bx))
+  expect_equal(height, diff(by))
+  expect_false(isTRUE(all.equal(width, diff(range(x)))))
+  expect_false(isTRUE(all.equal(height, diff(range(y)))))
+  # the centres sit on the lattice that starts at the rounded lower bounds
+  cu <- (cells$x - bx[1]) / (diff(bx) / bins)
+  cv <- (cells$y - by[1]) / (diff(by) / bins) / (sqrt(3) / 2)
+  expect_true(all(abs(2 * cu - round(2 * cu)) < 1e-9))
+  expect_true(all(abs(cv - round(cv)) < 1e-9))
 })
