@@ -277,7 +277,8 @@ def current() -> Resolved:
 
 
 def _fmt(value: Any) -> str:
-    return value if isinstance(value, str) else json.dumps(value)
+    # ensure_ascii=False: characters such as the en dash in "1–2 days" are shown, not \u escapes
+    return value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
 
 
 def _cell(text: str) -> str:

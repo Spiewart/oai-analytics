@@ -8,7 +8,7 @@
 
 | Key | Value | Source | Rationale |
 |---|---|---|---|
-| `components.answer_labels` | `{"pase_days": ["Never", "1\u20132 days", "3\u20134 days", "5\u20137 days"], "pase_hours": ["Under 1 hour", "1 to under 2 hours", "2\u20134 hours", "Over 4 hours"], "times": ["1\u20133 times/month", "4\u20138 times/month", "9 or more times/month"], "months": ["1\u20134 months/year", "5\u20138 months/year", "9\u201312 months/year"], "years": ["1\u20135 years", "6\u201310 years", "11\u201320 years", "Over 20 years"]}` | formats.pdf in the OAI release: TIME10X (VxxPASE2), TIME18X (VxxPASE2HR), TMSMNTH (V10WKTMAR4), MNTHYR (V10WKMOAR4), YEAR7Z (V10WKYRAR4); codes 77 (refused) and 88 (don't know) are no answer |  |
+| `components.answer_labels` | `{"pase_days": ["Never", "1–2 days", "3–4 days", "5–7 days"], "pase_hours": ["Under 1 hour", "1 to under 2 hours", "2–4 hours", "Over 4 hours"], "times": ["1–3 times/month", "4–8 times/month", "9 or more times/month"], "months": ["1–4 months/year", "5–8 months/year", "9–12 months/year"], "years": ["1–5 years", "6–10 years", "11–20 years", "Over 20 years"]}` | formats.pdf in the OAI release: TIME10X (VxxPASE2), TIME18X (VxxPASE2HR), TMSMNTH (V10WKTMAR4), MNTHYR (V10WKMOAR4), YEAR7Z (V10WKYRAR4); codes 77 (refused) and 88 (don't know) are no answer |  |
 | `device.bout_need` | `8` | AccelData_Descrip.pdf: a bout is established when 8 of 10 minutes are at or above the cutpoint |  |
 | `device.bout_stop_below` | `3` | AccelData_Descrip.pdf: the bout stops when 3 minutes in the 10-minute window are below the cutpoint |  |
 | `device.bout_window` | `10` | AccelData_Descrip.pdf: MV bout rolling window of 10 minutes |  |

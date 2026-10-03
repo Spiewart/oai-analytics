@@ -267,6 +267,26 @@ def test_ledger_shows_choices(tmp_path):
     assert "`factor` (choices: factor, numeric)" in text
 
 
+def test_ledger_shows_non_ascii_characters_not_json_escapes(tmp_path):
+    """A list or table value is shown as JSON; its characters, such as the en dash in "1–2 days",
+    are written as themselves, not as \\u escapes, in the value cell and in a variant's cell."""
+    text = TOML + textwrap.dedent(
+        """
+        [labels.days]
+        value = ["Never", "1–2 days"]
+        status = "confirmed"
+        source = "formats"
+
+        [variants.dash]
+        set = { "labels.days" = ["Never", "3–4 days"] }
+        """
+    )
+    ledger = render_ledger("demo", load_assumptions(write(tmp_path, text)))
+    assert '`["Never", "1–2 days"]`' in ledger
+    assert '`labels.days = ["Never", "3–4 days"]`' in ledger
+    assert "\\u2013" not in ledger
+
+
 # --- Polish pass ----------------------------------------------------------------
 
 
