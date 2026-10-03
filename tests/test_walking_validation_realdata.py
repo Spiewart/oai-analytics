@@ -467,3 +467,62 @@ def test_walking_validation_report_renders(fast_run):
         ignore_id_pattern_columns=egress["ignore_id_pattern_columns"],
     )
     assert report.ok, report.problems
+
+
+COMPONENTS_SCHEMA = {"visit": pl.Utf8, "level": pl.Utf8, "sample": pl.Utf8}
+
+
+def _components(results: Path, name: str) -> pl.DataFrame:
+    path = results / f"validity_components_{name}.csv"
+    header = path.read_text().splitlines()[0].replace('"', "").split(",")
+    overrides = {k: v for k, v in COMPONENTS_SCHEMA.items() if k in header}
+    return pl.read_csv(path, null_values=["NA"], schema_overrides=overrides)
+
+
+@pytest.mark.realdata
+def test_e2e_components_reconcile(fast_run):
+    out = fast_run.out
+    work = fast_run.settings.work_dir / fast_run.analysis.name / out.name
+    frame = pl.read_parquet(work / "frame.parquet")
+    pase, item, hexes = (_components(out, n) for n in ("pase", "item", "hex"))
+    for v in ("06", "08"):
+        paired = frame.filter(
+            pl.col(f"pase_days_{v}").is_not_null() & pl.col(f"device_walker_{v}").is_not_null()
+        )
+        at = pase.filter(pl.col("visit") == v)
+        shares = at.filter((pl.col("component") == "frequency") & (pl.col("statistic") == "share"))
+        assert shares["n"].sum() == paired.height  # every answer in exactly one category
+        for cut in (1, 2, 3):
+            rows = at.filter(pl.col("level") == f"cut{cut}")
+            se_n = rows.filter(pl.col("statistic") == "se")["n"].item()
+            sp_n = rows.filter(pl.col("statistic") == "sp")["n"].item()
+            assert se_n + sp_n == paired.height  # the cut's 2x2 adds up to n
+            assert se_n == paired[f"device_walker_{v}"].sum()
+    for sample, rows in (("validation", frame), ("lo_subset", frame.filter("in_lo"))):
+        for component in ("times", "months", "years"):
+            sel = item.filter((pl.col("sample") == sample) & (pl.col("component") == component))
+            levels_n = sel.filter(pl.col("statistic") == "share")["n"].sum()
+            no_band = sel.filter(pl.col("level") == "no_band")["n"].item()
+            assert levels_n + no_band == rows.height
+    correction = item.filter(
+        (pl.col("sample") == "lo_subset") & (pl.col("statistic") == "correction")
+    )
+    assert correction.height == 3
+    assert hexes.height > 0
+    assert (hexes["count"] >= 10).all()
+
+
+@pytest.mark.realdata
+def test_components_handles_a_visit_without_paired_participants(step_copy):
+    _edit_frame(
+        step_copy,
+        lambda f: f.with_columns(pl.lit(None, dtype=pl.Boolean).alias("device_walker_08")),
+    )
+    done = step_copy.run("components")
+    assert done.returncode == 0, done.stderr
+    pase = _components(step_copy.results, "pase")
+    later = pase.filter(pl.col("visit") == "08")
+    assert later.height > 0
+    shares = later.filter(pl.col("statistic") == "share")
+    assert (shares["n"] == 0).all()
+    assert shares["estimate"].is_null().all()

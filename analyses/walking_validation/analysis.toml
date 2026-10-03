@@ -32,6 +32,13 @@ entry = "validity.R"
 needs = ["cohort"]
 
 [[steps]]
+id = "components"
+lang = "r"
+stage = "local"
+entry = "components.R"
+needs = ["cohort"]
+
+[[steps]]
 id = "bias"
 lang = "r"
 stage = "local"
