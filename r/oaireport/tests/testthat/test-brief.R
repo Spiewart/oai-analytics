@@ -12,6 +12,8 @@ test_that("fmt_ci joins limits with an en dash, or 'to' when a limit is negative
   expect_equal(fmt_ci(0.5, NA, 0.6), "0.50")
   expect_equal(fmt_ci(c(0.1, 0.2), c(0.05, -0.1), c(0.2, 0.3)),
                c("0.10 (0.05–0.20)", "0.20 (-0.10 to 0.30)"))
+  expect_equal(fmt_ci(c(0.1, 0.2), 0.05, 0.3), c("0.10 (0.05–0.30)", "0.20 (0.05–0.30)"))
+  expect_equal(fmt_ci(0.5, c(0.1, 0.2), c(0.6, 0.7)), c("0.50 (0.10–0.60)", "0.50 (0.20–0.70)"))
 })
 
 test_that("callout emits one raw Typst block with escaped text, a title and citations", {

@@ -23,6 +23,10 @@ typst_text <- function(x) {
 
 #' An estimate with its 95% interval: "0.89 (0.86–0.91)"; " to " when a limit is negative
 fmt_ci <- function(est, lo, hi, digits = 2) {
+  n <- max(length(est), length(lo), length(hi))
+  est <- rep_len(est, n)
+  lo <- rep_len(lo, n)
+  hi <- rep_len(hi, n)
   f <- function(x) formatC(x, format = "f", digits = digits, big.mark = ",")
   sep <- ifelse(!is.na(lo) & !is.na(hi) & (lo < 0 | hi < 0), " to ", "–")
   ifelse(is.na(est), "–",
