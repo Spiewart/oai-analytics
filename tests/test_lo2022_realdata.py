@@ -78,7 +78,7 @@ def _report_tools_ready() -> bool:
 def test_lo2022_report_renders():
     settings = get_settings()
     analysis = find_analysis("lo2022_walking", settings.analyses_dir)
-    pdf = render_report(analysis, settings, run_missing=True, echo=lambda _: None)
+    [pdf] = render_report(analysis, settings, run_missing=True, echo=lambda _: None)
     assert pdf.stat().st_size > 50_000
     figures = {p.name for p in (pdf.parent / "figures").iterdir()}
     for name in ("flow", "forest_table2", "forest_supp2", "forest_supp3", "replication_grid"):

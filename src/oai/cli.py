@@ -120,9 +120,10 @@ def report(
     with user_errors():
         settings = get_settings()
         analysis = find_analysis(name, settings.analyses_dir)
-        pdf = render_report(analysis, settings, run_missing=run_, echo=typer.echo)
-    typer.echo(f"Report: {pdf}")
-    typer.echo(f"Before sharing: oai check-egress {pdf.parent}")
+        pdfs = render_report(analysis, settings, run_missing=run_, echo=typer.echo)
+    for pdf in pdfs:
+        typer.echo(f"Report: {pdf}")
+    typer.echo(f"Before sharing: oai check-egress {pdfs[0].parent}")
 
 
 @app.command("check-egress")

@@ -1,10 +1,11 @@
 """`oai report`: render an analysis's Quarto report ([report] in analysis.toml) to PDF.
 
-The entry and its assets are copied into <results_dir>/<analysis>/report/ and rendered
-there with `quarto render <entry> --to typst`, so nothing is written into the repository.
-R chunks start through r/step-profile.R under the `report` renv profile, which loads
-oaimodels and oaireport. After a successful render only the PDF and figures/ remain, so
-`oai check-egress` sees nothing but reviewable outputs; a failed render is left in place.
+The documents and their assets are copied into <results_dir>/<analysis>/report/ and each is
+rendered there with `quarto render <document> --to typst`, so nothing is written into the
+repository. R chunks start through r/step-profile.R under the `report` renv profile, which
+loads oaimodels and oaireport. A [report] `combined` PDF joins the documents' PDFs. After a
+successful render only the PDFs and figures/ remain, so `oai check-egress` sees nothing but
+reviewable outputs; a failed render is left in place.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from oai.assumptions import DEFAULT_LABEL
 from oai.config import Settings
 from oai.errors import OAIError
 from oai.manifest import Analysis, ReportSpec
+from oai.pdfjoin import combine_pdfs
 from oai.runner import RUN_INFO_FILE, is_finished, r_profile_env, run_analysis, run_results_dir
 
 REPORT_DIR = "report"
@@ -87,8 +89,8 @@ def render_report(
     base_env: Mapping[str, str] | None = None,
     echo: Callable[[str], None] = print,
     bundles: Sequence[Path] = QUARTO_BUNDLES,
-) -> Path:
-    """Render the analysis's report; returns the PDF path."""
+) -> list[Path]:
+    """Render the analysis's report documents; returns their PDFs, then the combined PDF."""
     spec = _spec(analysis)
     env = dict(os.environ if base_env is None else base_env)
     missing = missing_runs(analysis, settings)
@@ -111,8 +113,11 @@ def render_report(
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True)
-    for name in (spec.entry, *spec.assets):
+    for name in (*spec.documents, *spec.assets):
         shutil.copy2(analysis.root / name, out / name)
+    for name in spec.local_assets:  # untracked (e.g. the brief's author file): copied if present
+        if (analysis.root / name).is_file():
+            shutil.copy2(analysis.root / name, out / name)
     env.update(
         OAI_ANALYSIS=analysis.name,
         OAI_RESULTS_ROOT=str(results_root),
@@ -122,25 +127,33 @@ def render_report(
     )
     for key, value in r_profile_env(settings).items():
         env.setdefault(key, value)
-    echo(f"==> {analysis.name}: rendering {spec.entry} with {quarto}")
-    proc = subprocess.run(
-        [str(quarto), "render", spec.entry, "--to", "typst"],
-        cwd=out,
-        env=env,
-        capture_output=True,
-        text=True,
-    )
-    pdf = out / f"{Path(spec.entry).stem}.pdf"
-    if proc.returncode != 0 or not pdf.is_file():
-        raise ReportError(
-            f"quarto render failed (exit {proc.returncode}); partial output kept in {out}\n"
-            + _tail(proc.stderr or proc.stdout)
+    pdfs: list[Path] = []
+    for document in spec.documents:
+        echo(f"==> {analysis.name}: rendering {document} with {quarto}")
+        proc = subprocess.run(
+            [str(quarto), "render", document, "--to", "typst"],
+            cwd=out,
+            env=env,
+            capture_output=True,
+            text=True,
         )
+        pdf = out / f"{Path(document).stem}.pdf"
+        if proc.returncode != 0 or not pdf.is_file():
+            raise ReportError(
+                f"quarto render of {document} failed (exit {proc.returncode}); "
+                f"partial output kept in {out}\n" + _tail(proc.stderr or proc.stdout)
+            )
+        pdfs.append(pdf)
+    if spec.combined:
+        titles = spec.part_titles or tuple(Path(d).stem for d in spec.documents)
+        echo(f"==> {analysis.name}: joining {len(pdfs)} PDFs into {spec.combined}")
+        pdfs.append(combine_pdfs(list(zip(titles, pdfs, strict=True)), out / spec.combined))
+    keep = set(pdfs)
     for child in out.iterdir():
-        if child == pdf or child.name == FIGURES_DIR:
+        if child in keep or child.name == FIGURES_DIR:
             continue
         if child.is_dir():
             shutil.rmtree(child)
         else:
             child.unlink()
-    return pdf
+    return pdfs

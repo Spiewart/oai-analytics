@@ -47,10 +47,6 @@ class ReportSpec:
     part_titles: tuple[str, ...] = ()  # one bookmark title per document in `combined`
     local_assets: tuple[str, ...] = ()  # untracked files (e.g. *.local.yml) copied when present
 
-    @property
-    def entry(self) -> str:  # removed in Task 3, once report.py renders every document
-        return self.documents[0]
-
 
 @dataclass(frozen=True)
 class Analysis:

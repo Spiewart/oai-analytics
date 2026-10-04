@@ -455,7 +455,7 @@ def test_walking_validation_report_renders(fast_run):
     # run and rendering never replaces the developer's report.
     settings, analysis = fast_run.settings, fast_run.analysis
     shutil.copytree(fast_run.out, run_results_dir(analysis, settings, "default"))
-    pdf = render_report(analysis, settings, echo=lambda _: None)
+    [pdf] = render_report(analysis, settings, echo=lambda _: None)
     assert pdf.stat().st_size > 50_000
     figures = {p.name for p in (pdf.parent / "figures").iterdir()}
     for name in ("known_groups", "strata", "tipping", "forest_bias"):

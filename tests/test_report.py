@@ -56,7 +56,8 @@ FAKE_QUARTO = textwrap.dedent(
     echo fig > figures/f.png
     echo scratch > .quarto/x
     echo typ > "$stem.typ"
-    if [ -n "$FAKE_QUARTO_FAIL" ]; then echo "boom: render failed" >&2; exit 1; fi
+    if [ "$FAKE_QUARTO_FAIL" = "1" ] || [ "$FAKE_QUARTO_FAIL" = "$2" ]; then echo "boom: render failed" >&2; exit 1; fi
+    if [ -n "$FAKE_QUARTO_PDF" ]; then cp "$FAKE_QUARTO_PDF" "$stem.pdf"; exit 0; fi
     {
       echo "args=$*"
       echo "root=$OAI_RESULTS_ROOT"
@@ -132,14 +133,14 @@ def test_run_flag_runs_only_the_missing_runs(toy, tmp_path, quarto_env):
     settings = make_settings(tmp_path)
     run_analysis(toy, settings, echo=quiet)
     default_info = (tmp_path / "results" / "toy" / "default" / "run_info.json").read_text()
-    pdf = render_report(toy, settings, run_missing=True, base_env=quarto_env, echo=quiet)
+    [pdf] = render_report(toy, settings, run_missing=True, base_env=quarto_env, echo=quiet)
     assert pdf.is_file()
     assert missing_runs(toy, settings) == []
     assert (tmp_path / "results" / "toy" / "default" / "run_info.json").read_text() == default_info
 
 
 def test_render_copies_inputs_sets_env_and_keeps_only_pdf_and_figures(toy, tmp_path, quarto_env):
-    pdf = render_report(
+    [pdf] = render_report(
         toy, make_settings(tmp_path), run_missing=True, base_env=quarto_env, echo=quiet
     )
     out = (tmp_path / "results" / "toy" / "report").resolve()  # settings resolve paths
@@ -267,7 +268,9 @@ def test_real_quarto_renders_with_oaireport(tmp_path):
         tmp_path, MANIFEST.replace('runs = ["default", "alt"]', 'runs = ["default"]'), SMOKE_QMD
     )
     settings = make_settings(tmp_path, repo_root=REPO)
-    pdf = render_report(analysis, settings, run_missing=True, base_env=dict(os.environ), echo=quiet)
+    [pdf] = render_report(
+        analysis, settings, run_missing=True, base_env=dict(os.environ), echo=quiet
+    )
     assert pdf.stat().st_size > 5_000
     assert sorted(p.name for p in pdf.parent.iterdir()) == ["figures", "report.pdf"]
     assert {p.name for p in (pdf.parent / "figures").iterdir()} == {"smoke.pdf", "smoke.png"}
@@ -295,3 +298,127 @@ def test_render_refuses_to_delete_a_run_folder(toy, tmp_path, quarto_env):
     with pytest.raises(ReportError, match="holds a run"):
         render_report(toy, settings, base_env=quarto_env, echo=quiet)
     assert (clash / "run_info.json").is_file()
+
+
+DOCS_MANIFEST = MANIFEST.replace(
+    'entry = "report.qmd"',
+    'documents = ["brief.qmd", "report.qmd"]\n'
+    'combined = "together.pdf"\n'
+    'part_titles = ["Brief", "Appendix"]\n'
+    'local_assets = ["brief.local.yml", "absent.local.yml"]',
+)
+
+
+def make_docs_toy(tmp_path, manifest=DOCS_MANIFEST):
+    # make_toy loads the analysis, so it starts from the single-entry manifest; the brief, a
+    # local asset and the multi-document manifest are added before loading it again
+    root = make_toy(tmp_path).root
+    (root / "brief.qmd").write_text("# brief\n")
+    (root / "brief.local.yml").write_text("authors: []\n")
+    (root / "analysis.toml").write_text(manifest)
+    return load_analysis(root)
+
+
+def blank_pdf(path: Path, pages: int) -> Path:
+    from pypdf import PdfWriter
+
+    writer = PdfWriter()
+    for _ in range(pages):
+        writer.add_blank_page(width=612, height=792)
+    with path.open("wb") as handle:
+        writer.write(handle)
+    return path
+
+
+def top_bookmarks(path: Path) -> list[str]:
+    from pypdf import PdfReader
+
+    return [item.title for item in PdfReader(path).outline if not isinstance(item, list)]
+
+
+def test_documents_render_in_order_and_combine(tmp_path, quarto_env):
+    from pypdf import PdfReader
+
+    env = {**quarto_env, "FAKE_QUARTO_PDF": str(blank_pdf(tmp_path / "blank.pdf", 2))}
+    pdfs = render_report(
+        make_docs_toy(tmp_path), make_settings(tmp_path), run_missing=True, base_env=env, echo=quiet
+    )
+    out = (tmp_path / "results" / "toy" / "report").resolve()
+    assert pdfs == [out / "brief.pdf", out / "report.pdf", out / "together.pdf"]
+    assert len(PdfReader(pdfs[-1]).pages) == 4
+    assert top_bookmarks(pdfs[-1]) == ["Brief", "Appendix"]
+
+
+def test_local_assets_are_copied_when_present_and_cleaned_up(tmp_path, quarto_env, monkeypatch):
+    import oai.report as report_module
+
+    joined = []
+
+    def fake_join(parts, out):
+        joined.append(parts)
+        out.write_text("joined")
+        return out
+
+    monkeypatch.setattr(report_module, "combine_pdfs", fake_join)
+    pdfs = render_report(
+        make_docs_toy(tmp_path),
+        make_settings(tmp_path),
+        run_missing=True,
+        base_env=quarto_env,
+        echo=quiet,
+    )
+    # the text fake lists the folder into each PDF: the present local asset was there while
+    # rendering, the absent one was skipped without error
+    listing = set(pdfs[0].read_text().splitlines())
+    assert "brief.local.yml" in listing and "absent.local.yml" not in listing
+    assert [title for title, _ in joined[0]] == ["Brief", "Appendix"]
+    out = pdfs[0].parent
+    assert sorted(p.name for p in out.iterdir()) == [
+        "brief.pdf",
+        "figures",
+        "report.pdf",
+        "together.pdf",
+    ]
+
+
+def test_a_failing_document_is_named_and_nothing_is_combined(tmp_path, quarto_env):
+    env = {**quarto_env, "FAKE_QUARTO_FAIL": "report.qmd"}
+    with pytest.raises(ReportError, match=r"report\.qmd failed"):
+        render_report(
+            make_docs_toy(tmp_path),
+            make_settings(tmp_path),
+            run_missing=True,
+            base_env=env,
+            echo=quiet,
+        )
+    out = tmp_path / "results" / "toy" / "report"
+    assert (out / "brief.pdf").exists() and not (out / "together.pdf").exists()
+
+
+def test_part_titles_default_to_document_names(tmp_path, quarto_env):
+    manifest = DOCS_MANIFEST.replace('part_titles = ["Brief", "Appendix"]\n', "")
+    env = {**quarto_env, "FAKE_QUARTO_PDF": str(blank_pdf(tmp_path / "blank.pdf", 1))}
+    pdfs = render_report(
+        make_docs_toy(tmp_path, manifest),
+        make_settings(tmp_path),
+        run_missing=True,
+        base_env=env,
+        echo=quiet,
+    )
+    assert top_bookmarks(pdfs[-1]) == ["brief", "report"]
+
+
+def test_cli_report_prints_every_pdf(tmp_path, monkeypatch):
+    make_docs_toy(tmp_path)
+    monkeypatch.setenv("OAI_ANALYSES_DIR", str(tmp_path / "analyses"))
+    monkeypatch.setenv("OAI_QUARTO", str(fake_quarto(tmp_path)))
+    monkeypatch.setenv("FAKE_QUARTO_PDF", str(blank_pdf(tmp_path / "blank.pdf", 1)))
+    oai_config.get_settings.cache_clear()
+    result = CliRunner().invoke(app, ["report", "toy", "--run"])
+    assert result.exit_code == 0, result.output
+    reports = [line for line in result.output.splitlines() if line.startswith("Report: ")]
+    assert [Path(line.removeprefix("Report: ")).name for line in reports] == [
+        "brief.pdf",
+        "report.pdf",
+        "together.pdf",
+    ]
