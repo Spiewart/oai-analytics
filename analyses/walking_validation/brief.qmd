@@ -3,6 +3,11 @@ title: "Is reported walking really walking?"
 subtitle: "Validating self-reported walking in the OAI against accelerometry — a proposal for joint work"
 mainfont: Arial
 fontsize: 10pt
+# Navy title, subtitle and section headings: the template's heading-color and a heading show rule
+brand:
+  typography:
+    headings:
+      color: "#0b2e59"
 bibliography: references.bib
 bibliographystyle: american-medical-association
 format:
@@ -73,6 +78,7 @@ rule_short <- switch(walker_rule,
   stop("unknown reference.walker_rule: ", walker_rule))
 
 n_validation <- run$metrics[["sample.validation.persons"]]
+n_walkers <- run$metrics[["sample.validation.walkers"]]
 se <- one(cls, sample = "validation", measure = "se")$estimate
 sp <- one(cls, sample = "validation", measure = "sp")$estimate
 j_item <- vapply(c("cut1", "cut3"), function(k) item("validation", "times", k, "j")$estimate, numeric(1))
@@ -106,7 +112,7 @@ cat("```{=typst}",
 #set text(size: 11pt)
 ```
 
-The Osteoarthritis Initiative (OAI) asked participants whether they had walked for exercise since age 50, and the answer predicts knee outcomes [@lo2022]. We checked that answer, and the walking question of the Physical Activity Scale for the Elderly (PASE), against what the ActiGraph GT1M recorded at 48 and 72 months in `r count(n_validation)` participants. Almost everyone says yes, so the question alone separates walkers poorly; *how often* people say they walk carries most of the signal. Our device reference is built from activity counts, which cannot tell walking from other moderate activity, and that is where your step and cadence data come in.
+The Osteoarthritis Initiative (OAI) asked participants whether they had walked for exercise since age 50, and the answer predicts knee outcomes [@lo2022]. We checked that answer, and the walking question of the Physical Activity Scale for the Elderly (PASE), against what the ActiGraph GT1M recorded at 48 and 72 months in `r count(n_validation)` participants. Most say yes (`r pct(n_walkers / n_validation)`), so the question alone separates walkers poorly; *how often* people say they walk carries most of the signal. Our device reference is built from activity counts, which cannot tell walking from other moderate activity, and that is where your step and cadence data come in.
 
 ```{=typst}
 #set text(size: 10pt)
@@ -133,14 +139,18 @@ source_key <- ggplot2::guide_legend(ncol = 1, order = 1, override.aes = list(sha
 fig1 <- ggplot2::ggplot(pts, ggplot2::aes(fpr, se, colour = source, linetype = source)) +
   oaireport::youden_contours() +
   ggplot2::geom_line(linewidth = 0.6) +
-  ggplot2::geom_point(ggplot2::aes(shape = current), size = 2.6) +
+  # Filled markers with a white outline, item drawn last: its triangle sits just below PASE's
+  ggplot2::geom_point(data = pts[rev(seq_len(nrow(pts))), ], ggplot2::aes(shape = current, fill = source),
+                      size = 2.6, colour = "white", stroke = 0.6) +
   ggplot2::scale_colour_manual(values = c(colours[["item"]], colours[["pase"]], colours[["pase"]]), name = NULL) +
   ggplot2::scale_linetype_manual(values = c("solid", "solid", "dashed"), name = NULL) +
-  ggplot2::scale_shape_manual(values = c(`TRUE` = 17, `FALSE` = 16), name = NULL,
+  ggplot2::scale_fill_manual(values = c(colours[["item"]], colours[["pase"]], colours[["pase"]]), name = NULL) +
+  ggplot2::scale_shape_manual(values = c(`TRUE` = 24, `FALSE` = 21), name = NULL,
                               labels = c(`TRUE` = "Definition in use", `FALSE` = "Stricter, frequency-based")) +
   ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1), clip = "off") +
   ggplot2::labs(x = "1 − specificity", y = "Sensitivity") +
-  ggplot2::guides(colour = source_key, linetype = source_key, shape = ggplot2::guide_legend(order = 2)) +
+  ggplot2::guides(colour = source_key, linetype = source_key, fill = source_key,
+                  shape = ggplot2::guide_legend(order = 2, override.aes = list(fill = "black"))) +
   oaireport::theme_oai(base_size = 8) +
   ggplot2::theme(legend.position = "bottom", legend.box = "vertical",
                  legend.spacing.y = ggplot2::unit(2, "pt"), legend.key.spacing.y = ggplot2::unit(0, "pt"),
@@ -167,7 +177,7 @@ cat(oaireport::sidebar_figure(
   results,
   ask = "A joint study: rebuild the reference from your step and cadence data (for example, minutes at 100 steps/min or more) and re-run the validation and the bias analysis, pre-specified and jointly authored.",
   image = "figures/brief_fig1.png",
-  caption = "Each point is a walker definition, placed by its sensitivity and 1 − specificity against the device-defined walker. Triangles: the definitions in use (any walking). Stricter, frequency-based definitions (circles) move both questions up and to the left, toward better agreement. Grey dashed lines join points of equal Youden's J, with each value above the top edge; J = 0 is chance."),
+  caption = "Each point is a walker definition, placed by its sensitivity and 1 − specificity against the device-defined walker. Triangles: the definitions in use (any walking). Stricter, frequency-based definitions (circles) give up some sensitivity but gain more specificity, so they move down and to the left, away from the chance line toward higher J. Grey dashed lines join points of equal Youden's J, with each value above the top edge; J = 0 is chance."),
   sep = "\n")
 ```
 
@@ -222,7 +232,7 @@ cat(oaireport::table_note(sprintf(
   label = "Figure 2.", close_group = TRUE), sep = "\n")
 ```
 
-Combining PASE's two walking answers (days × hours a day) gives an estimate of weekly walking. It ranks people only modestly against the device's purposeful-bout minutes (Spearman ρ `r range_text(rho_week)`), sits a median of about `r range_text(diff_week, 0)` minutes a week above the device, and agrees weakly on who walks at least `r fmt(guide)` minutes a week (Cohen's κ `r range_text(kappa_week)`). That is in line with studies of self-reported walking against device steps in older adults, which found ρ of 0.17 to 0.42 [@hagiwara2008; @heesch2011; @giles2009; @harris2009].
+Combining PASE's two walking answers (days × hours a day) gives an estimate of weekly walking. It ranks people only modestly against the device's purposeful-bout minutes (Spearman ρ `r range_text(rho_week)`), sits a median of about `r range_text(diff_week, 0)` minutes a week above the device, and agrees weakly on who walks at least `r fmt(guide)` minutes a week (Cohen's κ `r range_text(kappa_week)`). That is at the low end of studies that compared questionnaires with device step counts in older adults, which found correlations of 0.40 to 0.57 for walking questions and 0.17 to 0.52 for overall-activity scores [@hagiwara2008; @heesch2011; @giles2009; @harris2009]. Those studies used steps as the reference, which is part of the case for a step-based reference here.
 
 ```{r fig3}
 #| fig-height: 2.6
@@ -256,8 +266,9 @@ cat(oaireport::table_note(sprintf(
 ```{r weak-link}
 #| results: asis
 cat(oaireport::callout(sprintf(
-  "A purposeful bout is any run of at least %s minutes at %s counts/min or more. Cycling, yard work or stairs count; slow walking may not. The device-defined walker is therefore a proxy, so part of the low specificity may belong to the reference rather than to the question.",
-  fmt(bout_minutes), fmt(cutpoint)), kind = "warn", title = "The weak link."), sep = "\n")
+  "A purposeful bout lasts at least %s minutes at moderate-to-vigorous intensity: it starts when %s of %s minutes reach %s counts/min and ends when %s minutes in the window fall below it. Cycling, yard work or stairs count; slow walking may not. The device-defined walker is therefore a proxy, so part of the low specificity may belong to the reference rather than to the question.",
+  fmt(bout_minutes), fmt(assumption("device.bout_need")), fmt(assumption("device.bout_window")), fmt(cutpoint),
+  fmt(assumption("device.bout_stop_below"))), kind = "warn", title = "The weak link."), sep = "\n")
 ```
 
 **Why it matters for Lo et al. 2022.** A record-level correction for misclassification divides by Youden's J, so a weak J makes the correction unstable. With the walker definition in use, a correction would scale the difference in walking prevalence between outcome groups by `r num(correction[[1]], 1)`; with the strictest frequency-based definition, by `r num(correction[[2]], 1)`.
@@ -298,7 +309,7 @@ cat(oaireport::table_note(sprintf(
 ```{r steps-add}
 #| results: asis
 cat(oaireport::callout(
-  "Walking-specific references: steps per day, minutes at 100 steps/min or more (about 3 METs in adults aged 61 to 85, without knee OA) and step-based bouts. OAI cadence bands at this threshold have already been used.",
+  "Walking-specific references: steps per day, minutes at 100 steps/min or more (about 3 METs in ostensibly healthy adults aged 61 to 85) and step-based bouts. OAI cadence bands at this threshold have already been used.",
   kind = "note", title = "What steps and cadence add.", cite = c("tudorlocke2021", "fenton2018", "master2021")), sep = "\n")
 cat(oaireport::callout(
   "GT1M step counts come from the device's step-detection algorithm, which undercounts slow walking: 64% of steps were counted at 54 m/min, and 19% were missed below 0.8 m/s in adults around 79 years old. How should slow walkers with knee OA be handled?",
@@ -335,9 +346,13 @@ differ_text <- if (all(repro$mv_mismatch_days == 0 & repro$bout_mismatch_days ==
   "with the same moderate-to-vigorous and bout minutes on every matched day"
 } else sprintf("with moderate-to-vigorous minutes differing on %s and bout minutes on %s matched days",
                count(sum(repro$mv_mismatch_days)), count(sum(repro$bout_mismatch_days)))
+# wear_mismatch_days counts matched days whose wear time differs by half a minute or more
+wear_text <- if (sum(repro$wear_mismatch_days) > 0) {
+  sprintf(", and wear time within half a minute on all but %s of them", count(sum(repro$wear_mismatch_days)))
+} else ", with the same wear time"
 cat(oaireport::callout(sprintf(
-  "Our pipeline rebuilds the OAI release's day-level accelerometry files from the minute counts, following the OAI processing standard: it matches %s, %s. A step-based reference therefore drops into the same validation and bias analyses.",
-  paste(matched, collapse = " and "), differ_text), kind = "note", title = "Already built.", cite = "song2010"),
+  "Our pipeline rebuilds the OAI release's day-level accelerometry files from the minute counts, following the OAI processing standard: it matches %s, %s%s. A step-based reference therefore drops into the same validation and bias analyses.",
+  paste(matched, collapse = " and "), differ_text, wear_text), kind = "note", title = "Already built.", cite = "song2010"),
   sep = "\n")
 ```
 
