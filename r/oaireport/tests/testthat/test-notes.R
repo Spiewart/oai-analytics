@@ -52,3 +52,10 @@ test_that("a figure and its legend share one block", {
   expect_equal(sum(grepl("^\\]$", grouped)), 2)
   expect_equal(sum(grepl("^\\]$", alone)), 1)
 })
+
+test_that("table_note puts an unescaped bold label before the escaped text", {
+  lines <- table_note("Some *text*.", label = "Table A1.")
+  expect_true("**Table A1.** Some \\*text\\*." %in% lines)
+  expect_false(any(grepl("\\*\\*", table_note("Plain."))))
+  expect_error(table_note("x", label = c("a", "b")), "label")
+})

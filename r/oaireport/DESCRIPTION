@@ -9,6 +9,6 @@ Description: ACR-style ggplot2 theme, figure export at journal column widths, fo
 License: MIT + file LICENSE
 Encoding: UTF-8
 Depends: R (>= 4.4)
-Imports: ggplot2, grDevices, grid, jsonlite, ragg, stats, systemfonts, tinytable, utils
+Imports: ggplot2, grDevices, grid, jsonlite, ragg, stats, systemfonts, tinytable, utils, yaml
 Suggests: testthat (>= 3.0.0), withr
 Config/testthat/edition: 3

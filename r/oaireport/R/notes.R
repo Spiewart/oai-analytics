@@ -13,16 +13,21 @@
 #' @param text One string.
 #' @param size Type size in points.
 #' @param close_group Also close the block opened by `figure_group()`.
+#' @param label A bold label put before the text (e.g. "Table A1."), or NULL.
 #' @return The lines, to be written with `cat(lines, sep = "\n")`.
-table_note <- function(text, size = 8, close_group = FALSE) {
+table_note <- function(text, size = 8, close_group = FALSE, label = NULL) {
   if (!is.character(text) || length(text) != 1 || is.na(text) || !nzchar(trimws(text))) {
     stop("table_note(): text must be one string, not empty", call. = FALSE)
   }
   if (!is.numeric(size) || length(size) != 1 || is.na(size) || size <= 0) {
     stop("table_note(): size must be one positive number of points", call. = FALSE)
   }
+  if (!is.null(label) && (!is.character(label) || length(label) != 1 || is.na(label) || !nzchar(label))) {
+    stop("table_note(): label must be one string or NULL", call. = FALSE)
+  }
   text <- gsub("\\s+", " ", trimws(text))
   text <- gsub("([\\\\*_`\\[\\]<>#$~^])", "\\\\\\1", text, perl = TRUE)
+  if (!is.null(label)) text <- paste0("**", label, "** ", text)
   note <- c("", "```{=typst}",
             "#block(above: 0.45em, below: 1.1em, breakable: false)[",
             sprintf("#set text(size: %spt, fill: luma(50))", format(size)),
