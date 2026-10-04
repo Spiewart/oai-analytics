@@ -14,11 +14,18 @@ brief_colours <- c(
 
 #' Escape text for Typst markup inside raw Typst blocks (Markdown is not processed there)
 #'
-#' "/" is escaped too, because "//" starts a Typst comment.
+#' "/" is escaped too, because "//" starts a Typst comment. Text that opens with a list or heading
+#' marker (`- `, `+ `, `= `, or a number and a full stop, `1. `) would start a list or a heading
+#' where it opens a line (a callout without a title, the reading guide's notation line), so that
+#' leading marker is escaped as well; the same characters mid-text are left alone. `NA` is an
+#' error: a missing value in a layout box is a bug, and would print as the word "NA".
 typst_text <- function(x) {
   if (!is.character(x)) stop("typst_text(): x must be character", call. = FALSE)
+  if (anyNA(x)) stop("typst_text(): x has NA values", call. = FALSE)
   x <- gsub("\\s+", " ", trimws(x))
-  gsub("([\\\\#$*_`<>@~/\\[\\]])", "\\\\\\1", x, perl = TRUE)
+  x <- gsub("([\\\\#$*_`<>@~/\\[\\]])", "\\\\\\1", x, perl = TRUE)
+  x <- sub("^([-+]|=+)(?= |$)", "\\\\\\1", x, perl = TRUE)
+  sub("^([0-9]+)\\.(?= |$)", "\\1\\\\.", x, perl = TRUE)
 }
 
 #' An estimate with its 95% interval: "0.89 (0.86–0.91)"; " to " when a limit is negative
@@ -61,11 +68,15 @@ callout <- function(text, kind = c("note", "warn"), title = NULL, cite = NULL, s
 #' Page-1 layout: a shaded sidebar of key results and the ask, beside a figure and its caption
 #'
 #' `results` is a data frame with columns `value` (short: it is set at 15 pt in a narrow column)
-#' and `label`; `image` is the figure's path relative to the document.
+#' and `label`; `image` is the figure's path relative to the document (one path, with no `"` or
+#' `\`, which would end the `#image("…")` string early).
 sidebar_figure <- function(results, ask, image, caption, caption_title = "Figure 1.",
                            heading = "Key results", sidebar = 0.31) {
   if (!is.data.frame(results) || !all(c("value", "label") %in% names(results))) {
     stop("sidebar_figure(): results needs columns value and label", call. = FALSE)
+  }
+  if (!is.character(image) || length(image) != 1 || is.na(image) || grepl('["\\\\]', image)) {
+    stop("sidebar_figure(): image must be one path with no \" or \\ in it", call. = FALSE)
   }
   keys <- sprintf('#text(size: 15pt, weight: "bold", fill: rgb("%s"))[%s] \\ #text(size: 8pt)[%s] #v(6pt)',
                   brief_colours[["navy"]], typst_text(as.character(results$value)),
@@ -113,30 +124,38 @@ numberer <- function(prefix = "") {
 #' The author and contact line from an untracked YAML file, or a neutral placeholder
 #'
 #' The file holds `authors` (entries with `name` and optional `affiliation`, one or several,
-#' joined with "; ") and an optional `contact` (`name`, `email`). It is never committed:
-#' *.local.yml is git-ignored.
+#' joined with "; ") and an optional `contact` (`name`, `email`). Keys are matched exactly
+#' (`name_full` is not `name`); an empty `affiliation` (`[]` or `""`) counts as none. It is never
+#' committed: *.local.yml is git-ignored.
+#'
+#' @return Plain text: pass it through `typst_text()` before putting it in a raw Typst block.
 author_block <- function(path, placeholder = "Authors and contact to be added") {
   if (!file.exists(path)) return(placeholder)
   info <- yaml::read_yaml(path)
   if (!is.list(info)) {
     stop("author_block(): ", path, " must be a YAML mapping with `authors`", call. = FALSE)
   }
-  authors <- info$authors
-  named <- function(a) is.list(a) && is.character(a$name) && length(a$name) == 1 && nzchar(a$name)
+  authors <- info[["authors"]]
+  named <- function(a) {
+    is.list(a) && is.character(a[["name"]]) && length(a[["name"]]) == 1 && nzchar(a[["name"]])
+  }
   if (!is.list(authors) || !length(authors) || !all(vapply(authors, named, logical(1)))) {
     stop("author_block(): ", path, " needs `authors`, a list of entries with a `name`", call. = FALSE)
   }
   who <- vapply(authors, function(a) {
-    if (is.null(a$affiliation)) a$name else
-      sprintf("%s (%s)", a$name, paste(unlist(a$affiliation), collapse = "; "))
+    affiliation <- as.character(unlist(a[["affiliation"]]))
+    affiliation <- affiliation[!is.na(affiliation) & nzchar(trimws(affiliation))]
+    if (!length(affiliation)) a[["name"]] else
+      sprintf("%s (%s)", a[["name"]], paste(affiliation, collapse = "; "))
   }, character(1))
   line <- paste(who, collapse = ", ")
-  contact <- info$contact
+  contact <- info[["contact"]]
   if (!is.null(contact)) {
-    if (!is.list(contact) || !is.character(contact$email) || !nzchar(contact$email)) {
+    if (!is.list(contact) || !is.character(contact[["email"]]) || !nzchar(contact[["email"]])) {
       stop("author_block(): ", path, " has a `contact` without an `email`", call. = FALSE)
     }
-    who_contact <- if (is.null(contact$name)) contact$email else sprintf("%s, %s", contact$name, contact$email)
+    who_contact <- if (is.null(contact[["name"]])) contact[["email"]] else
+      sprintf("%s, %s", contact[["name"]], contact[["email"]])
     line <- sprintf("%s · Contact: %s", line, who_contact)
   }
   line
@@ -158,9 +177,9 @@ youden_contours <- function(j = c(0, 0.1, 0.2, 0.3, 0.4)) {
                      label = ifelse(j == max(j), paste0("J = ", as.character(j)), as.character(j)),
                      hjust = ifelse(j == max(j), 0.85, 0.5))
   list(
-    ggplot2::geom_line(data = lines, ggplot2::aes(fpr, se, group = j), inherit.aes = FALSE,
+    ggplot2::geom_line(data = lines, ggplot2::aes(.data$fpr, .data$se, group = .data$j), inherit.aes = FALSE,
                        linewidth = 0.25, colour = "grey75", linetype = "dashed"),
-    ggplot2::geom_text(data = ends, ggplot2::aes(fpr, se, label = label, hjust = hjust), inherit.aes = FALSE,
-                       size = 2.2, colour = "grey45", vjust = -0.6, family = oai_font())
+    ggplot2::geom_text(data = ends, ggplot2::aes(.data$fpr, .data$se, label = .data$label, hjust = .data$hjust),
+                       inherit.aes = FALSE, size = 2.2, colour = "grey45", vjust = -0.6, family = oai_font())
   )
 }

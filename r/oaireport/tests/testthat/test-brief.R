@@ -5,6 +5,29 @@ test_that("typst_text escapes Typst markup characters", {
   expect_error(typst_text(1), "character")
 })
 
+test_that("typst_text escapes a list or heading marker that opens the text, and only there", {
+  expect_equal(typst_text("- x"), "\\- x")
+  expect_equal(typst_text("+ x"), "\\+ x")
+  expect_equal(typst_text("= x"), "\\= x")
+  expect_equal(typst_text("== x"), "\\== x")
+  expect_equal(typst_text("1. x"), "1\\. x")
+  expect_equal(typst_text("12. x"), "12\\. x")
+  expect_equal(typst_text("  - x  "), "\\- x")  # the marker opens the line once the text is trimmed
+  expect_equal(typst_text("-"), "\\-")
+  expect_equal(typst_text("1."), "1\\.")
+  # the same characters mid-text, or without the space that makes them markup, are left alone
+  expect_equal(typst_text("a - b + c = d 1. e"), "a - b + c = d 1. e")
+  expect_equal(typst_text("-x +x =x 1.5 a1. x"), "-x +x =x 1.5 a1. x")
+  expect_equal(typst_text("x\n- y"), "x - y")  # a newline is squeezed to a space, so nothing opens a line
+  expect_equal(typst_text(c("- a", "b - c")), c("\\- a", "b - c"))
+})
+
+test_that("typst_text refuses NA, which would print as the word NA", {
+  expect_error(typst_text(NA_character_), "typst_text\\(\\): x has NA values")
+  expect_error(typst_text(c("a", NA)), "x has NA values")
+  expect_equal(typst_text(character()), character())
+})
+
 test_that("fmt_ci joins limits with an unbreakable en dash, or 'to' when a limit is negative", {
   # U+2060 (word joiner) follows the en dash and U+00A0 surrounds "to", so a cell breaks only at the
   # space before "("; negative numbers print a true minus (U+2212)
@@ -37,6 +60,36 @@ test_that("callout emits one raw Typst block with escaped text, a title and cita
   expect_error(callout("x", cite = "bad key"), "cite")
 })
 
+# Text holding every character typst_text escapes, with more closing than opening brackets, so a
+# single unescaped bracket unbalances the generated Typst
+nasty <- "# $ * _ ` < > @ ~ [ ] / \\ ] ] ["
+
+test_that("the typst_text helper's bracket check catches a stray bracket, and ignores escaped ones", {
+  expect_true(typst_balanced("#block(a: (b: 1))[text #text[inner]]"))
+  expect_true(typst_balanced("a \\[ b \\( c"))
+  expect_false(typst_balanced("#text[a [ b]"))
+  expect_false(typst_balanced("#text(a]"))
+  expect_false(typst_balanced("[(])"))
+})
+
+test_that("callout keeps its brackets balanced and its text escaped, with or without a title", {
+  for (note in list(callout(nasty, title = nasty, cite = "abel2008"), callout(nasty, kind = "warn"))) {
+    expect_typst_balanced(note)
+    expect_match(paste(note, collapse = "\n"), typst_text(nasty), fixed = TRUE)
+  }
+})
+
+test_that("a callout without a title does not start its text as a list, a heading or a numbered item", {
+  expect_match(callout("- not a list")[5], "^\\\\- not a list$")
+  expect_match(callout("1. not numbered")[5], "^1\\\\\\. not numbered$")
+  # with a title the text follows it on the same line; the escape is harmless there (it prints "-")
+  expect_match(callout("- x", title = "T.")[5], "\\[T\\.\\] \\\\- x$")
+})
+
+test_that("callout refuses NA text", {
+  expect_error(callout(NA_character_), "NA")
+})
+
 test_that("sidebar_figure lays out key results and the ask beside the figure", {
   side <- sidebar_figure(data.frame(value = c("0.88 / 0.25", "7.7 → 3.9"), label = c("Se / Sp", "factor")),
                          ask = "A joint study.", image = "figures/f.png", caption = "Caption.")
@@ -50,6 +103,27 @@ test_that("sidebar_figure lays out key results and the ask beside the figure", {
   expect_error(sidebar_figure(data.frame(x = 1), "a", "i", "c"), "value and label")
 })
 
+test_that("sidebar_figure escapes every text field and keeps its brackets balanced", {
+  side <- sidebar_figure(data.frame(value = nasty, label = nasty), ask = nasty, image = "figures/f.png",
+                         caption = nasty, caption_title = nasty, heading = nasty)
+  expect_typst_balanced(side)
+  text <- paste(side, collapse = "\n")
+  # the value, label, ask, caption, caption title and heading, each in escaped form
+  expect_equal(lengths(regmatches(text, gregexpr(typst_text(nasty), text, fixed = TRUE))), 6)
+  expect_match(text, "\\# \\$ \\* \\_ \\` \\< \\> \\@ \\~ \\[ \\] \\/ \\\\ \\] \\] \\[", fixed = TRUE)
+})
+
+test_that("sidebar_figure refuses NA text and an image path that would break the #image string", {
+  results <- data.frame(value = "1", label = "a")
+  expect_error(sidebar_figure(data.frame(value = NA_character_, label = "a"), "ask", "f.png", "c"),
+               "NA values")
+  expect_error(sidebar_figure(results, "ask", "f.png", NA_character_), "NA values")
+  expect_error(sidebar_figure(results, "ask", "figures/a\"b.png", "c"), "image")
+  expect_error(sidebar_figure(results, "ask", "figures\\a.png", "c"), "image")
+  expect_error(sidebar_figure(results, "ask", c("a.png", "b.png"), "c"), "image")
+  expect_error(sidebar_figure(results, "ask", NA_character_, "c"), "image")
+})
+
 test_that("reading_guide lists each term in bold, then the notation line", {
   guide <- reading_guide(c(`Item walker` = "answered yes.", `Device walker` = "2 days a week."),
                          "Notation: 0.89 (0.86–0.91).")
@@ -58,6 +132,19 @@ test_that("reading_guide lists each term in bold, then the notation line", {
   expect_match(text, "Notation: 0.89", fixed = TRUE)
   expect_match(text, "How to read this report", fixed = TRUE)
   expect_error(reading_guide(c("no names"), "n"), "named")
+})
+
+test_that("reading_guide escapes terms, definitions and notation and keeps its brackets balanced", {
+  guide <- reading_guide(stats::setNames(nasty, nasty), notation = nasty, title = nasty)
+  expect_typst_balanced(guide)
+  text <- paste(guide, collapse = "\n")
+  expect_equal(lengths(regmatches(text, gregexpr(typst_text(nasty), text, fixed = TRUE))), 4)
+  expect_match(text, paste0("[", typst_text(nasty), ":]"), fixed = TRUE)
+})
+
+test_that("a notation line that starts like a list item stays text", {
+  expect_equal(reading_guide(c(a = "b"), "- one 1. two")[7], "\\- one 1. two")
+  expect_equal(reading_guide(c(a = "b"), "2. two")[7], "2\\. two")
 })
 
 test_that("numberer counts tables and figures separately", {
@@ -88,6 +175,33 @@ test_that("author_block joins several affiliations and names a file that is not 
   expect_error(author_block(path), paste0(path, " must be a YAML mapping"), fixed = TRUE)
 })
 
+test_that("author_block looks keys up exactly: name_full is not name, nor affiliation_x an affiliation", {
+  path <- withr::local_tempfile(fileext = ".yml")
+  writeLines(c("authors:", "  - name_full: A. Person"), path)
+  expect_error(author_block(path), "needs `authors`")
+  writeLines(c("authors:", "  - name: A. Person", "    affiliation_long: Somewhere"), path)
+  expect_equal(author_block(path), "A. Person")
+  writeLines(c("authors_list:", "  - name: A. Person"), path)  # `authors` is not a prefix match for `authors_list`
+  expect_error(author_block(path), "needs `authors`")
+  writeLines(c("authors:", "  - name: A. Person", "contact_info:", "  email: a@example.org"), path)
+  expect_equal(author_block(path), "A. Person")
+  writeLines(c("authors:", "  - name: A. Person", "contact:", "  email_address: a@example.org"), path)
+  expect_error(author_block(path), "without an `email`")
+  writeLines(c("authors:", "  - name: A. Person", "contact:", "  name_full: B. Person", "  email: a@example.org"), path)
+  expect_equal(author_block(path), "A. Person \u00b7 Contact: a@example.org")
+})
+
+test_that("an empty affiliation counts as none", {
+  path <- withr::local_tempfile(fileext = ".yml")
+  for (empty in c("[]", "\"\"", "''", "~", "[\"\"]")) {
+    writeLines(c("authors:", "  - name: A. Person", paste("    affiliation:", empty),
+                 "  - name: B. Person", "    affiliation: Here"), path)
+    expect_equal(author_block(path), "A. Person, B. Person (Here)", info = empty)
+  }
+  writeLines(c("authors:", "  - name: A. Person", "    affiliation: [Here, \"\", There]"), path)
+  expect_equal(author_block(path), "A. Person (Here; There)")
+})
+
 test_that("youden_contours draws a dashed line per J and labels each above the top edge", {
   layers <- youden_contours(c(0, 0.2))
   expect_length(layers, 2)
@@ -97,5 +211,9 @@ test_that("youden_contours draws a dashed line per J and labels each above the t
   # the largest label is right-justified so it ends near its line and clears the next label
   expect_equal(layers[[2]]$data$hjust, c(0.5, 0.85))
   expect_equal(rlang::as_label(layers[[2]]$mapping$hjust), "hjust")
+  # the mappings name columns through the .data pronoun, so R CMD check sees no free variables
+  mapped <- function(layer) vapply(layer$mapping, function(m) rlang::expr_text(rlang::quo_get_expr(m)), character(1))
+  expect_equal(unname(mapped(layers[[1]])), c(".data$fpr", ".data$se", ".data$j"))
+  expect_equal(unname(mapped(layers[[2]])), c(".data$fpr", ".data$se", ".data$label", ".data$hjust"))
   expect_error(youden_contours(1), "j must")
 })

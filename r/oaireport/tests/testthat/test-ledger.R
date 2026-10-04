@@ -77,3 +77,54 @@ test_that("a ledger with no variants or spans passes through minus its header", 
   out <- ledger_markdown(write_ledger(c("# Assumptions: x", "<!-- generated -->", "", "nothing here")))
   expect_equal(out, c("", "nothing here"))
 })
+
+ledger_tables <- c(
+  "## Confirmed (1)", "",
+  "| Key | Value | Source | Rationale |", "|---|---|---|---|", "| `a.b` | `1` | p.1 | |", "",
+  "## Variants", "",
+  "| Variant | Sets | Description |", "|---|---|---|", "| `v` | `a.b = 2` | two |"
+)
+separators <- function(lines) lines[grepl("^\\|-", lines)]
+
+test_that("widths rewrite a table's separator row to dashes in those proportions", {
+  path <- write_ledger(ledger_tables[1:5])
+  out <- ledger_markdown(path, widths = c(5, 5, 9, 4))
+  expect_equal(separators(out), "|-----|-----|---------|----|")
+  # the rows around the separator are untouched
+  expect_equal(out[grepl("^\\| Key", out)], "| Key | Value | Source | Rationale |")
+  expect_equal(out[grepl("^\\| a", out)], paste0("| a.", zwsp, "b | `1` | p.1 | |"))
+  # without widths the separator stays as written
+  expect_equal(separators(ledger_markdown(path)), "|---|---|---|---|")
+  expect_equal(separators(ledger_markdown(path, widths = NULL)), "|---|---|---|---|")
+})
+
+test_that("small or fractional widths keep their proportions, with at least three dashes a column", {
+  path <- write_ledger(ledger_tables[1:5])
+  expect_equal(separators(ledger_markdown(path, widths = c(1, 1, 1, 1))), "|---|---|---|---|")
+  expect_equal(separators(ledger_markdown(path, widths = c(1.5, 1, 1, 0.5))), "|---------|------|------|---|")
+  # only the proportions matter
+  expect_equal(separators(ledger_markdown(path, widths = c(50, 50, 90, 40))), "|-----|-----|---------|----|")
+})
+
+test_that("a table whose column count differs from the widths is an error", {
+  expect_error(ledger_markdown(write_ledger(ledger_tables[1:5]), widths = c(1, 1, 1)),
+               "4 columns but widths gives 3")
+  expect_error(ledger_markdown(write_ledger(ledger_tables), widths = c(5, 5, 9, 4)),
+               "3 columns but widths gives 4")
+})
+
+test_that("a list of widths gives each table shape its own, matched by column count", {
+  out <- ledger_markdown(write_ledger(ledger_tables), widths = list(c(5, 5, 9, 4), c(2, 1, 3)))
+  expect_equal(separators(out), c("|-----|-----|---------|----|", "|------|---|---------|"))
+  expect_error(ledger_markdown(write_ledger(ledger_tables), widths = list(c(5, 5, 9, 4), c(1, 1))), "no entry of length 3")
+  expect_error(ledger_markdown(write_ledger(ledger_tables), widths = list(c(1, 1), c(2, 2, 2))), "no entry of length 4")
+})
+
+test_that("widths must be positive numbers, and a ledger with no table to apply them to is an error", {
+  path <- write_ledger(ledger_tables[1:5])
+  expect_error(ledger_markdown(path, widths = c(1, 0, 1, 1)), "positive")
+  expect_error(ledger_markdown(path, widths = c(1, NA, 1, 1)), "positive")
+  expect_error(ledger_markdown(path, widths = "a"), "positive")
+  expect_error(ledger_markdown(path, widths = list(c(1, 1), c(1, 1))), "different lengths")
+  expect_error(ledger_markdown(write_ledger(c("# A", "nothing here")), widths = c(1, 1)), "no table")
+})

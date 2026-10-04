@@ -20,6 +20,8 @@ format:
       text: |
         #set text(hyphenate: false)
         #set bibliography(title: [References])
+        // The AMA style ends every title with a full stop, which doubles after a title ending in "?"
+        #show bibliography: it => { show regex("\\?\\."): "?"; it }
         #set page(footer: context align(center, text(size: 8pt, fill: luma(90))[Brief — page #counter(page).display()]))
 execute:
   echo: false
@@ -65,6 +67,25 @@ item <- function(sample, component, level, statistic) {
   one(ci, sample = sample, component = component, level = level, statistic = statistic)
 }
 labels <- lapply(assumption("components.answer_labels"), unlist)
+# Cut k of an answer means "answer at or above level cuts[k]". The PASE days answer has levels 0
+# to 3 (labels$pase_days[i + 1] names level i), the walking item's times-per-month answer levels
+# 1 to 3 (labels$times[i]), so the labels follow components.*_cuts and not a fixed position.
+pase_cuts <- unlist(assumption("components.pase_frequency_cuts"))
+item_cuts <- unlist(assumption("components.item_times_cuts"))
+level_label <- function(cuts, k, answer_labels, first) {
+  level <- cuts[[k]]
+  if (!(level %in% seq(first, length.out = length(answer_labels)))) {
+    stop("cut ", k, " (level ", level, ") is outside the answer levels ", first, " to ",
+         first + length(answer_labels) - 1, call. = FALSE)
+  }
+  answer_labels[[level - first + 1]]
+}
+# A cut at the top level reads as its label alone, any other as "At least <label>"
+cut_name <- function(cuts, k, answer_labels, first) {
+  label <- level_label(cuts, k, answer_labels, first)
+  if (cuts[[k]] == first + length(answer_labels) - 1) label else paste("At least", label)
+}
+lower_first <- function(x) paste0(tolower(substr(x, 1, 1)), substring(x, 2))
 visits <- c("06", "08")
 wave_names <- c(`06` = "48 months", `08` = "72 months")
 paired <- assumption("pase.device_pairing") == "adjacent_wave"
@@ -85,7 +106,7 @@ j_item <- vapply(c("cut1", "cut3"), function(k) item("validation", "times", k, "
 j_pase_any <- vapply(visits, function(v) pase(v, "frequency", "device_walker", "cut1", "j")$estimate, numeric(1))
 j_pase_mid <- vapply(visits, function(v) pase(v, "frequency", "device_walker", "cut2", "j")$estimate, numeric(1))
 correction <- vapply(c("cut1", "cut3"), function(k) item("lo_subset", "times", k, "correction")$estimate, numeric(1))
-strict <- labels$times[length(labels$times)]
+strict <- lower_first(cut_name(item_cuts, 3, labels$times, 1))  # cut 3 of the item: the stricter walker definition
 bout_minutes <- assumption("device.purposeful_bout_minutes")
 cutpoint <- assumption("device.mv_cutpoint")
 guide <- assumption("reference.min_bout_minutes_per_week")
@@ -93,6 +114,12 @@ rho_week <- vapply(visits, function(v) pase(v, "weekly", "purposeful_week", "all
 diff_week <- vapply(visits, function(v) pase(v, "weekly", "purposeful_week", "all", "median_diff")$estimate, numeric(1))
 kappa_week <- vapply(visits, function(v) pase(v, "weekly", "purposeful_week", "guideline", "kappa")$estimate, numeric(1))
 repro <- run$device_reproduction
+# Every column the brief reads; a missing one would otherwise give NULL (and a sum of 0), silently
+repro_columns <- c("wave", "release_days", "matched_days", "mv_mismatch_days", "bout_mismatch_days",
+                   "wear_mismatch_days")
+if (length(absent <- setdiff(repro_columns, names(repro)))) {
+  stop("device_reproduction lacks column(s) ", paste(absent, collapse = ", "), call. = FALSE)
+}
 repro$wave_name <- wave_names[sprintf("%02d", as.integer(repro$wave))]
 ```
 
@@ -171,7 +198,7 @@ results <- data.frame(
   label = c("sensitivity / specificity of “walked for exercise” against the device",
             sprintf("Youden's J: any walker → walks %s", strict),
             sprintf("Youden's J for PASE at 48 months: any walking → at least %s a week (72 months: %s → %s)",
-                    labels$pase_days[3], num(j_pase_any[["08"]]), num(j_pase_mid[["08"]])),
+                    level_label(pase_cuts, 2, labels$pase_days, 0), num(j_pase_any[["08"]]), num(j_pase_mid[["08"]])),
             sprintf("1/J: how much a misclassification correction for Lo et al. 2022 would inflate the difference in walker prevalence between outcome groups: any walker → %s", strict)))
 cat(oaireport::sidebar_figure(
   results,
@@ -227,8 +254,9 @@ oaireport::save_figure(fig2, "brief_fig2", "2col", height = 2.6)
 print(fig2)
 pase72 <- vapply(as.character(0:3), function(l) pase("08", "frequency", "device_walker", l, "share")$estimate, numeric(1))
 cat(oaireport::table_note(sprintf(
-  "Share of participants who are device-defined walkers (%s, where a purposeful bout is at least %s minutes at %s counts/min or more), by reported walking frequency, with Wilson 95%% CIs. Walking item: validation sample, non-walkers and the walkers who answered how many times a month they walked. PASE: participants with a 48-month PASE answer, against %s. At 72 months the PASE shares run from %s (never) to %s (5–7 days).",
-  rule_short, fmt(bout_minutes), fmt(cutpoint), device_wave_text, pct(pase72[[1]]), pct(pase72[[4]])),
+  "Share of participants who are device-defined walkers (%s, where a purposeful bout is at least %s minutes at %s counts/min or more), by reported walking frequency, with Wilson 95%% CIs. Walking item: validation sample, non-walkers and the walkers who answered how many times a month they walked. PASE: participants with a 48-month PASE answer, against %s. At 72 months the PASE shares run from %s (%s) to %s (%s).",
+  rule_short, fmt(bout_minutes), fmt(cutpoint), device_wave_text,
+  pct(pase72[[1]]), tolower(labels$pase_days[1]), pct(pase72[[4]]), labels$pase_days[length(labels$pase_days)]),
   label = "Figure 2.", close_group = TRUE), sep = "\n")
 ```
 
@@ -279,7 +307,8 @@ Timing is a second gap: the walking item was asked at 96 months about walking si
 #| fig-height: 2.1
 #| results: asis
 cat(oaireport::figure_group(), sep = "\n")
-cut_names <- c(cut1 = "Any walker (in use)", cut2 = sprintf("At least %s", labels$times[2]), cut3 = labels$times[3])
+cut_names <- c(cut1 = "Any walker (in use)", cut2 = cut_name(item_cuts, 2, labels$times, 1),
+               cut3 = cut_name(item_cuts, 3, labels$times, 1))
 cf <- do.call(rbind, lapply(names(cut_names), function(k) {
   r <- item("lo_subset", "times", k, "correction")
   data.frame(definition = cut_names[[k]], estimate = r$estimate, lo = r$lo, hi = r$hi)

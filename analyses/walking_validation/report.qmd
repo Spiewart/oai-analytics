@@ -18,8 +18,10 @@ format:
     include-in-header:
       text: |
         #set text(hyphenate: false, overhang: false)
-        // Table rows a little tighter than Quarto's 6 pt default, so the report fits 18 pages
-        #set table(inset: (x: 6pt, y: 4pt))
+        // Table rows a little tighter than Quarto's 6 pt default, so the report fits 18 pages; the
+        // body's `#set table(inset: table-inset)` returns to it after a table with its own spacing
+        #let table-inset = (x: 6pt, y: 4pt)
+        #set table(inset: table-inset)
         #set page(footer: context align(center, text(size: 8pt, fill: luma(90))[Technical report — page #counter(page).display()]))
 execute:
   echo: false
@@ -257,7 +259,7 @@ cat(oaireport::reading_guide(
 
 The exposure in Lo et al. 2022 is the 96-month survey item "walked for exercise since age 50". We compared it with OAI accelerometry from the 48- and 72-month waves in `r count(run$metrics[["sample.validation.persons"]])` participants, `r count(run$metrics[["sample.lo_subset.persons"]])` of them from the paper's cohort. The device is an imperfect reference: it measures current activity, while the item asks about walking since age 50. Sensitivity and specificity are therefore convergent-validity estimates. Data: the OAI public release; input table versions `r data_release`. Code: `r code_version`.
 
-**Headline.** Against the device-defined habitual walker, the item's sensitivity is `r num(pick("validation", "se"))` (95% CI `r num(pick("validation", "se", "lo"))`–`r num(pick("validation", "se", "hi"))`) and its specificity is `r num(pick("validation", "sp"))` (`r num(pick("validation", "sp", "lo"))`–`r num(pick("validation", "sp", "hi"))`). Se + Sp − 1 (Youden's J) is `r num(youden("validation"))`: the item barely separates device-defined walkers from non-walkers. `r instability_text` `r grid_sentence`
+**Headline.** Against the device-defined habitual walker, the item's sensitivity is `r oaireport::fmt_ci(pick("validation", "se"), pick("validation", "se", "lo"), pick("validation", "se", "hi"))` and its specificity is `r oaireport::fmt_ci(pick("validation", "sp"), pick("validation", "sp", "lo"), pick("validation", "sp", "hi"))`. Se + Sp − 1 (Youden's J) is `r num(youden("validation"))`: the item barely separates device-defined walkers from non-walkers. `r instability_text` `r grid_sentence`
 
 # Samples and device processing
 
@@ -535,7 +537,7 @@ cat(oaireport::table_note(pase_note, label = lab("Table")), sep = "\n")
 
 ```{=typst}
 // Back to the report's row spacing after the one long table
-#set table(inset: (x: 6pt, y: 4pt))
+#set table(inset: table-inset)
 ```
 
 # Answer-level sub-analyses
@@ -654,13 +656,27 @@ cat(oaireport::table_note(sprintf(
 ```
 
 ```{r components-cuts}
-pase_cut_names <- c(cut1 = sprintf("At least %s", answer_labels$pase_days[2]),
-                    cut2 = sprintf("At least %s", answer_labels$pase_days[3]),
-                    cut3 = answer_labels$pase_days[4])
-band_cut_names <- function(labels) c(cut1 = sprintf("Walker, at least %s", labels[1]),
-                                     cut2 = sprintf("Walker, at least %s", labels[2]),
-                                     cut3 = sprintf("Walker, %s", labels[3]))
-item_cut_names <- band_cut_names(answer_labels$times)
+# Cut k of an answer means "answer at or above level cuts[k]", with each component's own cuts from
+# the assumptions. The PASE days answer has levels 0 to 3 (answer_labels$pase_days[i + 1] names
+# level i); the walking item's amount answers have levels 1 to 3 (answer_labels$times[i]), so the
+# labels follow components.*_cuts and not a fixed position. A cut at the top level reads as its
+# label alone, any other as "at least <label>".
+component_cuts <- list(pase = "components.pase_frequency_cuts", times = "components.item_times_cuts",
+                       months = "components.item_months_cuts")
+cut_names <- function(component, at_least, top_only) {
+  cuts <- unlist(assumption(component_cuts[[component]]))
+  labels <- answer_labels[[if (component == "pase") "pase_days" else component]]
+  first <- if (component == "pase") 0 else 1
+  top <- first + length(labels) - 1
+  if (!all(cuts %in% first:top)) {
+    stop(component_cuts[[component]], " must be answer levels ", first, " to ", top, call. = FALSE)
+  }
+  stats::setNames(paste0(ifelse(cuts == top, top_only, at_least), labels[cuts - first + 1]),
+                  paste0("cut", seq_along(cuts)))
+}
+pase_cut_names <- cut_names("pase", at_least = "At least ", top_only = "")
+band_cut_names <- function(component) cut_names(component, at_least = "Walker, at least ", top_only = "Walker, ")
+item_cut_names <- band_cut_names("times")
 cut_row <- function(get, definition) {
   cell <- function(m) est_ci(get(m), get(m, "lo"), get(m, "hi"))
   data.frame(Definition = definition, Se = cell("se"), Sp = cell("sp"), PPV = cell("ppv"),
@@ -674,7 +690,7 @@ for (v in comp_visits) for (k in names(pase_cut_names)) {
     se = get("se"), fpr = 1 - get("sp"), current = k == "cut1" && pase_threshold == 0)
 }
 for (component in c("times", "months")) for (s in c("validation", "lo_subset")) {
-  names_k <- band_cut_names(answer_labels[[component]])
+  names_k <- band_cut_names(component)
   for (k in names(names_k)) {
     get <- function(m, col = "estimate") ci_get(s, component, k, m, col)
     block <- paste(component, s)
@@ -724,7 +740,7 @@ cat(oaireport::table_note(sprintf(paste(
 
 ```{=typst}
 // Back to the report's row spacing
-#set table(inset: (x: 6pt, y: 4pt))
+#set table(inset: table-inset)
 #show figure: set block(sticky: true)
 ```
 
@@ -853,9 +869,11 @@ n_edges <- length(edges)
 bands <- c("0 (did not walk)", sprintf("under %s", fmt(edges[2])),
            if (n_edges > 2) sprintf("%s to under %s", fmt(edges[2:(n_edges - 1)]), fmt(edges[3:n_edges])),
            sprintf("%s or more", fmt(edges[n_edges])))
-weekly_trend <- paste(vapply(comp_visits, function(v) sprintf("%s at %s",
-  comp_p(cp_get(v, "weekly", "purposeful_week", "all", "jt_p")), wave(v)), character(1)), collapse = " and ")
-cat(oaireport::table_note(sprintf("Population of the weekly table, %s. Point: median; bar: IQR of device purposeful-bout minutes per week, within each band of estimated weekly walking from PASE (as in the weekly table; hours per week: %s). n: participants in the band. A self-report that tracked the device would show medians rising steadily from left to right. Trend across the bands (Jonckheere–Terpstra, permutation test as in the dose–response table): p %s.",
+# One p-value text for both visits when they are the same ("p ≤ 0.0005 at both visits")
+weekly_p <- vapply(comp_visits, function(v) comp_p(cp_get(v, "weekly", "purposeful_week", "all", "jt_p")), character(1))
+weekly_trend <- if (length(unique(weekly_p)) == 1) sprintf("p %s at both visits", weekly_p[[1]]) else
+  paste(sprintf("p %s at %s", weekly_p, wave(comp_visits)), collapse = " and ")
+cat(oaireport::table_note(sprintf("Population of the weekly table, %s. Point: median; bar: IQR of device purposeful-bout minutes per week, within each band of estimated weekly walking from PASE (as in the weekly table; hours per week: %s). n: participants in the band. A self-report that tracked the device would show medians rising steadily from left to right. Trend across the bands (Jonckheere–Terpstra, permutation test as in the dose–response table): %s.",
   comp_population, paste(bands, collapse = ", "), weekly_trend), close_group = TRUE, label = lab("Figure")), sep = "\n")
 ```
 
@@ -902,57 +920,55 @@ if (nrow(hx)) {
 ```
 
 ```{r components-item}
-item_table <- do.call(rbind, lapply(c("times", "months", "years"), function(component) {
-  lv <- c("none", as.character(seq_along(answer_labels[[component]])))
-  nm <- c("Non-walkers", answer_labels[[component]])
-  data.frame(
-    Answer = nm,
-    n = count_na(sapply(lv, function(l) ci_get("validation", component, l, "share", "n"))),
-    `Device walkers, % (95% CI)` = sapply(lv, function(l) pct_ci(ci_get("validation", component, l, "share"),
-      ci_get("validation", component, l, "share", "lo"), ci_get("validation", component, l, "share", "hi"))),
-    `Bout-days/week, median (IQR)` = sapply(lv, function(l) med_iqr(ci_get("validation", component, l, "median"),
-      ci_get("validation", component, l, "median", "lo"), ci_get("validation", component, l, "median", "hi"))),
-    check.names = FALSE)
-}))
-rownames(item_table) <- NULL
+# The amount answers of the walking item, one block of rows per answer, for one sample
+item_components <- c("times", "months", "years")
 component_titles <- c("Times per month", "Months per year", "Years walked")
-sizes <- vapply(c("times", "months", "years"), function(cmp) length(answer_labels[[cmp]]) + 1L, integer(1))
-tinytable::group_tt(oaireport::compare_table(item_table, widths = c(1.8, 0.7, 1.8, 1.8), multipage = FALSE),
-                    i = as.list(stats::setNames(cumsum(c(1, sizes))[1:3], component_titles)))
+item_answer_table <- function(sample) {
+  rows <- do.call(rbind, lapply(item_components, function(component) {
+    lv <- c("none", as.character(seq_along(answer_labels[[component]])))
+    data.frame(
+      Answer = c("Non-walkers", answer_labels[[component]]),
+      n = count_na(sapply(lv, function(l) ci_get(sample, component, l, "share", "n"))),
+      `Device walkers, % (95% CI)` = sapply(lv, function(l) pct_ci(ci_get(sample, component, l, "share"),
+        ci_get(sample, component, l, "share", "lo"), ci_get(sample, component, l, "share", "hi"))),
+      `Bout-days/week, median (IQR)` = sapply(lv, function(l) med_iqr(ci_get(sample, component, l, "median"),
+        ci_get(sample, component, l, "median", "lo"), ci_get(sample, component, l, "median", "hi"))),
+      check.names = FALSE)
+  }))
+  rownames(rows) <- NULL
+  # The validation sample is the default; any other sample names itself in each block's title
+  titles <- if (sample == "validation") component_titles else
+    sprintf("%s (%s)", component_titles, named(sample, sample_names))
+  sizes <- vapply(item_components, function(component) length(answer_labels[[component]]) + 1L, integer(1))
+  tinytable::group_tt(oaireport::compare_table(rows, widths = c(1.8, 0.7, 1.8, 1.8), multipage = FALSE),
+                      i = as.list(stats::setNames(cumsum(c(1, sizes))[1:3], titles)))
+}
+# Walkers with no usable answer to each amount item, in the words of a legend
+no_band_text <- function(sample) {
+  n <- vapply(item_components, function(component) ci_get(sample, component, "no_band", "count"), numeric(1))
+  sprintf("%s for times per month, %s for months per year and %s for years",
+          count_na(n[["times"]]), count_na(n[["months"]]), count_na(n[["years"]]))
+}
+item_answer_table("validation")
 ```
 
 ```{r note-components-item}
 #| results: asis
-no_band <- vapply(c("times", "months", "years"), function(cmp) ci_get("validation", cmp, "no_band", "count"), numeric(1))
 cat(oaireport::table_note(sprintf(
-  "Validation sample. Answer: the walking item's amount answers (how many times per month, months per year and years the participant walked for exercise since age 50), with non-walkers as their own row. n: participants giving that answer (for non-walkers, all non-walkers in the sample). Device walkers and bout-days/week: as in the PASE frequency table, but over the participant's valid device waves. Walkers who did not give a usable answer (left blank or don't know) are not in that block's rows: %s for times per month, %s for months per year and %s for years. Trend in bout-days/week from non-walkers through the bands (Jonckheere–Terpstra, as in the dose–response table): times per month p %s; months per year p %s.",
-  count_na(no_band[["times"]]), count_na(no_band[["months"]]), count_na(no_band[["years"]]),
+  "Validation sample. Answer: the walking item's amount answers (how many times per month, months per year and years the participant walked for exercise since age 50), with non-walkers as their own row. n: participants giving that answer (for non-walkers, all non-walkers in the sample). Device walkers and bout-days/week: as in the PASE frequency table, but over the participant's valid device waves. Walkers who did not give a usable answer (left blank or don't know) are not in that block's rows: %s. Trend in bout-days/week from non-walkers through the bands (Jonckheere–Terpstra, as in the dose–response table): times per month p %s; months per year p %s.",
+  no_band_text("validation"),
   comp_p(ci_get("validation", "times", "all", "jt_p")), comp_p(ci_get("validation", "months", "all", "jt_p"))), label = lab("Table")), sep = "\n")
 ```
 
 ```{r components-item-lo}
-item_table_lo <- do.call(rbind, lapply(c("times", "months", "years"), function(component) {
-  lv <- c("none", as.character(seq_along(answer_labels[[component]])))
-  data.frame(
-    Answer = c("Non-walkers", answer_labels[[component]]),
-    n = count_na(sapply(lv, function(l) ci_get("lo_subset", component, l, "share", "n"))),
-    `Device walkers, % (95% CI)` = sapply(lv, function(l) pct_ci(ci_get("lo_subset", component, l, "share"),
-      ci_get("lo_subset", component, l, "share", "lo"), ci_get("lo_subset", component, l, "share", "hi"))),
-    `Bout-days/week, median (IQR)` = sapply(lv, function(l) med_iqr(ci_get("lo_subset", component, l, "median"),
-      ci_get("lo_subset", component, l, "median", "lo"), ci_get("lo_subset", component, l, "median", "hi"))),
-    check.names = FALSE)
-}))
-rownames(item_table_lo) <- NULL
-tinytable::group_tt(oaireport::compare_table(item_table_lo, widths = c(1.8, 0.7, 1.8, 1.8), multipage = FALSE),
-                    i = as.list(stats::setNames(cumsum(c(1, sizes))[1:3], component_titles)))
+item_answer_table("lo_subset")
 ```
 
 ```{r note-components-item-lo}
 #| results: asis
-no_band_lo <- vapply(c("times", "months", "years"), function(cmp) ci_get("lo_subset", cmp, "no_band", "count"), numeric(1))
 cat(oaireport::table_note(sprintf(
-  "Lo 2022 subset: the participants of Lo et al. 2022 who answered the walking item and have device data. Answer, n, device walkers and bout-days/week: as in the table above. Walkers who did not give a usable answer are not in that block's rows: %s for times per month, %s for months per year and %s for years. Trend in bout-days/week from non-walkers through the bands (Jonckheere–Terpstra): times per month p %s; months per year p %s.",
-  count_na(no_band_lo[["times"]]), count_na(no_band_lo[["months"]]), count_na(no_band_lo[["years"]]),
+  "Lo 2022 subset: the participants of Lo et al. 2022 who answered the walking item and have device data. Answer, n, device walkers and bout-days/week: as in the table above. Walkers who did not give a usable answer are not in that block's rows: %s. Trend in bout-days/week from non-walkers through the bands (Jonckheere–Terpstra): times per month p %s; months per year p %s.",
+  no_band_text("lo_subset"),
   comp_p(ci_get("lo_subset", "times", "all", "jt_p")), comp_p(ci_get("lo_subset", "months", "all", "jt_p"))),
   label = lab("Table")), sep = "\n")
 ```
@@ -1112,11 +1128,12 @@ axis_breaks <- c(0.01, 0.1, 1, 10, 100)
 forest <- oaireport::forest_plot(est, facet = "model", sources = sources) +
   ggplot2::scale_x_log10(breaks = axis_breaks, labels = format(axis_breaks, scientific = FALSE, drop0trailing = TRUE, trim = TRUE)) +
   ggplot2::coord_cartesian(xlim = axis_limits) +
-  # The item's colour for our replication and navy for the published result; orange is PASE's
+  # The item's colour for our replication and navy for the published result; orange is PASE's, so
+  # the differential series is grey, not amber
   ggplot2::scale_colour_manual(values = c(Published = oaireport::brief_colours[["navy"]],
                                           Replication = oaireport::brief_colours[["item"]],
                                           `Bias-adjusted (non-differential)` = oaireport::oai_palette[3],
-                                          `Bias-adjusted (differential)` = oaireport::oai_palette[4]), breaks = sources)
+                                          `Bias-adjusted (differential)` = "grey40"), breaks = sources)
 oaireport::save_figure(forest, "forest_bias", "2col", height = 4.4)
 forest
 forest_note <- sprintf("Knees of the Lo 2022 cohort, by outcome. Panels: the unadjusted and adjusted models; rows: outcomes. Published: odds ratio and 95%% CI from Lo et al. 2022 Table 2; replication: ours; bias-adjusted: median and 95%% simulation interval over the kept draws, under non-differential and differential misclassification. Intervals are cut at the axis limits (%s and %s). %s",
@@ -1189,10 +1206,9 @@ cat(oaireport::table_note("Each table lists the assumptions of one status: confi
 
 ```{r ledger}
 #| results: asis
-# Pandoc takes the column widths from the dashes of each table's separator row; these 5:5:9:4 dashes
-# give Source the most room (about 39%), Key and Value about 22% each and Rationale about 17%,
-# because most rationales are empty
-ledger <- oaireport::ledger_markdown("ASSUMPTIONS.md")
-ledger <- sub("^\\|---\\|---\\|---\\|---\\|$", "|-----|-----|---------|----|", ledger)
-cat(ledger, sep = "\n")
+# Relative column widths, from which ledger_markdown writes each table's separator row (pandoc sets
+# the widths from its dashes): the status tables are Key, Value, Source and Rationale at 5:5:9:4, so
+# Source gets the most room (about 39%), Key and Value about 22% each and Rationale about 17%,
+# because most rationales are empty; the Variants table (Variant, Sets, Description) has equal columns
+cat(oaireport::ledger_markdown("ASSUMPTIONS.md", widths = list(c(5, 5, 9, 4), c(1, 1, 1))), sep = "\n")
 ```
