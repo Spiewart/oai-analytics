@@ -461,6 +461,7 @@ def test_walking_validation_report_renders(fast_run):
     assert [p.name for p in pdfs] == ["brief.pdf", "report.pdf", "walking_validation_brief.pdf"]
     pages = [len(PdfReader(p).pages) for p in pdfs]
     assert pages[0] <= 6, f"brief has {pages[0]} pages"
+    assert pages[1] <= 18, f"report has {pages[1]} pages"
     assert pages[2] == pages[0] + pages[1]
     for pdf in pdfs[:2]:
         text = "\n".join(page.extract_text() for page in PdfReader(pdf).pages)
