@@ -1,9 +1,11 @@
 """Joining PDFs for `oai report`'s combined document."""
 
+import logging
 from pathlib import Path
 
 import pytest
 from pypdf import PdfReader, PdfWriter
+from pypdf.errors import PyPdfError
 
 from oai.pdfjoin import PdfJoinError, combine_pdfs
 
@@ -85,3 +87,54 @@ def test_a_failed_write_keeps_an_existing_output_intact(tmp_path, monkeypatch):
         combine_pdfs([("Brief", brief)], out)
     assert out.read_text() == "previous"
     assert sorted(p.name for p in tmp_path.iterdir()) == ["both.pdf", "brief.pdf"]
+
+
+def test_an_output_path_under_a_regular_file_is_an_oai_error(tmp_path):
+    brief = blank_pdf(tmp_path / "brief.pdf", 1)
+    blocker = tmp_path / "file.txt"
+    blocker.write_text("a file, not a folder")
+    # the cleanup unlink raises NotADirectoryError here: it must not replace the join error
+    with pytest.raises(PdfJoinError, match="could not join PDFs"):
+        combine_pdfs([("Brief", brief)], blocker / "out.pdf")
+
+
+def test_the_pypdf_logger_level_is_restored_after_a_failed_join(tmp_path):
+    good = blank_pdf(tmp_path / "good.pdf", 1)
+    bad = tmp_path / "x.pdf"
+    bad.write_text("not a pdf")
+    logger = logging.getLogger("pypdf")
+    before = logger.level
+    try:
+        logger.setLevel(logging.WARNING)
+        with pytest.raises(PdfJoinError):
+            combine_pdfs([("Good", good), ("Bad", bad)], tmp_path / "both.pdf")
+        assert logger.level == logging.WARNING
+        with pytest.raises(PdfJoinError):
+            combine_pdfs([("Good", good)], tmp_path / "nowhere" / "both.pdf")
+        assert logger.level == logging.WARNING
+    finally:
+        logger.setLevel(before)
+
+
+def test_a_nonsensical_output_path_leaves_the_pypdf_logger_alone(tmp_path):
+    brief = blank_pdf(tmp_path / "brief.pdf", 1)
+    logger = logging.getLogger("pypdf")
+    before = logger.level
+    try:
+        logger.setLevel(logging.WARNING)
+        with pytest.raises((PdfJoinError, ValueError)):
+            combine_pdfs([("Brief", brief)], Path("."))
+        assert logger.level == logging.WARNING
+    finally:
+        logger.setLevel(before)
+
+
+def test_the_wrapped_error_keeps_the_original_as_its_cause(tmp_path):
+    good = blank_pdf(tmp_path / "good.pdf", 1)
+    bad = tmp_path / "x.pdf"
+    bad.write_text("not a pdf")
+    with pytest.raises(PdfJoinError) as caught:
+        combine_pdfs([("Good", good), ("Bad", bad)], tmp_path / "both.pdf")
+    cause = caught.value.__cause__
+    assert isinstance(cause, (PyPdfError, OSError))
+    assert str(cause) in str(caught.value)

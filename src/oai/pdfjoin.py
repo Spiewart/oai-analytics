@@ -7,6 +7,7 @@ is asked for and enclave bundles never need it.
 
 from __future__ import annotations
 
+import contextlib
 import logging
 import os
 from collections.abc import Sequence
@@ -33,14 +34,14 @@ def combine_pdfs(parts: Sequence[tuple[str, Path]], out: Path) -> Path:
         from pypdf.errors import PyPdfError
     except ImportError as exc:  # pragma: no cover - dev dependency
         raise PdfJoinError("joining PDFs needs pypdf: run `uv sync` (a dev dependency)") from exc
-    # pypdf warns "Annotation sizes differ" on every join of Typst PDFs: quiet only its logger,
-    # and only while joining
-    logger = logging.getLogger("pypdf")
-    level = logger.level
-    logger.setLevel(logging.ERROR)
     out = Path(out)
     # written beside `out` and moved over it, so a failure never leaves a truncated PDF
     partial = out.with_suffix(".pdf.part")
+    # pypdf warns "Annotation sizes differ" on every join of Typst PDFs: quiet only its logger,
+    # and only while joining. Nothing between the level change and the try may raise.
+    logger = logging.getLogger("pypdf")
+    level = logger.level
+    logger.setLevel(logging.ERROR)
     try:
         writer = PdfWriter()
         for title, path in parts:
@@ -55,5 +56,7 @@ def combine_pdfs(parts: Sequence[tuple[str, Path]], out: Path) -> Path:
         raise PdfJoinError(f"could not join PDFs: {exc}") from exc
     finally:
         logger.setLevel(level)
-        partial.unlink(missing_ok=True)
+        # best effort: a cleanup failure must not replace the join error
+        with contextlib.suppress(OSError):
+            partial.unlink(missing_ok=True)
     return out
