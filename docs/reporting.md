@@ -10,6 +10,23 @@ runs = ["default", "variant"]   # run labels it reads: "default" or variants in 
 assets = ["ASSUMPTIONS.md"]     # files copied next to the entry
 ```
 
+For several documents, use `documents` instead of `entry`:
+
+```toml
+[report]
+documents = ["brief.qmd", "report.qmd"]          # rendered in this order
+combined = "walking_validation_brief.pdf"        # optional: joins their PDFs in order
+part_titles = ["Brief", "Appendix: technical report"]  # optional: one bookmark per part
+runs = ["default"]
+assets = ["ASSUMPTIONS.md", "references.bib"]
+local_assets = ["brief.local.yml"]               # optional, untracked: copied when present
+```
+
+- `entry` and `documents` cannot be used together.
+- `part_titles` default to the document names.
+- Local assets are never required, and are removed from the report folder after rendering, with everything else but the PDFs and `figures/`.
+- `oai report <analysis>` prints one `Report:` line per PDF.
+
 ## What happens
 
 1. Each listed run needs a finished `run_info.json`. With `--run`, unfinished or missing runs are run first; without it, they are an error.

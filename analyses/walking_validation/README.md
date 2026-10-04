@@ -23,3 +23,15 @@ Needs the replication's frame for the matching exposure coding:
 `oai run walking_validation` takes about 8 minutes on a laptop.
 
 `OAI_R_CORES` sets how many cores the `bias` step uses for its draws (each refits the replication's GEE models). It must be a positive integer, otherwise the step stops with `OAI_R_CORES must be a positive integer, got ...`. Unset, it defaults to the detected cores minus one (at least 1). Results do not depend on it: each iteration seeds its own random numbers (`bias.seed`).
+
+## Sending the brief
+
+`uv run oai report walking_validation` writes three PDFs to `<results>/walking_validation/report/`:
+
+- `brief.pdf`: the 4–6 page brief to the accelerometry group;
+- `report.pdf`: the technical report;
+- `walking_validation_brief.pdf`: both joined, the brief first and the report as its appendix, with a bookmark for each part. **This is the file to send.**
+
+The brief's author and contact line comes from `brief.local.yml`, which is git-ignored. Copy `brief.local.example.yml` to `brief.local.yml` and fill it in. Without the file, the brief prints a placeholder.
+
+Run `uv run oai check-egress <results>/walking_validation/report` before sending.

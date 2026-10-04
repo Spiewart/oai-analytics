@@ -1,7 +1,7 @@
 # Walking Validation Brief for the Northwestern Accelerometry Group — Design
 
 **Date:** 2026-10-03
-**Status:** Draft for review
+**Status:** Implemented
 **Builds on:**
 - `2026-10-01-walking-validation-design.md` (including amendments 11–12)
 - `2026-09-30-reporting-module-and-lo2022-comparison-design.md`
@@ -41,8 +41,8 @@ These findings come from a PubMed check on 2026-10-03.
 - **GT1M steps undercount slow gait.**
   - Abel 2008 (PMID 19088773): 64% of steps were counted at 54 m/min.
   - Storti 2008 (PMID 18091020): a 19% undercount below 0.8 m/s in older adults.
-- **Cadence threshold.** 100 steps/min corresponds to about 3 METs in adults aged 61–85 (Tudor-Locke 2021, PMID 34556146). Those adults did not have knee OA.
-- **Self-reported walking against device steps** correlates at ρ 0.17–0.42 in older adults:
+- **Cadence threshold.** 100 steps/min corresponds to about 3 METs in adults aged 61–85 (Tudor-Locke 2021, PMID 34556146). Those adults were ostensibly healthy; knee OA was not studied.
+- **Questionnaires against device step counts** in older adults correlate at 0.40–0.57 for walking questions and 0.17–0.52 for overall-activity scores (checked against the abstracts on 2026-10-04):
   - Hagiwara 2008 (PMID 18821997);
   - Heesch 2011 (PMID 21276752);
   - Giles 2009 (PMID 19420400);
@@ -95,7 +95,7 @@ The caption gives the 72-month PASE range.
 - the median self-report − device difference;
 - κ at 150 min/week.
 
-Place these against the published ρ 0.17–0.42.
+Place these against the published correlations (0.40–0.57 for walking questions, 0.17–0.52 for overall-activity scores); ours sit at the low end.
 
 **Figure 3.** Calibration: device purposeful-bout minutes per week (median and IQR) by band of estimated weekly walking. Both visits, with n labels.
 
@@ -135,7 +135,7 @@ Place these against the published ρ 0.17–0.42.
 
 ## 4. Visual design (agreed in the visual companion)
 
-- **Type and size.** Arial, 10–11 pt body. The page-1 lead paragraph is 11.5 pt. Headings are in navy `#0b2e59`.
+- **Type and size.** Arial, 10–11 pt body. The page-1 lead paragraph is 11 pt (11.5 pt did not fit page 1 with Figure 1). Headings are in navy `#0b2e59`.
 - **Colour.** The walking item is blue `#0072B2` and PASE is orange `#D55E00`, in every figure of both documents (the existing `oai_palette`). Muted tints show reference groups such as non-walkers and never.
 - **Callouts.**
   - Blue left-rule boxes for points in our favour and for the ask.
@@ -156,7 +156,7 @@ The report stays a neutral scientific record for the study team.
 2. **One number style.** Every estimate is written "0.89 (0.86–0.91)". This shortens wrapping cells.
 3. **The deferred presentation minors.**
    - Split the cut table into a PASE table and a walking-item table, each kept on its page.
-   - Resize the tipping grid so pages 6–7 lose their blank space. Target: about 16 pages.
+   - Resize the tipping grid so pages 6–7 lose their blank space. The report is 18 pages (§7).
    - Move the ROC J labels off their lines.
    - Define n in the item legend and drop the "(walkers since age 50)" block title.
    - Give the PASE-walker n in the weekly legend.
@@ -168,7 +168,7 @@ The report stays a neutral scientific record for the study team.
    - Guideline PPV and NPV (12a).
    - Lo-subset item shares by level and their trend (12b).
 5. **Shared style.** Use the brief's fonts, colours and callouts through one `oaireport` style helper.
-6. **Numbering.** Tables and figures are A1, A2, …. The footer reads "Technical report — page n".
+6. **Numbering.** Tables and figures are A1, A2, …. The footer reads "Technical report — page n". The brief's reads "Brief — page n".
 
 The 12c months-per-year correction rows stay in TODO (out of scope here).
 
@@ -204,7 +204,7 @@ When `combined` is set, it joins the PDFs with `pypdf`, a new pure-Python depend
 ### 6.4 References
 
 - `analyses/walking_validation/references.bib`, cited with Quarto citations.
-- The CSL file is committed in the analysis folder, in AMA style.
+- Typst's built-in american-medical-association style is used, so no CSL file is committed.
 
 ### 6.5 Shared style
 
