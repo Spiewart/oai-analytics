@@ -40,9 +40,16 @@ class ExportSpec:
 
 @dataclass(frozen=True)
 class ReportSpec:
-    entry: str  # a .qmd file directly in the analysis folder
+    documents: tuple[str, ...]  # .qmd files directly in the analysis folder, rendered in order
     runs: tuple[str, ...]  # run labels the report reads: "default" and/or variant names
-    assets: tuple[str, ...] = ()  # files copied next to the entry before rendering
+    assets: tuple[str, ...] = ()  # files copied next to the documents before rendering
+    combined: str | None = None  # a PDF joining the documents' PDFs, in order
+    part_titles: tuple[str, ...] = ()  # one bookmark title per document in `combined`
+    local_assets: tuple[str, ...] = ()  # untracked files (e.g. *.local.yml) copied when present
+
+    @property
+    def entry(self) -> str:  # removed in Task 3, once report.py renders every document
+        return self.documents[0]
 
 
 @dataclass(frozen=True)
@@ -148,12 +155,25 @@ def _plain_file(root: Path, name: object) -> bool:
     return isinstance(name, str) and name == Path(name).name and (root / name).is_file()
 
 
+def _plain_name(name: object) -> bool:
+    """A bare file name (no directories), which need not exist."""
+    return isinstance(name, str) and bool(name) and name == Path(name).name
+
+
 def _parse_report(raw: Any, root: Path, fail: Callable[[str], NoReturn]) -> ReportSpec:
     if not isinstance(raw, dict):
         fail("[report] must be a table")
-    entry = raw.get("entry")
-    if not _plain_file(root, entry) or not str(entry).endswith(".qmd"):
-        fail(f"[report] entry {entry!r} must be a .qmd file directly in {root}")
+    if "entry" in raw and "documents" in raw:
+        fail("[report] takes entry or documents, not both")
+    key = "documents" if "documents" in raw else "entry"
+    documents = raw["documents"] if key == "documents" else [raw.get("entry")]
+    if not isinstance(documents, list) or not documents:
+        fail("[report] documents must be a non-empty list of .qmd files")
+    for document in documents:
+        if not _plain_file(root, document) or not str(document).endswith(".qmd"):
+            fail(f"[report] {key} {document!r} must be a .qmd file directly in {root}")
+    if len(set(documents)) != len(documents):
+        fail("[report] documents has duplicates")
     runs = raw.get("runs")
     if not isinstance(runs, list) or not runs or not all(isinstance(r, str) for r in runs):
         fail("[report] runs must be a non-empty list of run labels")
@@ -171,7 +191,32 @@ def _parse_report(raw: Any, root: Path, fail: Callable[[str], NoReturn]) -> Repo
     for asset in assets:
         if not _plain_file(root, asset):
             fail(f"[report] asset {asset!r} must be a file directly in {root}")
-    return ReportSpec(str(entry), tuple(runs), tuple(assets))
+    combined = raw.get("combined")
+    if combined is not None:
+        if key != "documents":
+            fail("[report] combined needs documents")
+        if not _plain_name(combined) or not combined.endswith(".pdf"):
+            fail(f"[report] combined {combined!r} must be a .pdf file name")
+        if combined in {f"{Path(d).stem}.pdf" for d in documents}:
+            fail(f"[report] combined {combined!r} would overwrite a document's PDF")
+    titles = raw.get("part_titles", [])
+    if titles and combined is None:
+        fail("[report] part_titles needs combined")
+    if not isinstance(titles, list) or not all(isinstance(t, str) and t for t in titles):
+        fail("[report] part_titles must be a list of titles")
+    if titles and len(titles) != len(documents):
+        fail("[report] part_titles needs one title per document")
+    local_assets = raw.get("local_assets", [])
+    if not isinstance(local_assets, list) or not all(_plain_name(a) for a in local_assets):
+        fail("[report] local_assets must be a list of file names")
+    return ReportSpec(
+        tuple(documents),
+        tuple(runs),
+        tuple(assets),
+        combined,
+        tuple(titles),
+        tuple(local_assets),
+    )
 
 
 def _parse_r(raw: Any, steps: list[Step], fail: Callable[[str], NoReturn]) -> str:

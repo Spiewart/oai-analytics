@@ -152,7 +152,7 @@ def write_report_analysis(tmp_path, manifest=REPORT_MANIFEST):
 
 def test_report_section_parsed(tmp_path):
     analysis = load_analysis(write_report_analysis(tmp_path))
-    assert analysis.report == ReportSpec("report.qmd", ("default", "alt"), ("notes.md",))
+    assert analysis.report == ReportSpec(("report.qmd",), ("default", "alt"), ("notes.md",))
 
 
 def test_report_section_is_optional(tmp_path):
@@ -177,6 +177,91 @@ def test_invalid_report_sections(tmp_path, old, new, message):
     root = write_report_analysis(tmp_path, REPORT_MANIFEST.replace(old, new))
     with pytest.raises(ManifestError, match=re.escape(message)):
         load_analysis(root)
+
+
+DOCS_MANIFEST = REPORT_MANIFEST.replace(
+    'entry = "report.qmd"',
+    'documents = ["brief.qmd", "report.qmd"]\n'
+    'combined = "together.pdf"\n'
+    'part_titles = ["Brief", "Appendix"]\n'
+    'local_assets = ["brief.local.yml"]',
+)
+
+
+def write_docs_analysis(tmp_path, manifest=DOCS_MANIFEST):
+    root = write_report_analysis(tmp_path, manifest)
+    (root / "brief.qmd").write_text("# brief\n")
+    return root
+
+
+def test_single_entry_is_one_document(tmp_path):
+    spec = load_analysis(write_report_analysis(tmp_path)).report
+    assert spec.documents == ("report.qmd",)
+    assert spec.combined is None and spec.part_titles == () and spec.local_assets == ()
+
+
+def test_documents_combined_titles_and_local_assets_parsed(tmp_path):
+    analysis = load_analysis(write_docs_analysis(tmp_path))
+    assert analysis.report == ReportSpec(
+        ("brief.qmd", "report.qmd"),
+        ("default", "alt"),
+        ("notes.md",),
+        "together.pdf",
+        ("Brief", "Appendix"),
+        ("brief.local.yml",),
+    )
+
+
+DOCS_LINE = 'documents = ["brief.qmd", "report.qmd"]'
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        (DOCS_LINE, DOCS_LINE + '\nentry = "report.qmd"', "takes entry or documents, not both"),
+        (DOCS_LINE, "documents = []", "documents must be a non-empty list"),
+        (DOCS_LINE, 'documents = "brief.qmd"', "documents must be a non-empty list"),
+        (DOCS_LINE, 'documents = ["brief.qmd", "brief.qmd"]', "documents has duplicates"),
+        (DOCS_LINE, 'documents = ["brief.qmd", "missing.qmd"]', "documents 'missing.qmd'"),
+        (DOCS_LINE, 'documents = ["brief.qmd", "notes.md"]', "must be a .qmd file"),
+        ('combined = "together.pdf"', 'combined = "together.html"', "must be a .pdf file name"),
+        ('combined = "together.pdf"', 'combined = "out/together.pdf"', "must be a .pdf file name"),
+        ('combined = "together.pdf"', 'combined = "report.pdf"', "would overwrite"),
+        (
+            'part_titles = ["Brief", "Appendix"]',
+            'part_titles = ["Brief"]',
+            "one title per document",
+        ),
+        ('part_titles = ["Brief", "Appendix"]', 'part_titles = ["Brief", ""]', "list of titles"),
+        (
+            'local_assets = ["brief.local.yml"]',
+            'local_assets = ["../x.yml"]',
+            "local_assets must be",
+        ),
+        (
+            'local_assets = ["brief.local.yml"]',
+            'local_assets = "brief.local.yml"',
+            "local_assets must be",
+        ),
+    ],
+)
+def test_invalid_document_sections(tmp_path, old, new, message):
+    root = write_docs_analysis(tmp_path, DOCS_MANIFEST.replace(old, new))
+    with pytest.raises(ManifestError, match=re.escape(message)):
+        load_analysis(root)
+
+
+@pytest.mark.parametrize(
+    ("extra", "message"),
+    [
+        ('combined = "together.pdf"', "combined needs documents"),
+        ('part_titles = ["Report"]', "part_titles needs combined"),
+    ],
+)
+def test_combined_and_titles_need_documents(tmp_path, extra, message):
+    manifest = REPORT_MANIFEST.replace('assets = ["notes.md"]', f'assets = ["notes.md"]\n{extra}')
+    with pytest.raises(ManifestError, match=re.escape(message)):
+        load_analysis(write_report_analysis(tmp_path, manifest))
 
 
 R_PROFILE = REPORT_MANIFEST + '\n[r]\nprofile = "report"\n'
