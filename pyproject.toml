@@ -18,6 +18,7 @@ oai = "oai.cli:app"
 [dependency-groups]
 dev = [
     "pre-commit>=3.7",
+    "pypdf>=6.19.0",
     "pytest>=8",
     "ruff>=0.6",
 ]
