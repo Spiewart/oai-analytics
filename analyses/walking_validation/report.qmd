@@ -748,7 +748,9 @@ roc <- ggplot2::ggplot(pts, ggplot2::aes(fpr, se, colour = source, shape = curre
                               labels = c(`TRUE` = "Definition used elsewhere", `FALSE` = if (pase_threshold == 0) "Stricter cut" else "Other cut")) +
   ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1), clip = "off") +
   ggplot2::labs(x = "1 − specificity", y = "Sensitivity") + oaireport::theme_oai() +
-  ggplot2::theme(legend.position = "right", legend.box = "vertical", plot.margin = ggplot2::margin(14, 6, 4, 4))
+  ggplot2::theme(legend.position = "right", legend.box = "vertical", plot.margin = ggplot2::margin(14, 6, 4, 4),
+                 # wide keys, so the dash of the second PASE visit shows
+                 legend.key.width = ggplot2::unit(2.2, "lines"))
 oaireport::save_figure(roc, "components_roc", "2col", height = 3.2)
 print(roc)
 roc_marks <- if (pase_threshold == 0) "Triangles mark the definitions used elsewhere in this report (any PASE walking; the walking item); circles, the stricter cuts." else
@@ -818,7 +820,7 @@ guide_table <- do.call(rbind, lapply(comp_visits, function(v) {
              `Cohen's κ` = est_ci(r("kappa"), r("kappa", "lo"), r("kappa", "hi")),
              n = count_na(r("se", "n") + r("sp", "n")), check.names = FALSE)
 }))
-oaireport::compare_table(guide_table, widths = c(1.1, 1.6, 1.6, 1.6, 1.6, 1.6, 1.6, 0.7), multipage = FALSE)
+oaireport::compare_table(guide_table, widths = c(1.35, 1.6, 1.6, 1.6, 1.6, 1.6, 1.6, 0.85), multipage = FALSE)
 ```
 
 ```{r note-components-guideline}
@@ -1187,8 +1189,9 @@ cat(oaireport::table_note("Each table lists the assumptions of one status: confi
 
 ```{r ledger}
 #| results: asis
-# Column widths follow the dashes of each table's separator row: most rationales are empty, so the
-# room goes to the value and source columns
+# Pandoc takes the column widths from the dashes of each table's separator row; these 5:5:9:4 dashes
+# give Source the most room (about 39%), Key and Value about 22% each and Rationale about 17%,
+# because most rationales are empty
 ledger <- oaireport::ledger_markdown("ASSUMPTIONS.md")
 ledger <- sub("^\\|---\\|---\\|---\\|---\\|$", "|-----|-----|---------|----|", ledger)
 cat(ledger, sep = "\n")
