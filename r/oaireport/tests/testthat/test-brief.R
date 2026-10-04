@@ -80,11 +80,22 @@ test_that("author_block reads names and contact, or gives the placeholder", {
   expect_error(author_block(path), "without an `email`")
 })
 
+test_that("author_block joins several affiliations and names a file that is not a mapping", {
+  path <- withr::local_tempfile(fileext = ".yml")
+  writeLines(c("authors:", "  - name: A. Person", "    affiliation: [Here, There]"), path)
+  expect_equal(author_block(path), "A. Person (Here; There)")
+  writeLines("just a line", path)
+  expect_error(author_block(path), paste0(path, " must be a YAML mapping"), fixed = TRUE)
+})
+
 test_that("youden_contours draws a dashed line per J and labels each above the top edge", {
   layers <- youden_contours(c(0, 0.2))
   expect_length(layers, 2)
   expect_equal(layers[[1]]$data$se, c(0, 1, 0.2, 1))
   expect_equal(layers[[2]]$data$fpr, c(1, 0.8))
   expect_equal(layers[[2]]$data$label, c("0", "J = 0.2"))
+  # the largest label is right-justified so it ends near its line and clears the next label
+  expect_equal(layers[[2]]$data$hjust, c(0.5, 0.85))
+  expect_equal(rlang::as_label(layers[[2]]$mapping$hjust), "hjust")
   expect_error(youden_contours(1), "j must")
 })

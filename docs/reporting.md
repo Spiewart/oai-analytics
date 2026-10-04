@@ -31,12 +31,12 @@ local_assets = ["brief.local.yml"]               # optional, untracked: copied w
 
 1. Each listed run needs a finished `run_info.json`. With `--run`, unfinished or missing runs are run first; without it, they are an error.
 2. Quarto is found from `OAI_QUARTO`, then `[tools] quarto` in `config/oai.toml`, then `PATH`, then RStudio's bundled copy.
-3. The entry and assets are copied to `$OAI_RESULTS_DIR/<name>/report/` and rendered there with `quarto render <entry> --to typst`. Nothing is written into the repository.
+3. The entry and assets are copied to `$OAI_RESULTS_DIR/<name>/report/` and rendered there with `quarto render <entry> --to typst` (with `documents`, each document in order). Nothing is written into the repository.
 4. R chunks start through `r/step-profile.R` with `RENV_PROFILE=report`, so `oaimodels::` and `oaireport::` are available. The environment carries:
    - `OAI_RESULTS_ROOT`, the analysis's results directory, `<results folder>/<analysis>`, which holds one folder per run label (the steps of `oai run` get `OAI_RESULTS_BASE`, the results folder itself, and `OAI_RESULTS_DIR`, one run's folder; see the README);
    - `OAI_REPORT_DIR`;
    - `OAI_REPORT_RUNS`, the comma-separated run labels.
-5. After a successful render only `<entry>.pdf` and `figures/` remain. Run `oai check-egress` on the folder before sharing it; PDFs and PNGs are listed for manual review. A failed render keeps its intermediates for debugging.
+5. After a successful render only `<entry>.pdf` (with `documents`, each document's PDF and the combined PDF) and `figures/` remain. Run `oai check-egress` on the folder before sharing it; PDFs and PNGs are listed for manual review. A failed render keeps its intermediates for debugging.
 
 ## Writing a report
 

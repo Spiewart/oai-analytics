@@ -95,13 +95,13 @@ The caption gives the 72-month PASE range.
 - the median self-report − device difference;
 - κ at 150 min/week.
 
-Place these against the published correlations (0.40–0.57 for walking questions, 0.17–0.52 for overall-activity scores); ours sit at the low end.
+Place these against the published correlations (0.40–0.57 for walking questions, 0.17–0.52 for overall-activity scores); ours sit below the walking-question range and in the lower part of the overall-activity range.
 
 **Figure 3.** Calibration: device purposeful-bout minutes per week (median and IQR) by band of estimated weekly walking. Both visits, with n labels.
 
 ### Page 3 — why counts aren't enough, and what steps add
 
-- **Amber "weak link" box.** A purposeful bout is any run of at least `device.purposeful_bout_minutes` minutes at ≥ `device.mv_cutpoint` counts/min. Cycling, yard work or stairs count, while slow walking may not. The device walker is therefore a proxy, so part of the low specificity may belong to the reference, not the question. All values come from the run's assumptions.
+- **Amber "weak link" box.** A purposeful bout is any run of at least `device.purposeful_bout_minutes` minutes at ≥ `device.mv_cutpoint` counts/min. Other moderate activity can form a bout, while slow walking may not reach the cut-point. The device walker is therefore a proxy, so part of the low specificity may belong to the reference, not the question. All values come from the run's assumptions.
 - **"Why it matters for Lo 2022".** A record-level correction divides by J.
   - **Figure 4:** the correction factor 1/J with its interval, for each times-per-month definition (Lo subset). Draw it as bars; an unbounded upper limit is drawn as an arrow.
 - **Blue box: what steps and cadence add.**

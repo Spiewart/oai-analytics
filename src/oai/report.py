@@ -115,9 +115,6 @@ def render_report(
     out.mkdir(parents=True)
     for name in (*spec.documents, *spec.assets):
         shutil.copy2(analysis.root / name, out / name)
-    for name in spec.local_assets:  # untracked (e.g. the brief's author file): copied if present
-        if (analysis.root / name).is_file():
-            shutil.copy2(analysis.root / name, out / name)
     env.update(
         OAI_ANALYSIS=analysis.name,
         OAI_RESULTS_ROOT=str(results_root),
@@ -128,26 +125,37 @@ def render_report(
     for key, value in r_profile_env(settings).items():
         env.setdefault(key, value)
     pdfs: list[Path] = []
-    for document in spec.documents:
-        echo(f"==> {analysis.name}: rendering {document} with {quarto}")
-        proc = subprocess.run(
-            [str(quarto), "render", document, "--to", "typst"],
-            cwd=out,
-            env=env,
-            capture_output=True,
-            text=True,
-        )
-        pdf = out / f"{Path(document).stem}.pdf"
-        if proc.returncode != 0 or not pdf.is_file():
-            raise ReportError(
-                f"quarto render of {document} failed (exit {proc.returncode}); "
-                f"partial output kept in {out}\n" + _tail(proc.stderr or proc.stdout)
+    # Untracked local assets (e.g. the brief's author file) are copied if present and always
+    # removed, even when a render or the join fails; other partial output is kept for debugging
+    local: list[Path] = []
+    try:
+        for name in spec.local_assets:
+            if (analysis.root / name).is_file():
+                local.append(out / name)
+                shutil.copy2(analysis.root / name, out / name)
+        for document in spec.documents:
+            echo(f"==> {analysis.name}: rendering {document} with {quarto}")
+            proc = subprocess.run(
+                [str(quarto), "render", document, "--to", "typst"],
+                cwd=out,
+                env=env,
+                capture_output=True,
+                text=True,
             )
-        pdfs.append(pdf)
-    if spec.combined:
-        titles = spec.part_titles or tuple(Path(d).stem for d in spec.documents)
-        echo(f"==> {analysis.name}: joining {len(pdfs)} PDFs into {spec.combined}")
-        pdfs.append(combine_pdfs(list(zip(titles, pdfs, strict=True)), out / spec.combined))
+            pdf = out / f"{Path(document).stem}.pdf"
+            if proc.returncode != 0 or not pdf.is_file():
+                raise ReportError(
+                    f"quarto render of {document} failed (exit {proc.returncode}); "
+                    f"partial output kept in {out}\n" + _tail(proc.stderr or proc.stdout)
+                )
+            pdfs.append(pdf)
+        if spec.combined:
+            titles = spec.part_titles or tuple(Path(d).stem for d in spec.documents)
+            echo(f"==> {analysis.name}: joining {len(pdfs)} PDFs into {spec.combined}")
+            pdfs.append(combine_pdfs(list(zip(titles, pdfs, strict=True)), out / spec.combined))
+    finally:
+        for path in local:
+            path.unlink(missing_ok=True)
     keep = set(pdfs)
     for child in out.iterdir():
         if child in keep or child.name == FIGURES_DIR:

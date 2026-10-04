@@ -112,18 +112,23 @@ numberer <- function(prefix = "") {
 
 #' The author and contact line from an untracked YAML file, or a neutral placeholder
 #'
-#' The file holds `authors` (entries with `name` and optional `affiliation`) and an optional
-#' `contact` (`name`, `email`). It is never committed: *.local.yml is git-ignored.
+#' The file holds `authors` (entries with `name` and optional `affiliation`, one or several,
+#' joined with "; ") and an optional `contact` (`name`, `email`). It is never committed:
+#' *.local.yml is git-ignored.
 author_block <- function(path, placeholder = "Authors and contact to be added") {
   if (!file.exists(path)) return(placeholder)
   info <- yaml::read_yaml(path)
+  if (!is.list(info)) {
+    stop("author_block(): ", path, " must be a YAML mapping with `authors`", call. = FALSE)
+  }
   authors <- info$authors
   named <- function(a) is.list(a) && is.character(a$name) && length(a$name) == 1 && nzchar(a$name)
   if (!is.list(authors) || !length(authors) || !all(vapply(authors, named, logical(1)))) {
     stop("author_block(): ", path, " needs `authors`, a list of entries with a `name`", call. = FALSE)
   }
   who <- vapply(authors, function(a) {
-    if (is.null(a$affiliation)) a$name else sprintf("%s (%s)", a$name, a$affiliation)
+    if (is.null(a$affiliation)) a$name else
+      sprintf("%s (%s)", a$name, paste(unlist(a$affiliation), collapse = "; "))
   }, character(1))
   line <- paste(who, collapse = ", ")
   contact <- info$contact
@@ -148,12 +153,14 @@ youden_contours <- function(j = c(0, 0.1, 0.2, 0.3, 0.4)) {
     stop("youden_contours(): j must be numbers in [0, 1)", call. = FALSE)
   }
   lines <- do.call(rbind, lapply(j, function(x) data.frame(j = x, fpr = c(0, 1 - x), se = c(x, 1))))
+  # The largest label ("J = ...") is right-justified to end near its line, clear of the next one
   ends <- data.frame(j = j, fpr = 1 - j, se = 1,
-                     label = ifelse(j == max(j), paste0("J = ", as.character(j)), as.character(j)))
+                     label = ifelse(j == max(j), paste0("J = ", as.character(j)), as.character(j)),
+                     hjust = ifelse(j == max(j), 0.85, 0.5))
   list(
     ggplot2::geom_line(data = lines, ggplot2::aes(fpr, se, group = j), inherit.aes = FALSE,
                        linewidth = 0.25, colour = "grey75", linetype = "dashed"),
-    ggplot2::geom_text(data = ends, ggplot2::aes(fpr, se, label = label), inherit.aes = FALSE,
+    ggplot2::geom_text(data = ends, ggplot2::aes(fpr, se, label = label, hjust = hjust), inherit.aes = FALSE,
                        size = 2.2, colour = "grey45", vjust = -0.6, family = oai_font())
   )
 }

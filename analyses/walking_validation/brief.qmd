@@ -172,12 +172,12 @@ results <- data.frame(
             sprintf("Youden's J: any walker → walks %s", strict),
             sprintf("Youden's J for PASE at 48 months: any walking → at least %s a week (72 months: %s → %s)",
                     labels$pase_days[3], num(j_pase_any[["08"]]), num(j_pase_mid[["08"]])),
-            sprintf("how much a bias correction for Lo et al. 2022 would scale the result: any walker → %s", strict)))
+            sprintf("1/J: how much a misclassification correction for Lo et al. 2022 would inflate the difference in walker prevalence between outcome groups: any walker → %s", strict)))
 cat(oaireport::sidebar_figure(
   results,
   ask = "A joint study: rebuild the reference from your step and cadence data (for example, minutes at 100 steps/min or more) and re-run the validation and the bias analysis, pre-specified and jointly authored.",
   image = "figures/brief_fig1.png",
-  caption = "Each point is a walker definition, placed by its sensitivity and 1 − specificity against the device-defined walker. Triangles: the definitions in use (any walking). Stricter, frequency-based definitions (circles) give up some sensitivity but gain more specificity, so they move down and to the left, away from the chance line toward higher J. Grey dashed lines join points of equal Youden's J, with each value above the top edge; J = 0 is chance."),
+  caption = "Each point is a walker definition, placed by its sensitivity and 1 − specificity against the device-defined walker. Triangles: the definitions in use (any walking); the three nearly coincide at the top right. Stricter, frequency-based definitions (circles) give up some sensitivity but gain more specificity, so they move down and to the left, away from the chance line toward higher J. Grey dashed lines join points of equal Youden's J, with each value above the top edge; J = 0 is chance."),
   sep = "\n")
 ```
 
@@ -232,7 +232,7 @@ cat(oaireport::table_note(sprintf(
   label = "Figure 2.", close_group = TRUE), sep = "\n")
 ```
 
-Combining PASE's two walking answers (days × hours a day) gives an estimate of weekly walking. It ranks people only modestly against the device's purposeful-bout minutes (Spearman ρ `r range_text(rho_week)`), sits a median of about `r range_text(diff_week, 0)` minutes a week above the device, and agrees weakly on who walks at least `r fmt(guide)` minutes a week (Cohen's κ `r range_text(kappa_week)`). That is at the low end of studies that compared questionnaires with device step counts in older adults, which found correlations of 0.40 to 0.57 for walking questions and 0.17 to 0.52 for overall-activity scores [@hagiwara2008; @heesch2011; @giles2009; @harris2009]. Those studies used steps as the reference, which is part of the case for a step-based reference here.
+Combining PASE's two walking answers (days × hours a day) gives an estimate of weekly walking. It ranks people only modestly against the device's purposeful-bout minutes (Spearman ρ `r range_text(rho_week)`), sits a median of about `r range_text(diff_week, 0)` minutes a week above the device, and agrees weakly on who walks at least `r fmt(guide)` minutes a week (Cohen's κ `r range_text(kappa_week)`). That is below the 0.40 to 0.57 reported for walking questions against device step counts in older adults, and in the lower part of the 0.17 to 0.52 reported for overall-activity scores [@hagiwara2008; @heesch2011; @giles2009; @harris2009]. Those studies used steps as the reference, which is part of the case for a step-based reference here.
 
 ```{r fig3}
 #| fig-height: 2.6
@@ -266,10 +266,12 @@ cat(oaireport::table_note(sprintf(
 ```{r weak-link}
 #| results: asis
 cat(oaireport::callout(sprintf(
-  "A purposeful bout lasts at least %s minutes at moderate-to-vigorous intensity: it starts when %s of %s minutes reach %s counts/min and ends when %s minutes in the window fall below it. Cycling, yard work or stairs count; slow walking may not. The device-defined walker is therefore a proxy, so part of the low specificity may belong to the reference rather than to the question.",
+  "A purposeful bout lasts at least %s minutes at moderate-to-vigorous intensity: it starts when %s of %s minutes reach %s counts/min and ends when %s minutes in the window fall below it. Other moderate activity, such as brisk housework, dancing or aerobics, can form a bout, while slow walking may never reach the cut-point. The device-defined walker is therefore a proxy: people whose walking is too slow to register count as device non-walkers, which pulls the questions' specificity down, so part of the low specificity may belong to the reference rather than to the questions.",
   fmt(bout_minutes), fmt(assumption("device.bout_need")), fmt(assumption("device.bout_window")), fmt(cutpoint),
   fmt(assumption("device.bout_stop_below"))), kind = "warn", title = "The weak link."), sep = "\n")
 ```
+
+Timing is a second gap: the walking item was asked at 96 months about walking since age 50, years after the device waves. Timing alone does not explain the weak agreement, though: PASE, asked at the device visits themselves, separates walkers about as weakly (Youden's J `r range_text(j_pase_any)` for any walking).
 
 **Why it matters for Lo et al. 2022.** A record-level correction for misclassification divides by Youden's J, so a weak J makes the correction unstable. With the walker definition in use, a correction would scale the difference in walking prevalence between outcome groups by `r num(correction[[1]], 1)`; with the strictest frequency-based definition, by `r num(correction[[2]], 1)`.
 

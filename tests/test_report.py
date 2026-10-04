@@ -393,6 +393,8 @@ def test_a_failing_document_is_named_and_nothing_is_combined(tmp_path, quarto_en
         )
     out = tmp_path / "results" / "toy" / "report"
     assert (out / "brief.pdf").exists() and not (out / "together.pdf").exists()
+    # the local author file never stays behind, even when a render fails
+    assert not (out / "brief.local.yml").exists()
 
 
 def test_part_titles_default_to_document_names(tmp_path, quarto_env):
