@@ -1,8 +1,8 @@
 # Building blocks for a document that pitches results to another group (the walking-validation
 # brief), shared with the technical report: colours, the estimate style, callout boxes, a
-# sidebar beside a figure, a reading-guide box, numbered labels, the author line and Youden's J
-# contours. Layout helpers return lines for a `results: asis` chunk; write them with
-# cat(x, sep = "\n").
+# sidebar beside a figure, a reading-guide box, numbered labels, names for the cuts of an answer,
+# the author line and Youden's J contours. Layout helpers return lines for a `results: asis` chunk;
+# write them with cat(x, sep = "\n").
 
 #' Colours shared by the brief and the report: the walking item, PASE, headings, tints for
 #' reference groups, and the fills and rules of the callout boxes
@@ -119,6 +119,54 @@ numberer <- function(prefix = "") {
     counts[[kind]] <<- counts[[kind]] + 1L
     sprintf("%s %s%d.", kind, prefix, counts[[kind]])
   }
+}
+
+#' Names for the cuts of an ordinal answer: cut k means "answer at or above level `cuts[k]`"
+#'
+#' Level `l` is `labels[l - first_level + 1]`: the PASE days answer runs from level 0 (`first_level =
+#' 0`, label "Never") to 3, the walking item's amount answers from level 1 (`first_level = 1`) to 3.
+#' A cut at the top level reads as its label alone (`top_prefix` goes before it, default none);
+#' every other cut reads "<prefix> <label>". Level 0 is the lowest an answer can be and holds
+#' everyone, so a cut there is no cut (it would read "At least Never") and is refused; the item's
+#' level 1 is a cut, since non-walkers sit below it. Cuts must be whole numbers inside the labelled
+#' levels, strictly increasing.
+#'
+#' @param cuts Whole numbers, the level of each cut, in increasing order.
+#' @param labels The answer labels, from level `first_level` upward.
+#' @param first_level The level that `labels[1]` names.
+#' @param prefix Text before the label of a cut below the top level.
+#' @param top The level that reads as its label alone; the last labelled level when `NULL`.
+#' @param top_prefix Text before the label of the top cut.
+#' @return A character vector named `cut1`, `cut2`, …, one per cut.
+cut_labels <- function(cuts, labels, first_level = 1, prefix = "At least", top = NULL, top_prefix = "") {
+  if (!is.character(labels) || !length(labels) || anyNA(labels)) {
+    stop("cut_labels(): labels must be a non-empty character vector without NA", call. = FALSE)
+  }
+  whole <- function(x) is.numeric(x) && !anyNA(x) && all(x == round(x))
+  if (!length(cuts)) stop("cut_labels(): cuts is empty", call. = FALSE)
+  if (!whole(cuts)) stop("cut_labels(): cuts must be whole numbers", call. = FALSE)
+  if (length(first_level) != 1 || !whole(first_level)) {
+    stop("cut_labels(): first_level must be one whole number", call. = FALSE)
+  }
+  last <- first_level + length(labels) - 1
+  if (is.null(top)) top <- last
+  if (length(top) != 1 || !whole(top) || top < first_level || top > last) {
+    stop("cut_labels(): top must be one answer level, ", first_level, " to ", last, call. = FALSE)
+  }
+  if (any(cuts < first_level | cuts > last)) {
+    stop("cut_labels(): cuts (", paste(cuts, collapse = ", "), ") are outside the answer levels ",
+         first_level, " to ", last, call. = FALSE)
+  }
+  if (any(cuts == 0)) {
+    stop("cut_labels(): a cut at level 0, the lowest level, holds everyone and would read \"",
+         prefix, " ", labels[[1 - first_level]], "\"", call. = FALSE)
+  }
+  if (any(diff(cuts) <= 0)) {
+    stop("cut_labels(): cuts must be strictly increasing, not ", paste(cuts, collapse = ", "), call. = FALSE)
+  }
+  label <- labels[cuts - first_level + 1]
+  lead <- ifelse(cuts == top, top_prefix, prefix)
+  stats::setNames(trimws(paste(lead, label)), paste0("cut", seq_along(cuts)))
 }
 
 #' The author and contact line from an untracked YAML file, or a neutral placeholder

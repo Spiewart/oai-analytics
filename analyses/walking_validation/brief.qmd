@@ -72,19 +72,9 @@ labels <- lapply(assumption("components.answer_labels"), unlist)
 # 1 to 3 (labels$times[i]), so the labels follow components.*_cuts and not a fixed position.
 pase_cuts <- unlist(assumption("components.pase_frequency_cuts"))
 item_cuts <- unlist(assumption("components.item_times_cuts"))
-level_label <- function(cuts, k, answer_labels, first) {
-  level <- cuts[[k]]
-  if (!(level %in% seq(first, length.out = length(answer_labels)))) {
-    stop("cut ", k, " (level ", level, ") is outside the answer levels ", first, " to ",
-         first + length(answer_labels) - 1, call. = FALSE)
-  }
-  answer_labels[[level - first + 1]]
-}
-# A cut at the top level reads as its label alone, any other as "At least <label>"
-cut_name <- function(cuts, k, answer_labels, first) {
-  label <- level_label(cuts, k, answer_labels, first)
-  if (cuts[[k]] == first + length(answer_labels) - 1) label else paste("At least", label)
-}
+# oaireport::cut_labels() names each cut: "At least <label>", or the label alone at the top level
+pase_names <- oaireport::cut_labels(pase_cuts, labels$pase_days, first_level = 0)
+item_names <- oaireport::cut_labels(item_cuts, labels$times, first_level = 1)
 lower_first <- function(x) paste0(tolower(substr(x, 1, 1)), substring(x, 2))
 visits <- c("06", "08")
 wave_names <- c(`06` = "48 months", `08` = "72 months")
@@ -106,7 +96,7 @@ j_item <- vapply(c("cut1", "cut3"), function(k) item("validation", "times", k, "
 j_pase_any <- vapply(visits, function(v) pase(v, "frequency", "device_walker", "cut1", "j")$estimate, numeric(1))
 j_pase_mid <- vapply(visits, function(v) pase(v, "frequency", "device_walker", "cut2", "j")$estimate, numeric(1))
 correction <- vapply(c("cut1", "cut3"), function(k) item("lo_subset", "times", k, "correction")$estimate, numeric(1))
-strict <- lower_first(cut_name(item_cuts, 3, labels$times, 1))  # cut 3 of the item: the stricter walker definition
+strict <- lower_first(item_names[["cut3"]])  # cut 3 of the item: the stricter walker definition
 bout_minutes <- assumption("device.purposeful_bout_minutes")
 cutpoint <- assumption("device.mv_cutpoint")
 guide <- assumption("reference.min_bout_minutes_per_week")
@@ -197,8 +187,8 @@ results <- data.frame(
             sprintf("%s → %s", num(correction[[1]], 1), num(correction[[2]], 1))),
   label = c("sensitivity / specificity of “walked for exercise” against the device",
             sprintf("Youden's J: any walker → walks %s", strict),
-            sprintf("Youden's J for PASE at 48 months: any walking → at least %s a week (72 months: %s → %s)",
-                    level_label(pase_cuts, 2, labels$pase_days, 0), num(j_pase_any[["08"]]), num(j_pase_mid[["08"]])),
+            sprintf("Youden's J for PASE at 48 months: any walking → %s a week (72 months: %s → %s)",
+                    lower_first(pase_names[["cut2"]]), num(j_pase_any[["08"]]), num(j_pase_mid[["08"]])),
             sprintf("1/J: how much a misclassification correction for Lo et al. 2022 would inflate the difference in walker prevalence between outcome groups: any walker → %s", strict)))
 cat(oaireport::sidebar_figure(
   results,
@@ -229,12 +219,14 @@ level_rows <- function(get, levels, names, question, fill) {
                fill = if (i == 1) paste0(fill, "_ref") else fill)
   }))
 }
+# PASE days answer levels 0 to length(labels) - 1: level i is labels$pase_days[i + 1]
+pase_levels <- as.character(seq_along(labels$pase_days) - 1)
 bars <- rbind(
   level_rows(function(l) item("validation", "times", l, "share"),
              c("none", as.character(seq_along(labels$times))), c("Non-walkers", labels$times),
              "Walking item: times per month", "item"),
   level_rows(function(l) pase("06", "frequency", "device_walker", l, "share"),
-             as.character(0:3), labels$pase_days, "PASE: days walked last week (48 months)", "pase"))
+             pase_levels, labels$pase_days, "PASE: days walked last week (48 months)", "pase"))
 bars$answer <- factor(bars$answer, levels = rev(unique(bars$answer)))
 bars$question <- factor(bars$question, levels = unique(bars$question))
 x_top <- min(1, max(bars$hi, na.rm = TRUE) + 0.15)
@@ -252,11 +244,11 @@ fig2 <- ggplot2::ggplot(bars, ggplot2::aes(estimate, answer, fill = fill)) +
   oaireport::theme_oai(base_size = 8)
 oaireport::save_figure(fig2, "brief_fig2", "2col", height = 2.6)
 print(fig2)
-pase72 <- vapply(as.character(0:3), function(l) pase("08", "frequency", "device_walker", l, "share")$estimate, numeric(1))
+pase72 <- vapply(pase_levels, function(l) pase("08", "frequency", "device_walker", l, "share")$estimate, numeric(1))
 cat(oaireport::table_note(sprintf(
   "Share of participants who are device-defined walkers (%s, where a purposeful bout is at least %s minutes at %s counts/min or more), by reported walking frequency, with Wilson 95%% CIs. Walking item: validation sample, non-walkers and the walkers who answered how many times a month they walked. PASE: participants with a 48-month PASE answer, against %s. At 72 months the PASE shares run from %s (%s) to %s (%s).",
   rule_short, fmt(bout_minutes), fmt(cutpoint), device_wave_text,
-  pct(pase72[[1]]), tolower(labels$pase_days[1]), pct(pase72[[4]]), labels$pase_days[length(labels$pase_days)]),
+  pct(pase72[[1]]), tolower(labels$pase_days[1]), pct(pase72[[length(pase72)]]), labels$pase_days[length(labels$pase_days)]),
   label = "Figure 2.", close_group = TRUE), sep = "\n")
 ```
 
@@ -307,8 +299,7 @@ Timing is a second gap: the walking item was asked at 96 months about walking si
 #| fig-height: 2.1
 #| results: asis
 cat(oaireport::figure_group(), sep = "\n")
-cut_names <- c(cut1 = "Any walker (in use)", cut2 = cut_name(item_cuts, 2, labels$times, 1),
-               cut3 = cut_name(item_cuts, 3, labels$times, 1))
+cut_names <- c(cut1 = "Any walker (in use)", cut2 = item_names[["cut2"]], cut3 = item_names[["cut3"]])
 cf <- do.call(rbind, lapply(names(cut_names), function(k) {
   r <- item("lo_subset", "times", k, "correction")
   data.frame(definition = cut_names[[k]], estimate = r$estimate, lo = r$lo, hi = r$hi)

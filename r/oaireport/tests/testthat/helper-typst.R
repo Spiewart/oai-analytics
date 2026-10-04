@@ -19,3 +19,11 @@ typst_balanced <- function(x) {
 expect_typst_balanced <- function(x) {
   testthat::expect_true(typst_balanced(x), info = "unbalanced [ ] or ( ) in the generated Typst")
 }
+
+# The one line of `x` that contains `text` (found by content, so a change to a block's layout cannot
+# make an assertion check another line)
+line_with <- function(x, text) {
+  hit <- x[grepl(text, x, fixed = TRUE)]
+  testthat::expect_length(hit, 1)
+  hit
+}

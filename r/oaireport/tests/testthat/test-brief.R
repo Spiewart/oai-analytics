@@ -63,6 +63,13 @@ test_that("callout emits one raw Typst block with escaped text, a title and cita
 # Text holding every character typst_text escapes, with more closing than opening brackets, so a
 # single unescaped bracket unbalances the generated Typst
 nasty <- "# $ * _ ` < > @ ~ [ ] / \\ ] ] ["
+# The same text as typst_text() must give it, written out so that the box tests below do not
+# check an escape against the function that made it
+nasty_typst <- "\\# \\$ \\* \\_ \\` \\< \\> \\@ \\~ \\[ \\] \\/ \\\\ \\] \\] \\["
+
+test_that("typst_text escapes every character of the nasty text, as written out", {
+  expect_equal(typst_text(nasty), nasty_typst)
+})
 
 test_that("the typst_text helper's bracket check catches a stray bracket, and ignores escaped ones", {
   expect_true(typst_balanced("#block(a: (b: 1))[text #text[inner]]"))
@@ -73,17 +80,24 @@ test_that("the typst_text helper's bracket check catches a stray bracket, and ig
 })
 
 test_that("callout keeps its brackets balanced and its text escaped, with or without a title", {
-  for (note in list(callout(nasty, title = nasty, cite = "abel2008"), callout(nasty, kind = "warn"))) {
-    expect_typst_balanced(note)
-    expect_match(paste(note, collapse = "\n"), typst_text(nasty), fixed = TRUE)
+  titled <- callout(nasty, title = nasty, cite = "abel2008")
+  untitled <- callout(nasty, kind = "warn")
+  expect_typst_balanced(titled)
+  expect_typst_balanced(untitled)
+  count <- function(note) {
+    text <- paste(note, collapse = "\n")
+    lengths(regmatches(text, gregexpr(nasty_typst, text, fixed = TRUE)))
   }
+  expect_equal(count(titled), 2)    # the title and the text
+  expect_equal(count(untitled), 1)  # the text
 })
 
 test_that("a callout without a title does not start its text as a list, a heading or a numbered item", {
-  expect_match(callout("- not a list")[5], "^\\\\- not a list$")
-  expect_match(callout("1. not numbered")[5], "^1\\\\\\. not numbered$")
+  # each line is found by its content, not by its position in the block
+  expect_match(line_with(callout("- not a list"), "not a list"), "^\\\\- not a list$")
+  expect_match(line_with(callout("1. not numbered"), "not numbered"), "^1\\\\\\. not numbered$")
   # with a title the text follows it on the same line; the escape is harmless there (it prints "-")
-  expect_match(callout("- x", title = "T.")[5], "\\[T\\.\\] \\\\- x$")
+  expect_match(line_with(callout("- x", title = "T."), "[T.]"), "\\[T\\.\\] \\\\- x$")
 })
 
 test_that("callout refuses NA text", {
@@ -138,13 +152,63 @@ test_that("reading_guide escapes terms, definitions and notation and keeps its b
   guide <- reading_guide(stats::setNames(nasty, nasty), notation = nasty, title = nasty)
   expect_typst_balanced(guide)
   text <- paste(guide, collapse = "\n")
-  expect_equal(lengths(regmatches(text, gregexpr(typst_text(nasty), text, fixed = TRUE))), 4)
-  expect_match(text, paste0("[", typst_text(nasty), ":]"), fixed = TRUE)
+  expect_equal(lengths(regmatches(text, gregexpr(nasty_typst, text, fixed = TRUE))), 4)
+  expect_match(text, paste0("[", nasty_typst, ":]"), fixed = TRUE)
 })
 
 test_that("a notation line that starts like a list item stays text", {
-  expect_equal(reading_guide(c(a = "b"), "- one 1. two")[7], "\\- one 1. two")
-  expect_equal(reading_guide(c(a = "b"), "2. two")[7], "2\\. two")
+  expect_equal(line_with(reading_guide(c(a = "b"), "- one 1. two"), "one 1. two"), "\\- one 1. two")
+  expect_equal(line_with(reading_guide(c(a = "b"), "2. two"), "two"), "2\\. two")
+})
+
+test_that("cut_labels names each cut by the answer at or above its level", {
+  item <- c("1\u20133 times/month", "4\u20138 times/month", "9 or more times/month")
+  expect_equal(cut_labels(c(1, 2, 3), item),
+               c(cut1 = "At least 1\u20133 times/month", cut2 = "At least 4\u20138 times/month",
+                 cut3 = "9 or more times/month"))
+  # PASE days run from level 0 (Never), so the first level is 0 and cut 1 is "at least 1-2 days"
+  pase <- c("Never", "1\u20132 days", "3\u20134 days", "5\u20137 days")
+  expect_equal(cut_labels(c(1, 2, 3), pase, first_level = 0),
+               c(cut1 = "At least 1\u20132 days", cut2 = "At least 3\u20134 days", cut3 = "5\u20137 days"))
+  expect_equal(cut_labels(c(2, 3), item), c(cut1 = "At least 4\u20138 times/month", cut2 = "9 or more times/month"))
+  expect_length(cut_labels(c(2, 3), item), 2)
+  expect_equal(cut_labels(2L, item), c(cut1 = "At least 4\u20138 times/month"))  # integers; a cut below the top
+  expect_equal(cut_labels(3, item), c(cut1 = "9 or more times/month"))
+})
+
+test_that("cut_labels takes the prefix of a cut below the top and one for the top cut", {
+  item <- c("1\u20133 times/month", "4\u20138 times/month", "9 or more times/month")
+  expect_equal(cut_labels(c(1, 2, 3), item, prefix = "Walker, at least", top_prefix = "Walker,"),
+               c(cut1 = "Walker, at least 1\u20133 times/month", cut2 = "Walker, at least 4\u20138 times/month",
+                 cut3 = "Walker, 9 or more times/month"))
+  expect_equal(cut_labels(c(1, 3), item, prefix = "From"), c(cut1 = "From 1\u20133 times/month",
+                                                              cut2 = "9 or more times/month"))
+  # `top` names the level that reads as its label alone (the last level by default)
+  expect_equal(cut_labels(c(1, 2), item, top = 2),
+               c(cut1 = "At least 1\u20133 times/month", cut2 = "4\u20138 times/month"))
+  expect_error(cut_labels(1, item, top = 4), "top")
+})
+
+test_that("cut_labels refuses cuts that are empty, fractional, repeated, unordered or out of range", {
+  item <- c("1\u20133 times/month", "4\u20138 times/month", "9 or more times/month")
+  pase <- c("Never", "1\u20132 days", "3\u20134 days", "5\u20137 days")
+  expect_error(cut_labels(numeric(0), item), "cuts.*empty")
+  expect_error(cut_labels(NULL, item), "cuts")
+  expect_error(cut_labels(c(1, 1.5), item), "whole numbers")
+  expect_error(cut_labels(c(1, NA), item), "whole numbers")
+  expect_error(cut_labels("1", item), "whole numbers")
+  expect_error(cut_labels(c(2, 3, 3), item), "strictly increasing")
+  expect_error(cut_labels(c(3, 2), item), "strictly increasing")
+  expect_error(cut_labels(4, item), "outside the answer levels 1 to 3")
+  expect_error(cut_labels(c(1, 4), item), "outside the answer levels 1 to 3")
+  expect_error(cut_labels(0, item), "outside the answer levels 1 to 3")
+  # level 0 is the lowest level and everyone is at or above it: PASE cut 0 would read "At least Never"
+  expect_error(cut_labels(c(0, 1), pase, first_level = 0), "lowest level")
+  expect_error(cut_labels(0, pase, first_level = 0), "At least Never")
+  # the item's level 1 is not the lowest: non-walkers sit below it, so a cut there is a real cut
+  expect_equal(cut_labels(1, item), c(cut1 = "At least 1\u20133 times/month"))
+  expect_error(cut_labels(1, character()), "labels")
+  expect_error(cut_labels(1, NA_character_), "labels")
 })
 
 test_that("numberer counts tables and figures separately", {
