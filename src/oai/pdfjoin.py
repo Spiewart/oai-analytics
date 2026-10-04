@@ -8,6 +8,7 @@ is asked for and enclave bundles never need it.
 from __future__ import annotations
 
 import logging
+import os
 from collections.abc import Sequence
 from pathlib import Path
 
@@ -29,6 +30,7 @@ def combine_pdfs(parts: Sequence[tuple[str, Path]], out: Path) -> Path:
             raise PdfJoinError(f"missing PDF: {path}")
     try:
         from pypdf import PdfReader, PdfWriter
+        from pypdf.errors import PyPdfError
     except ImportError as exc:  # pragma: no cover - dev dependency
         raise PdfJoinError("joining PDFs needs pypdf: run `uv sync` (a dev dependency)") from exc
     # pypdf warns "Annotation sizes differ" on every join of Typst PDFs: quiet only its logger,
@@ -36,6 +38,9 @@ def combine_pdfs(parts: Sequence[tuple[str, Path]], out: Path) -> Path:
     logger = logging.getLogger("pypdf")
     level = logger.level
     logger.setLevel(logging.ERROR)
+    out = Path(out)
+    # written beside `out` and moved over it, so a failure never leaves a truncated PDF
+    partial = out.with_suffix(".pdf.part")
     try:
         writer = PdfWriter()
         for title, path in parts:
@@ -43,8 +48,12 @@ def combine_pdfs(parts: Sequence[tuple[str, Path]], out: Path) -> Path:
         first = PdfReader(str(parts[0][1])).metadata
         if first is not None and first.title:
             writer.add_metadata({"/Title": first.title})
-        with Path(out).open("wb") as handle:
+        with partial.open("wb") as handle:
             writer.write(handle)
+        os.replace(partial, out)
+    except (PyPdfError, OSError) as exc:
+        raise PdfJoinError(f"could not join PDFs: {exc}") from exc
     finally:
         logger.setLevel(level)
-    return Path(out)
+        partial.unlink(missing_ok=True)
+    return out

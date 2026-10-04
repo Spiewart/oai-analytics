@@ -227,12 +227,31 @@ DOCS_LINE = 'documents = ["brief.qmd", "report.qmd"]'
         ('combined = "together.pdf"', 'combined = "together.html"', "must be a .pdf file name"),
         ('combined = "together.pdf"', 'combined = "out/together.pdf"', "must be a .pdf file name"),
         ('combined = "together.pdf"', 'combined = "report.pdf"', "would overwrite"),
+        ('combined = "together.pdf"', 'combined = ".pdf"', "must be a .pdf file name"),
+        ('combined = "together.pdf"', "combined = 3", "must be a .pdf file name"),
+        (DOCS_LINE, 'documents = ["brief.qmd", 3]', "must be a .qmd file"),
+        (
+            'assets = ["notes.md"]',
+            'assets = ["notes.md", "notes.md"]',
+            "[report] assets has duplicates",
+        ),
+        (
+            'local_assets = ["brief.local.yml"]',
+            'local_assets = ["brief.local.yml", "brief.local.yml"]',
+            "[report] local_assets has duplicates",
+        ),
+        (
+            'local_assets = ["brief.local.yml"]',
+            'local_assets = ["together.pdf"]',
+            "combined 'together.pdf' would overwrite an asset",
+        ),
         (
             'part_titles = ["Brief", "Appendix"]',
             'part_titles = ["Brief"]',
             "one title per document",
         ),
         ('part_titles = ["Brief", "Appendix"]', 'part_titles = ["Brief", ""]', "list of titles"),
+        ('part_titles = ["Brief", "Appendix"]', 'part_titles = ["Brief", "  "]', "list of titles"),
         (
             'local_assets = ["brief.local.yml"]',
             'local_assets = ["../x.yml"]',
@@ -243,11 +262,23 @@ DOCS_LINE = 'documents = ["brief.qmd", "report.qmd"]'
             'local_assets = "brief.local.yml"',
             "local_assets must be",
         ),
+        ('local_assets = ["brief.local.yml"]', 'local_assets = [".."]', "local_assets must be"),
+        ('local_assets = ["brief.local.yml"]', 'local_assets = ["."]', "local_assets must be"),
     ],
 )
 def test_invalid_document_sections(tmp_path, old, new, message):
     root = write_docs_analysis(tmp_path, DOCS_MANIFEST.replace(old, new))
     with pytest.raises(ManifestError, match=re.escape(message)):
+        load_analysis(root)
+
+
+def test_combined_may_not_overwrite_an_existing_asset(tmp_path):
+    root = write_docs_analysis(
+        tmp_path,
+        DOCS_MANIFEST.replace('assets = ["notes.md"]', 'assets = ["notes.md", "together.pdf"]'),
+    )
+    (root / "together.pdf").write_bytes(b"%PDF-")
+    with pytest.raises(ManifestError, match=re.escape("combined 'together.pdf' would overwrite")):
         load_analysis(root)
 
 

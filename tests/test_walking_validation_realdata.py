@@ -447,6 +447,22 @@ def _report_tools_ready() -> bool:
     return probe.returncode == 0
 
 
+# right edge of the text block, in points: US-letter width less the Typst page's right margin
+RIGHT_EDGE = {"brief.pdf": 550.8, "report.pdf": 547.2}
+PLACEHOLDER = "Authors and contact to be added"
+
+
+def _top_bookmarks(pdf: Path) -> list[str]:
+    return [item.title for item in PdfReader(pdf).outline if not isinstance(item, list)]
+
+
+def _largest_xmax(pdf: Path) -> float:
+    boxes = subprocess.run(
+        ["pdftotext", "-bbox", str(pdf), "-"], capture_output=True, text=True, check=True
+    ).stdout
+    return max(float(m) for m in re.findall(r'xMax="([0-9.]+)"', boxes))
+
+
 @pytest.mark.realdata
 @pytest.mark.skipif(
     not _report_tools_ready(), reason="Quarto or the r/ report profile is unavailable"
@@ -467,8 +483,15 @@ def test_walking_validation_report_renders(fast_run):
         text = "\n".join(page.extract_text() for page in PdfReader(pdf).pages)
         for bad in (r"\bNA\b", r"\bNaN\b", r"\bInf\b", r"`r "):
             assert not re.search(bad, text), f"{bad!r} in {pdf.name}"
-    if not (analysis.root / "brief.local.yml").exists():
-        assert "Authors and contact to be added" in PdfReader(pdfs[0]).pages[0].extract_text()
+    page_one = PdfReader(pdfs[0]).pages[0].extract_text()
+    if (analysis.root / "brief.local.yml").exists():
+        assert PLACEHOLDER not in page_one
+    else:
+        assert PLACEHOLDER in page_one
+    assert _top_bookmarks(pdfs[2]) == ["Brief", "Appendix: technical report"]
+    if shutil.which("pdftotext"):  # only the margin check needs poppler
+        for pdf in pdfs[:2]:
+            assert _largest_xmax(pdf) <= RIGHT_EDGE[pdf.name] + 0.01, pdf.name
     figures = {p.name for p in (pdfs[0].parent / "figures").iterdir()}
     for name in ("known_groups", "strata", "tipping", "forest_bias", "brief_fig1", "brief_fig4"):
         assert {f"{name}.pdf", f"{name}.png"} <= figures, name

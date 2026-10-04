@@ -47,7 +47,7 @@ ASSUMPTIONS = textwrap.dedent(
     """
 )
 STEP = 'import os, pathlib\npathlib.Path(os.environ["OAI_RESULTS_DIR"], "out.csv").write_text("metric,value\\nm,1\\n")\n'
-# Stands in for `quarto render <entry> --to typst`, run in the report directory.
+# Stands in for `quarto render <document> --to typst`, run in the report directory.
 FAKE_QUARTO = textwrap.dedent(
     """\
     #!/bin/sh
@@ -383,7 +383,7 @@ def test_local_assets_are_copied_when_present_and_cleaned_up(tmp_path, quarto_en
 
 def test_a_failing_document_is_named_and_nothing_is_combined(tmp_path, quarto_env):
     env = {**quarto_env, "FAKE_QUARTO_FAIL": "report.qmd"}
-    with pytest.raises(ReportError, match=r"report\.qmd failed"):
+    with pytest.raises(ReportError, match=r"(?s)report\.qmd failed.*partial output kept"):
         render_report(
             make_docs_toy(tmp_path),
             make_settings(tmp_path),
@@ -395,6 +395,60 @@ def test_a_failing_document_is_named_and_nothing_is_combined(tmp_path, quarto_en
     assert (out / "brief.pdf").exists() and not (out / "together.pdf").exists()
     # the local author file never stays behind, even when a render fails
     assert not (out / "brief.local.yml").exists()
+
+
+def test_a_failing_first_document_is_named_and_leaves_no_pdfs(tmp_path, quarto_env):
+    env = {**quarto_env, "FAKE_QUARTO_FAIL": "brief.qmd"}
+    with pytest.raises(ReportError, match=r"brief\.qmd failed"):
+        render_report(
+            make_docs_toy(tmp_path),
+            make_settings(tmp_path),
+            run_missing=True,
+            base_env=env,
+            echo=quiet,
+        )
+    out = tmp_path / "results" / "toy" / "report"
+    assert list(out.glob("*.pdf")) == []
+    assert not (out / "brief.local.yml").exists()
+
+
+def test_a_failing_join_keeps_the_document_pdfs_and_cleans_local_assets(
+    tmp_path, quarto_env, monkeypatch
+):
+    import oai.report as report_module
+    from oai.pdfjoin import PdfJoinError
+
+    def failing_join(parts, out):
+        raise PdfJoinError("boom")
+
+    monkeypatch.setattr(report_module, "combine_pdfs", failing_join)
+    with pytest.raises(PdfJoinError, match="boom"):
+        render_report(
+            make_docs_toy(tmp_path),
+            make_settings(tmp_path),
+            run_missing=True,
+            base_env=quarto_env,
+            echo=quiet,
+        )
+    out = tmp_path / "results" / "toy" / "report"
+    assert sorted(p.name for p in out.glob("*.pdf")) == ["brief.pdf", "report.pdf"]
+    assert not (out / "together.pdf").exists()
+    assert not (out / "brief.local.yml").exists()
+
+
+def test_the_quarto_path_is_logged_once_and_each_document_by_name(tmp_path, quarto_env):
+    lines = []
+    render_report(
+        make_docs_toy(tmp_path),
+        make_settings(tmp_path),
+        run_missing=True,
+        base_env={**quarto_env, "FAKE_QUARTO_PDF": str(blank_pdf(tmp_path / "blank.pdf", 1))},
+        echo=lines.append,
+    )
+    quarto = quarto_env["OAI_QUARTO"]
+    assert [line for line in lines if quarto in line] == [f"==> toy: rendering with {quarto}"]
+    assert "==> toy: rendering brief.qmd" in lines
+    assert "==> toy: rendering report.qmd" in lines
 
 
 def test_part_titles_default_to_document_names(tmp_path, quarto_env):
@@ -424,3 +478,4 @@ def test_cli_report_prints_every_pdf(tmp_path, monkeypatch):
         "report.pdf",
         "together.pdf",
     ]
+    assert "Before sharing: oai check-egress" in result.output

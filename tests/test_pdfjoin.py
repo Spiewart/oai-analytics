@@ -52,3 +52,36 @@ def test_combine_rejects_no_parts_and_missing_files(tmp_path):
     with pytest.raises(PdfJoinError, match="missing PDF"):
         combine_pdfs([("A", tmp_path / "nope.pdf")], tmp_path / "x.pdf")
     assert not (tmp_path / "x.pdf").exists()
+
+
+def test_a_part_that_is_not_a_pdf_is_an_oai_error_and_leaves_no_output(tmp_path):
+    good = blank_pdf(tmp_path / "good.pdf", 1)
+    bad = tmp_path / "x.pdf"
+    bad.write_text("not a pdf")
+    out = tmp_path / "both.pdf"
+    with pytest.raises(PdfJoinError, match="could not join PDFs"):
+        combine_pdfs([("Good", good), ("Bad", bad)], out)
+    # the write is atomic: neither the output nor its temporary file is left behind
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["good.pdf", "x.pdf"]
+
+
+def test_an_output_folder_that_does_not_exist_is_an_oai_error(tmp_path):
+    brief = blank_pdf(tmp_path / "brief.pdf", 1)
+    with pytest.raises(PdfJoinError, match="could not join PDFs"):
+        combine_pdfs([("Brief", brief)], tmp_path / "nowhere" / "both.pdf")
+
+
+def test_a_failed_write_keeps_an_existing_output_intact(tmp_path, monkeypatch):
+    brief = blank_pdf(tmp_path / "brief.pdf", 1)
+    out = tmp_path / "both.pdf"
+    out.write_text("previous")
+
+    def explode(self, stream):
+        stream.write(b"%PDF-partial")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(PdfWriter, "write", explode)
+    with pytest.raises(PdfJoinError, match="could not join PDFs: disk full"):
+        combine_pdfs([("Brief", brief)], out)
+    assert out.read_text() == "previous"
+    assert sorted(p.name for p in tmp_path.iterdir()) == ["both.pdf", "brief.pdf"]

@@ -176,21 +176,26 @@ The 12c months-per-year correction rows stay in TODO (out of scope here).
 
 ### 6.1 Multiple documents per analysis
 
-- `analysis.toml` `[report]` gains two optional keys:
+- `analysis.toml` `[report]` gains four optional keys:
   - `documents = ["brief.qmd", "report.qmd"]`: rendered in that order;
-  - `combined = "walking_validation_brief.pdf"`: joins them in that order.
+  - `combined = "walking_validation_brief.pdf"`: joins them in that order;
+  - `part_titles = ["Brief", "Appendix: technical report"]`: one bookmark title per document in `combined`;
+  - `local_assets = ["brief.local.yml"]`: untracked files copied next to the documents when present.
 - `entry` keeps working on its own, so lo2022_walking is unchanged.
 - **Validation.** With `documents`:
   - every file must be a `.qmd` directly in the analysis folder;
   - there are no duplicates;
-  - `combined` must end in `.pdf` and requires `documents`.
+  - `combined` must end in `.pdf` and requires `documents`;
+  - `part_titles` needs `combined` and one title per document;
+  - there are no duplicates in assets or local assets;
+  - `combined` may not collide with a document's PDF or an asset.
   - `entry` and `documents` together is an error.
 
 ### 6.2 Rendering
 
 `oai report <analysis> [--run]` renders each document with Quarto/Typst into `<results>/<analysis>/report/`, using the same results, assets and egress rules as today.
 
-When `combined` is set, it joins the PDFs with `pypdf`, a new pure-Python dependency. The combined PDF gets one top-level bookmark per part: "Brief" and "Appendix: technical report". It prints the path of every PDF.
+When `combined` is set, it joins the PDFs with `pypdf`, a new pure-Python dev dependency (report rendering is local-only). The combined PDF gets one top-level bookmark per part: "Brief" and "Appendix: technical report". It prints the path of every PDF.
 
 ### 6.3 Author and contact block
 

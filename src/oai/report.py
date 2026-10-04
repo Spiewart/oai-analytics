@@ -133,8 +133,9 @@ def render_report(
             if (analysis.root / name).is_file():
                 local.append(out / name)
                 shutil.copy2(analysis.root / name, out / name)
+        echo(f"==> {analysis.name}: rendering with {quarto}")
         for document in spec.documents:
-            echo(f"==> {analysis.name}: rendering {document} with {quarto}")
+            echo(f"==> {analysis.name}: rendering {document}")
             proc = subprocess.run(
                 [str(quarto), "render", document, "--to", "typst"],
                 cwd=out,

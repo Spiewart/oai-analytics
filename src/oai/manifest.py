@@ -153,7 +153,7 @@ def _plain_file(root: Path, name: object) -> bool:
 
 def _plain_name(name: object) -> bool:
     """A bare file name (no directories), which need not exist."""
-    return isinstance(name, str) and bool(name) and name == Path(name).name
+    return isinstance(name, str) and name not in ("", ".", "..") and name == Path(name).name
 
 
 def _parse_report(raw: Any, root: Path, fail: Callable[[str], NoReturn]) -> ReportSpec:
@@ -187,24 +187,30 @@ def _parse_report(raw: Any, root: Path, fail: Callable[[str], NoReturn]) -> Repo
     for asset in assets:
         if not _plain_file(root, asset):
             fail(f"[report] asset {asset!r} must be a file directly in {root}")
+    if len(set(assets)) != len(assets):
+        fail("[report] assets has duplicates")
     combined = raw.get("combined")
     if combined is not None:
         if key != "documents":
             fail("[report] combined needs documents")
-        if not _plain_name(combined) or not combined.endswith(".pdf"):
+        if not _plain_name(combined) or Path(combined).suffix != ".pdf":
             fail(f"[report] combined {combined!r} must be a .pdf file name")
         if combined in {f"{Path(d).stem}.pdf" for d in documents}:
             fail(f"[report] combined {combined!r} would overwrite a document's PDF")
     titles = raw.get("part_titles", [])
     if titles and combined is None:
         fail("[report] part_titles needs combined")
-    if not isinstance(titles, list) or not all(isinstance(t, str) and t for t in titles):
+    if not isinstance(titles, list) or not all(isinstance(t, str) and t.strip() for t in titles):
         fail("[report] part_titles must be a list of titles")
     if titles and len(titles) != len(documents):
         fail("[report] part_titles needs one title per document")
     local_assets = raw.get("local_assets", [])
     if not isinstance(local_assets, list) or not all(_plain_name(a) for a in local_assets):
         fail("[report] local_assets must be a list of file names")
+    if len(set(local_assets)) != len(local_assets):
+        fail("[report] local_assets has duplicates")
+    if combined is not None and combined in {*assets, *local_assets}:
+        fail(f"[report] combined {combined!r} would overwrite an asset")
     return ReportSpec(
         tuple(documents),
         tuple(runs),
