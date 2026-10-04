@@ -1,0 +1,350 @@
+---
+title: "Is reported walking really walking?"
+subtitle: "Validating self-reported walking in the OAI against accelerometry — a proposal for joint work"
+mainfont: Arial
+fontsize: 10pt
+bibliography: references.bib
+bibliographystyle: american-medical-association
+format:
+  typst:
+    papersize: us-letter
+    margin:
+      x: 0.85in
+      y: 0.75in
+    include-in-header:
+      text: |
+        #set text(hyphenate: false)
+        #set bibliography(title: [References])
+        #set page(footer: context align(center, text(size: 8pt, fill: luma(90))[Brief — page #counter(page).display()]))
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: cairo_pdf
+    fig-width: 7
+---
+
+```{r setup}
+run <- oaireport::load_results()$default
+assumption <- function(key) run$assumptions$assumptions[[key]]$value
+num <- function(x, digits = 2) formatC(x, format = "f", digits = digits, big.mark = ",")
+count <- function(x) formatC(x, format = "d", big.mark = ",")
+fmt <- function(x) format(x, trim = TRUE, big.mark = ",")
+pct <- function(x) paste0(num(100 * x, 0), "%")
+range_text <- function(x, digits = 2) {
+  lo <- num(min(x), digits); hi <- num(max(x), digits)
+  if (lo == hi) lo else paste0(lo, "–", hi)
+}
+colours <- oaireport::brief_colours
+# The one row matching every condition; stops when there is none or several (a changed schema)
+one <- function(df, ...) {
+  cond <- list(...)
+  keep <- Reduce(`&`, Map(function(col, value) !is.na(df[[col]]) & df[[col]] == value, names(cond), cond))
+  row <- df[keep, , drop = FALSE]
+  if (nrow(row) != 1) {
+    stop("expected one row for ", paste(names(cond), unlist(cond), sep = " = ", collapse = ", "),
+         ", found ", nrow(row), call. = FALSE)
+  }
+  row
+}
+cls <- run$validity_classification
+cp <- run$validity_components_pase
+cp$visit <- sprintf("%02d", as.integer(cp$visit))
+ci <- run$validity_components_item
+pase <- function(v, component, comparator, level, statistic) {
+  one(cp, visit = v, component = component, comparator = comparator, level = level, statistic = statistic)
+}
+item <- function(sample, component, level, statistic) {
+  one(ci, sample = sample, component = component, level = level, statistic = statistic)
+}
+labels <- lapply(assumption("components.answer_labels"), unlist)
+visits <- c("06", "08")
+wave_names <- c(`06` = "48 months", `08` = "72 months")
+paired <- assumption("pase.device_pairing") == "adjacent_wave"
+device_wave_text <- if (paired) "that visit's own device wave" else "the participant's combined device waves"
+pase_any_is_walker <- assumption("pase.walker_threshold") == 0
+walker_rule <- assumption("reference.walker_rule")
+rule_short <- switch(walker_rule,
+  bout_days = sprintf("on average at least %s days a week with a purposeful bout", fmt(assumption("reference.min_bout_days_per_week"))),
+  any_bout = "at least one purposeful bout",
+  bout_minutes = sprintf("on average at least %s minutes a week in purposeful bouts", fmt(assumption("reference.min_bout_minutes_per_week"))),
+  stop("unknown reference.walker_rule: ", walker_rule))
+
+n_validation <- run$metrics[["sample.validation.persons"]]
+se <- one(cls, sample = "validation", measure = "se")$estimate
+sp <- one(cls, sample = "validation", measure = "sp")$estimate
+j_item <- vapply(c("cut1", "cut3"), function(k) item("validation", "times", k, "j")$estimate, numeric(1))
+j_pase_any <- vapply(visits, function(v) pase(v, "frequency", "device_walker", "cut1", "j")$estimate, numeric(1))
+j_pase_mid <- vapply(visits, function(v) pase(v, "frequency", "device_walker", "cut2", "j")$estimate, numeric(1))
+correction <- vapply(c("cut1", "cut3"), function(k) item("lo_subset", "times", k, "correction")$estimate, numeric(1))
+strict <- labels$times[length(labels$times)]
+bout_minutes <- assumption("device.purposeful_bout_minutes")
+cutpoint <- assumption("device.mv_cutpoint")
+guide <- assumption("reference.min_bout_minutes_per_week")
+rho_week <- vapply(visits, function(v) pase(v, "weekly", "purposeful_week", "all", "rho")$estimate, numeric(1))
+diff_week <- vapply(visits, function(v) pase(v, "weekly", "purposeful_week", "all", "median_diff")$estimate, numeric(1))
+kappa_week <- vapply(visits, function(v) pase(v, "weekly", "purposeful_week", "guideline", "kappa")$estimate, numeric(1))
+repro <- run$device_reproduction
+repro$wave_name <- wave_names[sprintf("%02d", as.integer(repro$wave))]
+```
+
+```{=typst}
+#set par(justify: false)
+```
+
+```{r authors}
+#| results: asis
+cat("```{=typst}",
+    sprintf("#text(size: 9.5pt, fill: luma(70))[%s] #v(4pt)",
+            oaireport::typst_text(oaireport::author_block("brief.local.yml"))),
+    "```", sep = "\n")
+```
+
+```{=typst}
+#set text(size: 11pt)
+```
+
+The Osteoarthritis Initiative (OAI) asked participants whether they had walked for exercise since age 50, and the answer predicts knee outcomes [@lo2022]. We checked that answer, and the walking question of the Physical Activity Scale for the Elderly (PASE), against what the ActiGraph GT1M recorded at 48 and 72 months in `r count(n_validation)` participants. Almost everyone says yes, so the question alone separates walkers poorly; *how often* people say they walk carries most of the signal. Our device reference is built from activity counts, which cannot tell walking from other moderate activity, and that is where your step and cadence data come in.
+
+```{=typst}
+#set text(size: 10pt)
+```
+
+```{r fig1}
+#| include: false
+cuts <- c("cut1", "cut2", "cut3")
+item_pts <- do.call(rbind, lapply(cuts, function(k) data.frame(
+  source = "Walking item (times per month)", cut = k,
+  se = item("validation", "times", k, "se")$estimate,
+  fpr = 1 - item("validation", "times", k, "sp")$estimate,
+  current = k == "cut1")))
+pase_pts <- do.call(rbind, lapply(visits, function(v) do.call(rbind, lapply(cuts, function(k) data.frame(
+  source = sprintf("PASE days per week, %s", wave_names[[v]]), cut = k,
+  se = pase(v, "frequency", "device_walker", k, "se")$estimate,
+  fpr = 1 - pase(v, "frequency", "device_walker", k, "sp")$estimate,
+  current = k == "cut1" && pase_any_is_walker)))))
+pts <- rbind(item_pts, pase_pts)
+pts$source <- factor(pts$source, levels = unique(pts$source))
+# One source per row (a single row is wider than the column); keys show the line, solid or dashed
+source_key <- ggplot2::guide_legend(ncol = 1, order = 1, override.aes = list(shape = NA),
+                                    theme = ggplot2::theme(legend.key.width = ggplot2::unit(2, "lines")))
+fig1 <- ggplot2::ggplot(pts, ggplot2::aes(fpr, se, colour = source, linetype = source)) +
+  oaireport::youden_contours() +
+  ggplot2::geom_line(linewidth = 0.6) +
+  ggplot2::geom_point(ggplot2::aes(shape = current), size = 2.6) +
+  ggplot2::scale_colour_manual(values = c(colours[["item"]], colours[["pase"]], colours[["pase"]]), name = NULL) +
+  ggplot2::scale_linetype_manual(values = c("solid", "solid", "dashed"), name = NULL) +
+  ggplot2::scale_shape_manual(values = c(`TRUE` = 17, `FALSE` = 16), name = NULL,
+                              labels = c(`TRUE` = "Definition in use", `FALSE` = "Stricter, frequency-based")) +
+  ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1), clip = "off") +
+  ggplot2::labs(x = "1 − specificity", y = "Sensitivity") +
+  ggplot2::guides(colour = source_key, linetype = source_key, shape = ggplot2::guide_legend(order = 2)) +
+  oaireport::theme_oai(base_size = 8) +
+  ggplot2::theme(legend.position = "bottom", legend.box = "vertical",
+                 legend.spacing.y = ggplot2::unit(2, "pt"), legend.key.spacing.y = ggplot2::unit(0, "pt"),
+                 legend.margin = ggplot2::margin(0, 0, 0, 0), legend.box.spacing = ggplot2::unit(4, "pt"),
+                 plot.margin = ggplot2::margin(14, 8, 4, 4))
+oaireport::save_figure(fig1, "brief_fig1", "1col", height = 3.6)
+```
+
+```{r page1}
+#| results: asis
+# Sidebar values stay short (15 pt in a narrow column): PASE gives the 48-month value and puts
+# the 72-month one in its label
+results <- data.frame(
+  value = c(sprintf("%s / %s", num(se), num(sp)),
+            sprintf("%s → %s", num(j_item[[1]]), num(j_item[[2]])),
+            sprintf("%s → %s", num(j_pase_any[["06"]]), num(j_pase_mid[["06"]])),
+            sprintf("%s → %s", num(correction[[1]], 1), num(correction[[2]], 1))),
+  label = c("sensitivity / specificity of “walked for exercise” against the device",
+            sprintf("Youden's J: any walker → walks %s", strict),
+            sprintf("Youden's J for PASE at 48 months: any walking → at least %s a week (72 months: %s → %s)",
+                    labels$pase_days[3], num(j_pase_any[["08"]]), num(j_pase_mid[["08"]])),
+            sprintf("how much a bias correction for Lo et al. 2022 would scale the result: any walker → %s", strict)))
+cat(oaireport::sidebar_figure(
+  results,
+  ask = "A joint study: rebuild the reference from your step and cadence data (for example, minutes at 100 steps/min or more) and re-run the validation and the bias analysis, pre-specified and jointly authored.",
+  image = "figures/brief_fig1.png",
+  caption = "Each point is a walker definition, placed by its sensitivity and 1 − specificity against the device-defined walker. Triangles: the definitions in use (any walking). Stricter, frequency-based definitions (circles) move both questions up and to the left, toward better agreement. Grey dashed lines join points of equal Youden's J, with each value above the top edge; J = 0 is chance."),
+  sep = "\n")
+```
+
+*The appendix (the full technical report) gives the methods and every result, from the same analysis run.*
+
+```{=typst}
+#pagebreak()
+```
+
+## What the counts already show
+
+Reported walking frequency tracks the device in a clear gradient, which a yes/no question discards.
+
+```{r fig2}
+#| fig-height: 2.6
+#| results: asis
+cat(oaireport::figure_group(), sep = "\n")
+level_rows <- function(get, levels, names, question, fill) {
+  do.call(rbind, lapply(seq_along(levels), function(i) {
+    r <- get(levels[[i]])
+    data.frame(question = question, answer = names[[i]], estimate = r$estimate, lo = r$lo, hi = r$hi,
+               fill = if (i == 1) paste0(fill, "_ref") else fill)
+  }))
+}
+bars <- rbind(
+  level_rows(function(l) item("validation", "times", l, "share"),
+             c("none", as.character(seq_along(labels$times))), c("Non-walkers", labels$times),
+             "Walking item: times per month", "item"),
+  level_rows(function(l) pase("06", "frequency", "device_walker", l, "share"),
+             as.character(0:3), labels$pase_days, "PASE: days walked last week (48 months)", "pase"))
+bars$answer <- factor(bars$answer, levels = rev(unique(bars$answer)))
+bars$question <- factor(bars$question, levels = unique(bars$question))
+x_top <- min(1, max(bars$hi, na.rm = TRUE) + 0.15)
+fig2 <- ggplot2::ggplot(bars, ggplot2::aes(estimate, answer, fill = fill)) +
+  ggplot2::geom_col(width = 0.65) +
+  ggplot2::geom_errorbar(ggplot2::aes(xmin = lo, xmax = hi), width = 0.25, linewidth = 0.3, orientation = "y") +
+  ggplot2::geom_text(ggplot2::aes(x = hi, label = pct(estimate)), hjust = -0.25, size = 2.6,
+                     family = oaireport::oai_font()) +
+  ggplot2::scale_fill_manual(values = c(item_ref = colours[["muted"]], item = colours[["item"]],
+                                        pase_ref = colours[["pase_muted"]], pase = colours[["pase"]]),
+                             guide = "none") +
+  ggplot2::scale_x_continuous(labels = function(x) paste0(100 * x, "%"), limits = c(0, x_top), expand = c(0, 0)) +
+  ggplot2::facet_wrap(~question, scales = "free_y") +
+  ggplot2::labs(x = "Share who are device-defined walkers (95% CI)", y = NULL) +
+  oaireport::theme_oai(base_size = 8)
+oaireport::save_figure(fig2, "brief_fig2", "2col", height = 2.6)
+print(fig2)
+pase72 <- vapply(as.character(0:3), function(l) pase("08", "frequency", "device_walker", l, "share")$estimate, numeric(1))
+cat(oaireport::table_note(sprintf(
+  "Share of participants who are device-defined walkers (%s, where a purposeful bout is at least %s minutes at %s counts/min or more), by reported walking frequency, with Wilson 95%% CIs. Walking item: validation sample, non-walkers and the walkers who answered how many times a month they walked. PASE: participants with a 48-month PASE answer, against %s. At 72 months the PASE shares run from %s (never) to %s (5–7 days).",
+  rule_short, fmt(bout_minutes), fmt(cutpoint), device_wave_text, pct(pase72[[1]]), pct(pase72[[4]])),
+  label = "Figure 2.", close_group = TRUE), sep = "\n")
+```
+
+Combining PASE's two walking answers (days × hours a day) gives an estimate of weekly walking. It ranks people only modestly against the device's purposeful-bout minutes (Spearman ρ `r range_text(rho_week)`), sits a median of about `r range_text(diff_week, 0)` minutes a week above the device, and agrees weakly on who walks at least `r fmt(guide)` minutes a week (Cohen's κ `r range_text(kappa_week)`). That is in line with studies of self-reported walking against device steps in older adults, which found ρ of 0.17 to 0.42 [@hagiwara2008; @heesch2011; @giles2009; @harris2009].
+
+```{r fig3}
+#| fig-height: 2.6
+#| results: asis
+cat(oaireport::figure_group(), sep = "\n")
+cal <- cp[cp$component == "weekly" & cp$comparator == "purposeful_week" & cp$statistic == "median", ]
+cal$level <- factor(cal$level, levels = unique(cal$level))  # the step writes the bins in order
+cal$visit_name <- wave_names[cal$visit]
+fig3 <- ggplot2::ggplot(cal, ggplot2::aes(level, estimate)) +
+  ggplot2::geom_pointrange(ggplot2::aes(ymin = lo, ymax = hi), colour = colours[["pase"]], size = 0.3) +
+  ggplot2::geom_text(ggplot2::aes(y = hi, label = paste0("n = ", count(n))), vjust = -0.6, size = 2.2,
+                     colour = "grey35", family = oaireport::oai_font()) +
+  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.15))) +
+  ggplot2::facet_wrap(~visit_name) +
+  ggplot2::labs(x = "Estimated weekly walking from PASE (hours per week)",
+                y = "Device purposeful-bout\nminutes per week") +
+  oaireport::theme_oai(base_size = 8)
+oaireport::save_figure(fig3, "brief_fig3", "2col", height = 2.6)
+print(fig3)
+cat(oaireport::table_note(sprintf(
+  "Device purposeful-bout minutes per week (point: median; bar: interquartile range) within each band of estimated weekly walking from PASE (days × hours a day at the PASE scoring midpoints), against %s. n: participants in the band. A self-report that tracked the device would show medians rising steadily from left to right.",
+  device_wave_text), label = "Figure 3.", close_group = TRUE), sep = "\n")
+```
+
+```{=typst}
+#pagebreak()
+```
+
+## Why counts aren't enough, and what steps would add
+
+```{r weak-link}
+#| results: asis
+cat(oaireport::callout(sprintf(
+  "A purposeful bout is any run of at least %s minutes at %s counts/min or more. Cycling, yard work or stairs count; slow walking may not. The device-defined walker is therefore a proxy, so part of the low specificity may belong to the reference rather than to the question.",
+  fmt(bout_minutes), fmt(cutpoint)), kind = "warn", title = "The weak link."), sep = "\n")
+```
+
+**Why it matters for Lo et al. 2022.** A record-level correction for misclassification divides by Youden's J, so a weak J makes the correction unstable. With the walker definition in use, a correction would scale the difference in walking prevalence between outcome groups by `r num(correction[[1]], 1)`; with the strictest frequency-based definition, by `r num(correction[[2]], 1)`.
+
+```{r fig4}
+#| fig-height: 2.1
+#| results: asis
+cat(oaireport::figure_group(), sep = "\n")
+cut_names <- c(cut1 = "Any walker (in use)", cut2 = sprintf("At least %s", labels$times[2]), cut3 = labels$times[3])
+cf <- do.call(rbind, lapply(names(cut_names), function(k) {
+  r <- item("lo_subset", "times", k, "correction")
+  data.frame(definition = cut_names[[k]], estimate = r$estimate, lo = r$lo, hi = r$hi)
+}))
+cf$definition <- factor(cf$definition, levels = rev(cut_names))
+top <- max(c(cf$hi, cf$estimate), na.rm = TRUE) * 1.15
+cf$hi_draw <- ifelse(is.na(cf$hi), top, cf$hi)
+fig4 <- ggplot2::ggplot(cf, ggplot2::aes(estimate, definition)) +
+  ggplot2::geom_col(fill = colours[["item"]], width = 0.6) +
+  ggplot2::geom_errorbar(data = cf[!is.na(cf$hi), , drop = FALSE], ggplot2::aes(xmin = lo, xmax = hi),
+                         width = 0.25, linewidth = 0.3, orientation = "y") +
+  ggplot2::geom_segment(data = cf[is.na(cf$hi), , drop = FALSE],
+                        ggplot2::aes(x = lo, xend = hi_draw, yend = definition), linewidth = 0.4,
+                        arrow = ggplot2::arrow(length = ggplot2::unit(0.08, "in"))) +
+  ggplot2::geom_text(ggplot2::aes(x = 0, label = paste0(num(estimate, 1), "×")), hjust = -0.2,
+                     colour = "white", size = 2.8, fontface = "bold", family = oaireport::oai_font()) +
+  ggplot2::scale_x_continuous(limits = c(0, top), expand = c(0, 0)) +
+  ggplot2::labs(x = "Correction factor 1/J (95% CI)", y = NULL) +
+  oaireport::theme_oai(base_size = 8)
+oaireport::save_figure(fig4, "brief_fig4", "2col", height = 2.1)
+print(fig4)
+cat(oaireport::table_note(sprintf(
+  "Lo et al. 2022 participants who answered the walking item and have device data (%s classified). For each walker definition by the times-per-month answer, 1/J is the factor by which a record-level misclassification correction scales the difference in walking prevalence between outcome groups, and its sampling error; the interval comes from J's 95%% CI.%s",
+  count(item("lo_subset", "times", "cut1", "correction")$n),
+  if (any(is.na(cf$hi))) " An arrow marks an interval with no upper limit (J's interval reaches 0)." else ""),
+  label = "Figure 4.", close_group = TRUE), sep = "\n")
+```
+
+```{r steps-add}
+#| results: asis
+cat(oaireport::callout(
+  "Walking-specific references: steps per day, minutes at 100 steps/min or more (about 3 METs in adults aged 61 to 85, without knee OA) and step-based bouts. OAI cadence bands at this threshold have already been used.",
+  kind = "note", title = "What steps and cadence add.", cite = c("tudorlocke2021", "fenton2018", "master2021")), sep = "\n")
+cat(oaireport::callout(
+  "GT1M step counts come from the device's step-detection algorithm, which undercounts slow walking: 64% of steps were counted at 54 m/min, and 19% were missed below 0.8 m/s in adults around 79 years old. How should slow walkers with knee OA be handled?",
+  kind = "warn", title = "An open question for your expertise.", cite = c("abel2008", "storti2008")), sep = "\n")
+```
+
+```{=typst}
+#pagebreak()
+```
+
+## The proposed joint study
+
+**Aim.** Revalidate the 96-month walking item and PASE walking, and redo the bias analysis of Lo et al. 2022, against walking-specific references (steps per day, minutes at 100 steps/min or more, step-based bouts) defined together and pre-specified.
+
+```{r roles}
+roles <- data.frame(
+  `You bring` = c("Step and cadence data, and how they were derived",
+                  "Step-algorithm expertise; handling of slow gait",
+                  "Co-design of the reference definitions"),
+  `We bring` = c("Coding of the walking item and PASE; an open, reproducible pipeline",
+                 "Validation statistics; the Lo et al. 2022 bias analysis",
+                 "Drafting; shared code; aggregate-only outputs"),
+  check.names = FALSE)
+oaireport::compare_table(roles, widths = c(1, 1), multipage = FALSE)
+```
+
+**What we would need.** The existing daily step and cadence-band summaries at 48 and 72 months [@lo2015; @fenton2018; @master2021]; per-minute steps, if available; and a short description of how the steps were derived. The public release holds activity counts only: which files hold the steps?
+
+```{r built}
+#| results: asis
+matched <- sprintf("%s of %s release person-days at %s", count(repro$matched_days), count(repro$release_days),
+                   repro$wave_name)
+differ_text <- if (all(repro$mv_mismatch_days == 0 & repro$bout_mismatch_days == 0)) {
+  "with the same moderate-to-vigorous and bout minutes on every matched day"
+} else sprintf("with moderate-to-vigorous minutes differing on %s and bout minutes on %s matched days",
+               count(sum(repro$mv_mismatch_days)), count(sum(repro$bout_mismatch_days)))
+cat(oaireport::callout(sprintf(
+  "Our pipeline rebuilds the OAI release's day-level accelerometry files from the minute counts, following the OAI processing standard: it matches %s, %s. A step-based reference therefore drops into the same validation and bias analyses.",
+  paste(matched, collapse = " and "), differ_text), kind = "note", title = "Already built.", cite = "song2010"),
+  sep = "\n")
+```
+
+**Outputs.** A joint paper (or papers) and shared, open code.
+
+```{=typst}
+#pagebreak()
+```
+
+**Appendix.** The technical report that follows gives the methods and every result of the validation and the bias analysis, generated from the same analysis run as this brief.

@@ -41,3 +41,6 @@ bundles/
 
 # Local brainstorming and plan-execution scratch (superpowers)
 .superpowers/
+
+# Untracked per-user settings, e.g. the brief's author and contact block
+*.local.yml

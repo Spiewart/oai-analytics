@@ -59,6 +59,9 @@ aggregate = [
 ]
 
 [report]
-entry = "report.qmd"
+documents = ["brief.qmd", "report.qmd"]
+combined = "walking_validation_brief.pdf"
+part_titles = ["Brief", "Appendix: technical report"]
 runs = ["default"]
-assets = ["ASSUMPTIONS.md"]
+assets = ["ASSUMPTIONS.md", "references.bib"]
+local_assets = ["brief.local.yml"]

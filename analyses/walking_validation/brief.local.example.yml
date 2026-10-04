@@ -1,0 +1,9 @@
+# Copy to brief.local.yml (git-ignored) and fill in; the brief prints these on page 1.
+authors:
+  - name: First Author
+    affiliation: Institution
+  - name: Second Author
+    affiliation: Institution
+contact:
+  name: First Author
+  email: first.author@example.org

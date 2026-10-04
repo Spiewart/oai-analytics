@@ -8,6 +8,7 @@ import dataclasses
 import functools
 import json
 import os
+import re
 import shutil
 import subprocess
 from pathlib import Path
@@ -15,6 +16,7 @@ from types import SimpleNamespace
 
 import polars as pl
 import pytest
+from pypdf import PdfReader
 
 from oai.assumptions import load_assumptions
 from oai.config import ConfigError, Settings, load_settings
@@ -455,14 +457,23 @@ def test_walking_validation_report_renders(fast_run):
     # run and rendering never replaces the developer's report.
     settings, analysis = fast_run.settings, fast_run.analysis
     shutil.copytree(fast_run.out, run_results_dir(analysis, settings, "default"))
-    [pdf] = render_report(analysis, settings, echo=lambda _: None)
-    assert pdf.stat().st_size > 50_000
-    figures = {p.name for p in (pdf.parent / "figures").iterdir()}
-    for name in ("known_groups", "strata", "tipping", "forest_bias"):
+    pdfs = render_report(analysis, settings, echo=lambda _: None)
+    assert [p.name for p in pdfs] == ["brief.pdf", "report.pdf", "walking_validation_brief.pdf"]
+    pages = [len(PdfReader(p).pages) for p in pdfs]
+    assert pages[0] <= 6, f"brief has {pages[0]} pages"
+    assert pages[2] == pages[0] + pages[1]
+    for pdf in pdfs[:2]:
+        text = "\n".join(page.extract_text() for page in PdfReader(pdf).pages)
+        for bad in (r"\bNA\b", r"\bNaN\b", r"\bInf\b", r"`r "):
+            assert not re.search(bad, text), f"{bad!r} in {pdf.name}"
+    if not (analysis.root / "brief.local.yml").exists():
+        assert "Authors and contact to be added" in PdfReader(pdfs[0]).pages[0].extract_text()
+    figures = {p.name for p in (pdfs[0].parent / "figures").iterdir()}
+    for name in ("known_groups", "strata", "tipping", "forest_bias", "brief_fig1", "brief_fig4"):
         assert {f"{name}.pdf", f"{name}.png"} <= figures, name
     egress = settings.project["egress"]
     report = check_egress(
-        pdf.parent,
+        pdfs[0].parent,
         min_cell=egress["min_cell"],
         small_cell=egress["small_cell"],
         ignore_id_pattern_columns=egress["ignore_id_pattern_columns"],
