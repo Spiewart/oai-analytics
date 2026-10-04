@@ -22,14 +22,18 @@ typst_text <- function(x) {
 }
 
 #' An estimate with its 95% interval: "0.89 (0.86–0.91)"; " to " when a limit is negative
+#'
+#' The interval cannot break across lines, so a table cell wraps only at the space before "(":
+#' a word joiner (U+2060) follows the en dash and the " to " has no-break spaces. Negative
+#' numbers print a true minus (U+2212).
 fmt_ci <- function(est, lo, hi, digits = 2) {
   n <- max(length(est), length(lo), length(hi))
   est <- rep_len(est, n)
   lo <- rep_len(lo, n)
   hi <- rep_len(hi, n)
-  f <- function(x) formatC(x, format = "f", digits = digits, big.mark = ",")
-  sep <- ifelse(!is.na(lo) & !is.na(hi) & (lo < 0 | hi < 0), " to ", "–")
-  ifelse(is.na(est), "–",
+  f <- function(x) sub("^-", "\u2212", formatC(x, format = "f", digits = digits, big.mark = ","))
+  sep <- ifelse(!is.na(lo) & !is.na(hi) & (lo < 0 | hi < 0), "\u00a0to\u00a0", "\u2013\u2060")
+  ifelse(is.na(est), "\u2013",
          ifelse(is.na(lo) | is.na(hi), f(est), paste0(f(est), " (", f(lo), sep, f(hi), ")")))
 }
 

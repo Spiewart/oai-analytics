@@ -17,7 +17,7 @@ format:
       y: 0.9in
     include-in-header:
       text: |
-        #set text(hyphenate: false)
+        #set text(hyphenate: false, overhang: false)
         #set page(footer: context align(center, text(size: 8pt, fill: luma(90))[Technical report — page #counter(page).display()]))
 execute:
   echo: false
@@ -239,10 +239,10 @@ legend$summary_level <- sprintf("Published Table 2 counts of knees in the Lo 202
 ```{r reading-guide}
 #| results: asis
 cat(oaireport::reading_guide(
-  c(`Item walker` = item_def,
-    `Device walker` = paste(device_def, device_detail),
-    `PASE walker` = pase_def),
-  notation = "Estimates are shown with their 95% confidence interval as 0.89 (0.86–0.91); “to” joins the limits when one is negative; “–” marks a value that cannot be computed. Tables and figures are numbered A1, A2, …; each legend defines its own labels and population."),
+  c(`Item walker` = sub("^[^:]+: ", "", item_def),
+    `Device walker (the reference standard)` = paste(sub("^[^:]+: ", "", device_def), device_detail),
+    `PASE walker` = sub("^[^:]+: ", "", pase_def)),
+  notation = "Estimates are shown with their 95% confidence interval as 0.89 (0.86–0.91); “to” joins the limits when one is negative; “–” marks a value that cannot be computed. Tables and figures are numbered A1, A2, … (the assumptions ledger at the end is not); each legend defines its own labels and population."),
   sep = "\n")
 ```
 
@@ -321,7 +321,8 @@ kg_plot <- ggplot2::ggplot(long, ggplot2::aes(x = median, y = group, colour = gr
   ggplot2::geom_pointrange(ggplot2::aes(xmin = q25, xmax = q75), size = 0.3, linewidth = 0.6) +
   ggplot2::facet_wrap(~measure, scales = "free_x") +
   ggplot2::scale_x_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE, trim = TRUE)) +
-  ggplot2::scale_colour_manual(values = oaireport::oai_palette[1:2], guide = "none") +
+  ggplot2::scale_colour_manual(values = c(Walkers = oaireport::brief_colours[["item"]],
+                                          `Non-walkers` = oaireport::brief_colours[["muted"]]), guide = "none") +
   ggplot2::labs(x = "Median (interquartile range)", y = NULL) + oaireport::theme_oai()
 oaireport::save_figure(kg_plot, "known_groups", "2col", height = 2.4)
 kg_plot
@@ -439,7 +440,7 @@ st_plot <- ggplot2::ggplot(st, ggplot2::aes(x = estimate, y = label, colour = sa
   ggplot2::geom_pointrange(ggplot2::aes(xmin = lo, xmax = hi), size = 0.25, linewidth = 0.5,
                            position = ggplot2::position_dodge(width = 0.5, reverse = TRUE)) +
   ggplot2::facet_wrap(~measure) + ggplot2::scale_x_continuous(limits = c(0, 1)) +
-  ggplot2::scale_colour_manual(values = stats::setNames(oaireport::oai_palette[1:2], sample_names)) +
+  ggplot2::scale_colour_manual(values = stats::setNames(unname(oaireport::brief_colours[c("item", "navy")]), sample_names)) +
   ggplot2::labs(x = "Estimate (95% CI)", y = NULL) + oaireport::theme_oai()
 oaireport::save_figure(st_plot, "strata", "2col", height = 3.8)
 st_plot
@@ -488,7 +489,8 @@ pairing_text <- if (pairing == "adjacent_wave") {
 The same statistics for the PASE walking item (walking outside the home in the past 7 days) at each visit, as a benchmark for the walking item. `r pairing_text`
 
 ```{=typst}
-#show figure: set block(sticky: false)
+// Tighter rows for this one long table, so it and its legend fit on the page with the section's opening
+#set table(inset: (x: 5pt, y: 3pt))
 ```
 
 ```{r pase}
@@ -514,7 +516,7 @@ for (v in unique(pz$visit)) {
 block_start <- which(!duplicated(pase_rows$measure))
 block_names <- named(pase_rows$measure[block_start], c(measure_names, device_walker = "Against the device walker"))
 tinytable::group_tt(
-  oaireport::compare_table(pase_wide, labels = pase_labels, widths = c(2.15, 2.2, 0.68, 2.2, 0.68, 2.2, 0.68)),
+  oaireport::compare_table(pase_wide, labels = pase_labels, widths = c(2.15, 2.2, 0.68, 2.2, 0.68, 2.2, 0.68), multipage = FALSE),
   i = as.list(stats::setNames(block_start, block_names)))
 ```
 
@@ -529,7 +531,7 @@ cat(oaireport::table_note(pase_note, label = lab("Table")), sep = "\n")
 ```
 
 ```{=typst}
-#show figure: set block(sticky: true)
+#set table(inset: 5pt)
 ```
 
 # Answer-level sub-analyses
@@ -847,7 +849,7 @@ if (nrow(hx)) {
   agree <- ggplot2::ggplot(poly, ggplot2::aes(px, py, group = cell, fill = count)) +
     ggplot2::geom_polygon(colour = NA) +
     ggplot2::geom_hline(data = ref_lines, ggplot2::aes(yintercept = y, linetype = kind), linewidth = 0.3) +
-    ggplot2::scale_fill_gradient(low = oaireport::brief_colours[["tint"]], high = oaireport::brief_colours[["navy"]], name = "Participants") +
+    ggplot2::scale_fill_gradient(low = oaireport::brief_colours[["muted"]], high = oaireport::brief_colours[["navy"]], name = "Participants") +
     ggplot2::scale_linetype_manual(values = c(`Median difference` = "solid", `Limits of agreement` = "dashed"), name = NULL) +
     ggplot2::scale_x_continuous(labels = thousands) + ggplot2::scale_y_continuous(labels = thousands) +
     ggplot2::facet_wrap(~visit_name) +
@@ -1038,7 +1040,12 @@ axis_limits <- c(0.01, 100)
 axis_breaks <- c(0.01, 0.1, 1, 10, 100)
 forest <- oaireport::forest_plot(est, facet = "model", sources = sources) +
   ggplot2::scale_x_log10(breaks = axis_breaks, labels = format(axis_breaks, scientific = FALSE, drop0trailing = TRUE, trim = TRUE)) +
-  ggplot2::coord_cartesian(xlim = axis_limits)
+  ggplot2::coord_cartesian(xlim = axis_limits) +
+  # The item's colour for our replication and navy for the published result; orange is PASE's
+  ggplot2::scale_colour_manual(values = c(Published = oaireport::brief_colours[["navy"]],
+                                          Replication = oaireport::brief_colours[["item"]],
+                                          `Bias-adjusted (non-differential)` = oaireport::oai_palette[3],
+                                          `Bias-adjusted (differential)` = oaireport::oai_palette[4]), breaks = sources)
 oaireport::save_figure(forest, "forest_bias", "2col", height = 4.4)
 forest
 forest_note <- sprintf("Knees of the Lo 2022 cohort, by outcome. Panels: the unadjusted and adjusted models; rows: outcomes. Published: odds ratio and 95%% CI from Lo et al. 2022 Table 2; replication: ours; bias-adjusted: median and 95%% simulation interval over the kept draws, under non-differential and differential misclassification. Intervals are cut at the axis limits (%s and %s). %s",

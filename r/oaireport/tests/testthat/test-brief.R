@@ -5,15 +5,21 @@ test_that("typst_text escapes Typst markup characters", {
   expect_error(typst_text(1), "character")
 })
 
-test_that("fmt_ci joins limits with an en dash, or 'to' when a limit is negative", {
-  expect_equal(fmt_ci(0.891, 0.862, 0.913), "0.89 (0.86–0.91)")
-  expect_equal(fmt_ci(105, -153, 1080, digits = 0), "105 (-153 to 1,080)")
-  expect_equal(fmt_ci(NA, 1, 2), "–")
+test_that("fmt_ci joins limits with an unbreakable en dash, or 'to' when a limit is negative", {
+  # U+2060 (word joiner) follows the en dash and U+00A0 surrounds "to", so a cell breaks only at the
+  # space before "("; negative numbers print a true minus (U+2212)
+  expect_equal(fmt_ci(0.891, 0.862, 0.913), "0.89 (0.86\u2013\u20600.91)")
+  expect_equal(fmt_ci(105, -153, 1080, digits = 0), "105 (\u2212153\u00a0to\u00a01,080)")
+  expect_equal(fmt_ci(NA, 1, 2), "\u2013")
   expect_equal(fmt_ci(0.5, NA, 0.6), "0.50")
+  expect_equal(fmt_ci(-0.5, NA, NA), "\u22120.50")
+  expect_equal(fmt_ci(-0.1, 0.05, 0.2), "\u22120.10 (0.05\u2013\u20600.20)")
   expect_equal(fmt_ci(c(0.1, 0.2), c(0.05, -0.1), c(0.2, 0.3)),
-               c("0.10 (0.05–0.20)", "0.20 (-0.10 to 0.30)"))
-  expect_equal(fmt_ci(c(0.1, 0.2), 0.05, 0.3), c("0.10 (0.05–0.30)", "0.20 (0.05–0.30)"))
-  expect_equal(fmt_ci(0.5, c(0.1, 0.2), c(0.6, 0.7)), c("0.50 (0.10–0.60)", "0.50 (0.20–0.70)"))
+               c("0.10 (0.05\u2013\u20600.20)", "0.20 (\u22120.10\u00a0to\u00a00.30)"))
+  expect_equal(fmt_ci(c(0.1, 0.2), 0.05, 0.3),
+               c("0.10 (0.05\u2013\u20600.30)", "0.20 (0.05\u2013\u20600.30)"))
+  expect_equal(fmt_ci(0.5, c(0.1, 0.2), c(0.6, 0.7)),
+               c("0.50 (0.10\u2013\u20600.60)", "0.50 (0.20\u2013\u20600.70)"))
 })
 
 test_that("callout emits one raw Typst block with escaped text, a title and citations", {
