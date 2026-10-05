@@ -59,9 +59,10 @@ aggregate = [
 ]
 
 [report]
-documents = ["brief.qmd", "report.qmd"]
+documents = ["brief.qmd", "report.qmd", "clinical.qmd"]
 combined = "walking_validation_brief.pdf"
-part_titles = ["Brief", "Appendix: technical report"]
+combined_documents = ["brief.qmd", "clinical.qmd"]
+part_titles = ["Brief", "Appendix: results"]
 runs = ["default"]
 assets = ["ASSUMPTIONS.md", "references.bib", "report_setup.R"]
 local_assets = ["brief.local.yml"]

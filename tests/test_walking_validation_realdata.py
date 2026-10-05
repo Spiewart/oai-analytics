@@ -449,7 +449,7 @@ def _report_tools_ready() -> bool:
 
 
 # right edge of the text block, in points: US-letter width less the Typst page's right margin
-RIGHT_EDGE = {"brief.pdf": 550.8, "report.pdf": 547.2}
+RIGHT_EDGE = {"brief.pdf": 550.8, "report.pdf": 547.2, "clinical.pdf": 550.8}
 PLACEHOLDER = "Authors and contact to be added"
 
 
@@ -468,12 +468,14 @@ def test_walking_validation_report_renders(fast_run):
     settings, analysis = fast_run.settings, fast_run.analysis
     shutil.copytree(fast_run.out, run_results_dir(analysis, settings, "default"))
     pdfs = render_report(analysis, settings, echo=lambda _: None)
-    assert [p.name for p in pdfs] == ["brief.pdf", "report.pdf", "walking_validation_brief.pdf"]
-    pages = [len(PdfReader(p).pages) for p in pdfs]
-    assert pages[0] == 5, f"brief has {pages[0]} pages"
-    assert pages[1] <= 18, f"report has {pages[1]} pages"
-    assert pages[2] == pages[0] + pages[1]
-    for pdf in pdfs[:2]:
+    names = [p.name for p in pdfs]
+    assert names == ["brief.pdf", "report.pdf", "clinical.pdf", "walking_validation_brief.pdf"]
+    pages = {p.name: len(PdfReader(p).pages) for p in pdfs}
+    assert pages["brief.pdf"] <= 6, pages
+    assert pages["report.pdf"] <= 18, pages
+    assert pages["clinical.pdf"] <= 12, pages
+    assert pages["walking_validation_brief.pdf"] == pages["brief.pdf"] + pages["clinical.pdf"]
+    for pdf in pdfs[:3]:
         text = "\n".join(page.extract_text() for page in PdfReader(pdf).pages)
         for bad in (r"\bNA\b", r"\bNaN\b", r"\bInf\b", r"`r "):
             assert not re.search(bad, text), f"{bad!r} in {pdf.name}"
@@ -485,8 +487,8 @@ def test_walking_validation_report_renders(fast_run):
         assert PLACEHOLDER not in page_one
     else:
         assert PLACEHOLDER in page_one
-    assert _top_bookmarks(pdfs[2]) == ["Brief", "Appendix: technical report"]
-    for pdf in pdfs[:2]:
+    assert _top_bookmarks(pdfs[3]) == ["Brief", "Appendix: results"]
+    for pdf in pdfs[:3]:
         edge = max_right_edge(pdf)
         if edge is not None:  # only the margin check needs poppler
             assert edge <= RIGHT_EDGE[pdf.name] + 0.01, pdf.name

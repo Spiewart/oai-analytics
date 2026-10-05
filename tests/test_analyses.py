@@ -51,3 +51,10 @@ def test_inputs_resolve_against_real_release(name):
     catalog = catalog_for(get_settings().data_dir)
     for spec in load_analysis(REPO / "analyses" / name).inputs:
         assert catalog.resolve_input(spec), spec
+
+
+def test_walking_validation_clinical_renders_after_the_documents_whose_figures_it_reuses():
+    # clinical.qmd shows figures/brief_fig1.png (brief.qmd) and figures/tipping.png (report.qmd)
+    documents = load_analysis(REPO / "analyses" / "walking_validation").report.documents
+    assert documents.index("clinical.qmd") > documents.index("brief.qmd")
+    assert documents.index("clinical.qmd") > documents.index("report.qmd")

@@ -1,0 +1,372 @@
+---
+title: "Walking question and accelerometry in the OAI: results"
+subtitle: "Appendix to the brief: every result in plain language. The full technical report is available on request."
+mainfont: Arial
+fontsize: 10pt
+brand:
+  typography:
+    headings:
+      color: "#0b2e59"
+bibliography: references.bib
+bibliographystyle: american-medical-association
+format:
+  typst:
+    papersize: us-letter
+    margin:
+      x: 0.85in
+      y: 0.75in
+    include-in-header:
+      text: |
+        #set text(hyphenate: false, overhang: false)
+        #set bibliography(title: [References])
+        #set page(footer: context align(center, text(size: 8pt, fill: luma(90))[Appendix — page #counter(page).display()]))
+        // The AMA style ends every title with a full stop, which doubles after a title ending in "?"
+        #show bibliography: it => { show regex("\\?\\."): "?"; it }
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: cairo_pdf
+    fig-width: 7
+---
+
+```{=typst}
+#set par(justify: false)
+```
+
+```{r setup}
+source("report_setup.R")
+lab <- oaireport::numberer("A")
+colours <- oaireport::brief_colours
+notes <- oaireport::tech_notes(c(
+  median_difference = "Median difference: the Hodges–Lehmann estimate, the median of all differences between a member of one group and a member of the other; it is robust to skewed data. Its 95% CI comes from the Wilcoxon rank-sum test.",
+  bootstrap_ci = sprintf("Bootstrap 95%% CI: participants are resampled with replacement %s times, the estimate is recomputed each time, and the middle 95%% of the results forms the interval.", fmt(assumption("validity.bootstrap_reps"))),
+  trend_test = sprintf("Test for trend: the Jonckheere–Terpstra test of whether a measure rises across ordered groups; its p-value comes from %s random permutations of the group labels.", count(jt_b))
+))
+# Device measures per day: counts without decimals, minutes to 1 decimal
+cnum <- function(x, measure) ifelse(measure == "counts_per_day", num(x, 0), num(x, 1))
+cnum_ci <- function(est, lo, hi, measure) {
+  ifelse(measure == "counts_per_day", oaireport::fmt_ci(est, lo, hi, 0), oaireport::fmt_ci(est, lo, hi, 1))
+}
+plain_measures <- c(purposeful_min = sprintf("Minutes in bouts of %s+ minutes", purposeful_minutes),
+                    counts_per_day = "Activity counts", light_min = "Light-activity minutes")
+bold_rule <- "Bold: the 95% CI excludes no difference (0, or 1 for odds ratios)."
+# A figure another document saved (the brief and report.qmd render before this document)
+figure_file <- function(name, width = "100%") {
+  path <- file.path("figures", paste0(name, ".png"))
+  if (!file.exists(path)) {
+    stop("clinical.qmd: ", path, " is missing; the document that saves it must render before clinical.qmd ([report] documents)", call. = FALSE)
+  }
+  c("", "```{=typst}", sprintf('#image("%s", width: %s)', path, width), "```", "")
+}
+# Sensitivity, specificity, predictive values and Youden's J in one sample (no bold: no null)
+class_table <- function(sample) {
+  get <- function(m, col = "estimate") pick(sample, m, col)
+  rows <- c(se = "Sensitivity", sp = "Specificity", ppv = "Positive predictive value", npv = "Negative predictive value")
+  data.frame(
+    Measure = c(unname(rows), "Youden's J"),
+    `Estimate (95% CI)` = c(vapply(names(rows), function(m) oaireport::fmt_ci(get(m), get(m, "lo"), get(m, "hi")), character(1)),
+                            num(youden(sample))),
+    `Based on` = c(vapply(names(rows), function(m) sprintf("%s of %s", count(get(m, "k")), count(get(m, "n"))), character(1)),
+                   "sensitivity + specificity − 1"),
+    check.names = FALSE)
+}
+flow <- stats::setNames(run$flow$persons, run$flow$step)
+n_val <- run$metrics[["sample.validation.persons"]]
+n_walk <- run$metrics[["sample.validation.walkers"]]
+n_lo <- run$metrics[["sample.lo_subset.persons"]]
+kg <- run$validity_known_groups[run$validity_known_groups$sample == "validation", ]
+kg_bout <- kg[kg$measure == "purposeful_min", ]
+j_strict <- ci_get("validation", "times", "cut3", "j")
+grid_np <- run$bias_tipping[run$bias_tipping$outcome == "new_pain" & !is.na(run$bias_tipping$or), ]
+# Plain wording of the device rule and the valid-day rule (no "purposeful bout", no "wave")
+rule_plain <- gsub("purposeful ", "", rule_short)
+valid_day_plain <- sub("a valid wave", "a usable visit", valid_day)
+# The adjusted difference's CI is a bootstrap one only when the run says so
+boot_adjusted <- assumption("validity.median_regression_se") == "boot"
+```
+
+## Key points
+
+- `r count(n_val)` participants answered the 96-month question on walking for exercise and had accelerometer data at 48 or 72 months; `r pct(n_walk / n_val)` said they walk.
+- People who said they walk recorded a median of `r num(kg_bout$hl, 1)` more minutes a day in bouts of `r purposeful_minutes`+ minutes (95% CI `r num(kg_bout$hl_lo, 1)`–`r num(kg_bout$hl_hi, 1)`).
+- The yes/no answer separates device-defined walkers poorly (sensitivity `r num(pick("validation", "se"))`, specificity `r num(pick("validation", "sp"))`, Youden's J `r num(youden("validation"))`); asking how often helps (J `r num(j_strict)` for walking `r tolower(cut_names("times")[["cut3"]])`).
+- In the Lo et al. 2022 participants [@lo2022], if misclassification is the same in people with and without the outcome, the association between walking and less new frequent knee pain holds in `r sum(grid_np$excludes_1)` of `r nrow(grid_np)` plausible accuracy settings.
+- Activity counts are not specific to walking; a step-based device measure would show whether the question and the device measure the same thing.
+
+```{r words}
+#| results: asis
+cat(oaireport::reading_guide(c(
+  `Walker (by the question)` = "answered yes to the 96-month question “walked for exercise since age 50” (at least 20 minutes a day, at least 10 times).",
+  `Device-defined walker` = sprintf("the accelerometer recorded %s; a bout is %s or more minutes of moderate-to-vigorous activity.", rule_plain, purposeful_minutes),
+  `PASE walker` = if (pase_threshold == 0) "reported walking outside the home on at least one day in the past 7 days (PASE, the Physical Activity Scale for the Elderly)." else sprintf("a PASE walking score above %s (PASE, the Physical Activity Scale for the Elderly).", fmt(pase_threshold)),
+  `Sensitivity` = "of the people the device calls walkers, the share who said they walk.",
+  `Specificity` = "of the people the device calls non-walkers, the share who said they don't.",
+  `Predictive values` = "of the people who said they walk, the share the device calls walkers (PPV); of those who said they don't, the share it calls non-walkers (NPV).",
+  `Youden's J` = "sensitivity + specificity − 1: 0 means no better than chance, 1 means perfect.",
+  `95% CI` = "the 95% confidence interval, written as 0.89 (0.86–0.91)."),
+  notation = paste(bold_rule, "Letters in the text (a, b, …) link to the technical notes at the end."),
+  title = "Words used in this appendix"), sep = "\n")
+```
+
+```{r who}
+oaireport::compare_table(data.frame(
+  Part = c("Part 1. Does the walking question agree with the device?", "Part 2. What the agreement means for Lo et al. 2022"),
+  Who = c("Answered the walking question and have accelerometer data at 48 or 72 months",
+          "Of those, members of the Lo et al. 2022 cohort"),
+  Participants = count(c(n_val, n_lo)), check.names = FALSE), widths = c(2.4, 3, 1), multipage = FALSE)
+```
+
+```{=typst}
+#pagebreak()
+```
+
+# Part 1. Does the walking question agree with the device?
+
+This part uses all `r count(n_val)` participants with a walking answer and accelerometer data.
+
+## Who was studied
+
+Table A1 shows how the sample was formed.
+
+```{=typst}
+#block(breakable: false)[
+```
+
+```{r a-flow}
+oaireport::compare_table(data.frame(
+  Group = c("Answered the walking question (96 months)", "…with accelerometer data at 48 or 72 months",
+            "Said they walk", "Said they don't", "Walkers by the device"),
+  Participants = count(c(flow[["answered_walking_item"]], flow[["with_valid_device_wave"]], n_walk, n_val - n_walk,
+                         run$metrics[["sample.validation.device_walkers"]])),
+  check.names = FALSE), widths = c(4, 1.2), multipage = FALSE)
+```
+
+```{r note-a-flow}
+#| results: asis
+cat(oaireport::table_note(sprintf("Participants of the Osteoarthritis Initiative who answered the walking question at the 96-month visit, and of those the ones with usable accelerometer data at the 48- or 72-month visit (%s).", valid_day_plain), label = lab("Table"), close_group = TRUE), sep = "\n")
+```
+
+## Do people who say they walk move more?
+
+People who said they walk recorded more activity than those who said they don't on `r sum(oaireport::ci_excludes(kg$hl_lo, kg$hl_hi))` of `r nrow(kg)` device measures. Table A2 gives the median difference`r notes$ref("median_difference")` with its 95% CI, and the difference adjusted for age, sex and body-mass index`r notes$ref("median_regression")` with its 95% CI`r if (boot_adjusted) notes$ref("bootstrap_ci") else ""`; Figure A1 shows the spread.
+
+```{=typst}
+#block(breakable: false)[
+```
+
+```{r a-known-groups}
+kg_table <- data.frame(
+  `Device measure, per day` = named(kg$measure, plain_measures),
+  walk = cnum(kg$median_walkers, kg$measure),
+  dont = cnum(kg$median_nonwalkers, kg$measure),
+  diff = cnum_ci(kg$hl, kg$hl_lo, kg$hl_hi, kg$measure),
+  `Adjusted difference (95% CI)` = cnum_ci(kg$adj_diff, kg$adj_lo, kg$adj_hi, kg$measure),
+  check.names = FALSE)
+names(kg_table)[2:4] <- c(sprintf("Said they walk, median (n\u00a0=\u00a0%s)", count(kg$n_walkers[1])),
+                          sprintf("Said they don't, median (n\u00a0=\u00a0%s)", count(kg$n_nonwalkers[1])),
+                          "Difference (95%\u00a0CI)")
+kg_bold <- cbind(FALSE, FALSE, FALSE, oaireport::ci_excludes(kg$hl_lo, kg$hl_hi), oaireport::ci_excludes(kg$adj_lo, kg$adj_hi))
+oaireport::compare_table(kg_table, widths = c(2.2, 1.5, 1.5, 1.7, 1.7), multipage = FALSE, bold = kg_bold)
+```
+
+```{r note-a-known-groups}
+#| results: asis
+cat(oaireport::table_note(paste("Validation sample. Medians are per day of accelerometer wear; the difference is people who said they walk minus those who said they don't, and the adjusted difference allows for age, sex and body-mass index.", bold_rule), label = lab("Table"), close_group = TRUE), sep = "\n")
+```
+
+```{r a-known-groups-figure}
+#| fig-height: 2.6
+#| results: asis
+cat(oaireport::figure_group(), sep = "\n")
+kgf <- data.frame(
+  measure = rep(kg$measure, 2),
+  group = rep(c("Said they walk", "Said they don't"), each = nrow(kg)),
+  median = c(kg$median_walkers, kg$median_nonwalkers),
+  q25 = c(kg$q25_walkers, kg$q25_nonwalkers), q75 = c(kg$q75_walkers, kg$q75_nonwalkers))
+kgf$measure <- factor(named(kgf$measure, plain_measures), levels = unname(plain_measures))
+fig_kg <- ggplot2::ggplot(kgf, ggplot2::aes(median, group, colour = group)) +
+  ggplot2::geom_pointrange(ggplot2::aes(xmin = q25, xmax = q75), size = 0.3) +
+  ggplot2::facet_wrap(~measure, scales = "free_x", ncol = 3) +
+  ggplot2::scale_x_continuous(labels = function(x) format(x, big.mark = ",", scientific = FALSE, trim = TRUE)) +
+  ggplot2::scale_colour_manual(values = c(`Said they walk` = colours[["item"]], `Said they don't` = colours[["muted"]]), guide = "none") +
+  ggplot2::labs(x = "Median (interquartile range), per day", y = NULL) + oaireport::theme_oai()
+oaireport::save_figure(fig_kg, "clinical_known_groups", "2col", height = 2.6)
+print(fig_kg)
+cat(oaireport::table_note("Validation sample. Point: median; bar: interquartile range (the middle half of participants).", label = lab("Figure"), close_group = TRUE), sep = "\n")
+```
+
+## Does more reported walking go with more recorded activity?
+
+Among people who said they walk, those reporting more lifetime walking sessions recorded more activity. Table A3 gives a test for trend`r notes$ref("trend_test")` across the three groups.
+
+```{=typst}
+#block(breakable: false)[
+```
+
+```{r a-dose}
+dz <- run$validity_dose[run$validity_dose$sample == "validation", ]
+dose_table <- data.frame(
+  `Device measure, per day` = named(dz$measure, plain_measures),
+  none = cnum(dz$median_none, dz$measure), lower = cnum(dz$median_lower, dz$measure),
+  upper = cnum(dz$median_upper, dz$measure), `Test for trend, p` = comp_p(dz$jt_p), check.names = FALSE)
+names(dose_table)[2:4] <- c(sprintf("Said they don't (n\u00a0=\u00a0%s)", count(dz$n_none[1])),
+                            sprintf("Fewer sessions (n\u00a0=\u00a0%s)", count(dz$n_lower[1])),
+                            sprintf("More sessions (n\u00a0=\u00a0%s)", count(dz$n_upper[1])))
+dose_bold <- cbind(matrix(FALSE, nrow(dz), 4), !is.na(dz$jt_p) & dz$jt_p < 0.05)
+oaireport::compare_table(dose_table, widths = c(2.2, 1.4, 1.4, 1.4, 1.2), multipage = FALSE, bold = dose_bold)
+```
+
+```{r note-a-dose}
+#| results: asis
+cat(oaireport::table_note(sprintf("Validation sample; medians per day. Walkers are split at the %s of lifetime walking sessions (years × months a year × times a month, from their answers). Bold p: the measure rises across the three groups (p < 0.05).", assumption("exposure.amount_split")), label = lab("Table"), close_group = TRUE), sep = "\n")
+```
+
+## How well does “yes” pick out walkers by the device?
+
+Table A4 gives the sensitivity and specificity`r notes$ref("sensitivity_specificity")` of the answer against the device, with 95% CIs`r notes$ref("wilson_ci")`, the predictive values`r notes$ref("predictive_values")`, and Youden's J`r notes$ref("youden_j")`.
+
+```{=typst}
+#block(breakable: false)[
+```
+
+```{r a-class}
+oaireport::compare_table(class_table("validation"), widths = c(2.6, 2, 2.2), multipage = FALSE)
+```
+
+```{r note-a-class}
+#| results: asis
+cat(oaireport::table_note("Validation sample, against the device-defined walker. “Based on”: the count behind each share. Sensitivity, specificity and the predictive values are never bold; Youden's J has no CI here (Table A5 gives J with CIs for each definition).", label = lab("Table"), close_group = TRUE), sep = "\n")
+```
+
+## Does asking how often help?
+
+Defining walkers by how often they walk, rather than by any walking, raises Youden's J for both the walking question and the PASE walking item (Table A5, Figure A2).
+
+```{=typst}
+#block(breakable: false)[
+```
+
+```{r a-cuts}
+freq_rows <- function(get, names_k) do.call(rbind, lapply(names(names_k), function(k) data.frame(
+  Definition = names_k[[k]],
+  Sensitivity = oaireport::fmt_ci(get(k, "se"), get(k, "se", "lo"), get(k, "se", "hi")),
+  Specificity = oaireport::fmt_ci(get(k, "sp"), get(k, "sp", "lo"), get(k, "sp", "hi")),
+  `Youden's J (95% CI)` = oaireport::fmt_ci(get(k, "j"), get(k, "j", "lo"), get(k, "j", "hi")),
+  bold_j = oaireport::ci_excludes(get(k, "j", "lo"), get(k, "j", "hi")), check.names = FALSE)))
+item_names <- cut_names("times", prefix = "Walks at least", top_prefix = "Walks")
+pase_names <- cut_names("pase", prefix = "Walked at least", top_prefix = "Walked")
+blocks <- c(list(freq_rows(function(k, m, col = "estimate") ci_get("validation", "times", k, m, col), item_names)),
+            lapply(comp_visits, function(v) freq_rows(function(k, m, col = "estimate") cp_get(v, "frequency", "device_walker", k, m, col), pase_names)))
+titles <- c("Walking question: times per month", sprintf("PASE: days walked in the past week, %s", wave(comp_visits)))
+freq <- do.call(rbind, blocks)
+starts <- cumsum(c(1, vapply(blocks, nrow, integer(1))))[seq_along(blocks)]
+freq_bold <- cbind(matrix(FALSE, nrow(freq), 3), freq$bold_j)
+freq$bold_j <- NULL
+oaireport::compare_table(freq, widths = c(2.4, 1.6, 1.6, 1.8), multipage = FALSE, bold = freq_bold,
+                         groups = as.list(stats::setNames(starts, titles)))
+```
+
+```{r note-a-cuts}
+#| results: asis
+cat(oaireport::table_note(paste("Each row defines walkers by one answer cut-off and compares them with the device-defined walker: the walking question in the validation sample, PASE at each accelerometer visit (48 or 72 months).", bold_rule), label = lab("Table"), close_group = TRUE), sep = "\n")
+```
+
+```{r a-cuts-figure}
+#| results: asis
+cat(oaireport::figure_group(), sep = "\n")
+cat(figure_file("brief_fig1", width = "70%"), sep = "\n")
+cat(oaireport::table_note("The definitions of Table A5, each placed by its sensitivity and 1 − specificity. Further up and to the left is better agreement; grey dashed lines join points of equal Youden's J (value above the top edge; J = 0 is chance). Triangles: the definitions in use (any walking).", label = lab("Figure"), close_group = TRUE), sep = "\n")
+```
+
+PASE also asks how many hours a day people walked. Days × hours gives an estimate of weekly walking, which Table A6 compares with the device's minutes in bouts, as a rank correlation`r notes$ref("rank_correlation")`, a median difference, and agreement beyond chance`r notes$ref("kappa")` on walking `r fmt(assumption("reference.min_bout_minutes_per_week"))`+ minutes a week. Figure A3 shows the device's minutes within each band of reported weekly walking.
+
+```{=typst}
+#block(breakable: false)[
+```
+
+```{r a-weekly}
+guide <- assumption("reference.min_bout_minutes_per_week")
+wk <- do.call(rbind, lapply(comp_visits, function(v) {
+  r <- function(level, stat, col = "estimate") cp_get(v, "weekly", "purposeful_week", level, stat, col)
+  data.frame(
+    Visit = wave(v),
+    rho = oaireport::fmt_ci(r("all", "rho"), r("all", "rho", "lo"), r("all", "rho", "hi")),
+    diff = oaireport::fmt_ci(r("all", "median_diff"), r("all", "median_diff", "lo"), r("all", "median_diff", "hi"), 0),
+    kappa = oaireport::fmt_ci(r("guideline", "kappa"), r("guideline", "kappa", "lo"), r("guideline", "kappa", "hi")),
+    n = count_na(r("all", "median_diff", "n")),
+    b_rho = oaireport::ci_excludes(r("all", "rho", "lo"), r("all", "rho", "hi")),
+    b_diff = oaireport::ci_excludes(r("all", "median_diff", "lo"), r("all", "median_diff", "hi")),
+    b_kappa = oaireport::ci_excludes(r("guideline", "kappa", "lo"), r("guideline", "kappa", "hi")),
+    check.names = FALSE)
+}))
+wk_bold <- cbind(FALSE, wk$b_rho, wk$b_diff, wk$b_kappa, FALSE)
+wk <- wk[c("Visit", "rho", "diff", "kappa", "n")]
+names(wk)[2:4] <- c("Rank correlation (95%\u00a0CI)", "Reported − device, median minutes a week (95% CI)", sprintf("Agreement on %s+ minutes a week, kappa (95%% CI)", fmt(guide)))
+oaireport::compare_table(wk, widths = c(1.1, 1.8, 2, 2, 0.8), multipage = FALSE, bold = wk_bold)
+```
+
+```{r note-a-weekly}
+#| results: asis
+cat(oaireport::table_note(paste("Participants with a PASE walking answer and accelerometer data at the same visit. Reported weekly walking: days × hours a day from PASE; device: minutes a week in bouts of", purposeful_minutes, "or more minutes.", bold_rule), label = lab("Table"), close_group = TRUE), sep = "\n")
+```
+
+```{r a-calibration}
+#| fig-height: 2.6
+#| results: asis
+cat(oaireport::figure_group(), sep = "\n")
+cal <- cp[cp$component == "weekly" & cp$comparator == "purposeful_week" & cp$statistic == "median", ]
+cal$level <- factor(cal$level, levels = unique(cal$level))
+cal$visit_name <- wave(cal$visit)
+fig_cal <- ggplot2::ggplot(cal, ggplot2::aes(level, estimate)) +
+  ggplot2::geom_pointrange(ggplot2::aes(ymin = lo, ymax = hi), colour = colours[["pase"]], size = 0.3) +
+  ggplot2::facet_wrap(~visit_name) +
+  ggplot2::labs(x = "Weekly walking reported on PASE (hours a week)",
+                y = sprintf("Device minutes a week\nin bouts of %s+ minutes", purposeful_minutes)) +
+  oaireport::theme_oai()
+oaireport::save_figure(fig_cal, "clinical_calibration", "2col", height = 2.6)
+print(fig_cal)
+cat(oaireport::table_note("Point: median; bar: interquartile range of the device's minutes a week, within each band of reported weekly walking. A report that tracked the device would show medians rising from left to right.", label = lab("Figure"), close_group = TRUE), sep = "\n")
+```
+
+## How does PASE compare?
+
+Table A7 compares the PASE walker with the device-defined walker at each PASE visit.
+
+```{=typst}
+#block(breakable: false)[
+```
+
+```{r a-pase}
+pz <- run$validity_pase
+pz$visit <- sprintf("%02d", as.integer(pz$visit))
+pv <- function(v, measure, stat, col = "estimate") {
+  x <- pz[pz$visit == v & pz$measure == measure & pz$statistic == stat, col]
+  if (length(x) == 1) x else NA
+}
+pase_visits <- unique(pz$visit)
+pt <- do.call(rbind, lapply(pase_visits, function(v) data.frame(
+  Visit = wave(v),
+  Sensitivity = oaireport::fmt_ci(pv(v, "device_walker", "se"), pv(v, "device_walker", "se", "lo"), pv(v, "device_walker", "se", "hi")),
+  Specificity = oaireport::fmt_ci(pv(v, "device_walker", "sp"), pv(v, "device_walker", "sp", "lo"), pv(v, "device_walker", "sp", "hi")),
+  `Youden's J` = num(pv(v, "device_walker", "se") + pv(v, "device_walker", "sp") - 1),
+  rho = oaireport::fmt_ci(pv(v, "purposeful_min", "rho"), pv(v, "purposeful_min", "rho", "lo"), pv(v, "purposeful_min", "rho", "hi")),
+  b_rho = oaireport::ci_excludes(pv(v, "purposeful_min", "rho", "lo"), pv(v, "purposeful_min", "rho", "hi")),
+  check.names = FALSE)))
+pt_bold <- cbind(matrix(FALSE, nrow(pt), 4), pt$b_rho)
+pt$b_rho <- NULL
+names(pt)[5] <- "Rank correlation with device bout minutes (95% CI)"
+oaireport::compare_table(pt, widths = c(1.1, 1.7, 1.7, 1, 2.2), multipage = FALSE, bold = pt_bold)
+```
+
+```{r note-a-pase}
+#| results: asis
+cat(oaireport::table_note(paste("The PASE walker against the device-defined walker at each PASE visit; the rank correlation, of the PASE walking score with the device's minutes in bouts, is among PASE walkers. The 96-month visit has no accelerometer data of its own and is compared with the participant's accelerometer visits.", bold_rule), label = lab("Table"), close_group = TRUE), sep = "\n")
+```
+
+```{r notes-list}
+#| results: asis
+cat(notes$list(), sep = "\n")
+```
