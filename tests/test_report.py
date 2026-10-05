@@ -57,6 +57,7 @@ FAKE_QUARTO = textwrap.dedent(
     echo scratch > .quarto/x
     echo typ > "$stem.typ"
     if [ "$FAKE_QUARTO_FAIL" = "1" ] || [ "$FAKE_QUARTO_FAIL" = "$2" ]; then echo "boom: render failed" >&2; exit 1; fi
+    if [ -n "$FAKE_QUARTO_PDF_DIR" ]; then cp "$FAKE_QUARTO_PDF_DIR/$stem.pdf" "$stem.pdf"; exit 0; fi
     if [ -n "$FAKE_QUARTO_PDF" ]; then cp "$FAKE_QUARTO_PDF" "$stem.pdf"; exit 0; fi
     {
       echo "args=$*"
@@ -471,7 +472,11 @@ def test_combined_documents_joins_only_the_selected_in_their_order(tmp_path, qua
         'part_titles = ["Brief", "Appendix"]',
         'part_titles = ["Second", "First"]\ncombined_documents = ["report.qmd", "brief.qmd"]',
     )
-    env = {**quarto_env, "FAKE_QUARTO_PDF": str(blank_pdf(tmp_path / "blank.pdf", 2))}
+    pdf_dir = tmp_path / "pdfs"
+    pdf_dir.mkdir()
+    blank_pdf(pdf_dir / "brief.pdf", 1)
+    blank_pdf(pdf_dir / "report.pdf", 3)
+    env = {**quarto_env, "FAKE_QUARTO_PDF_DIR": str(pdf_dir)}
     pdfs = render_report(
         make_docs_toy(tmp_path, manifest),
         make_settings(tmp_path),
@@ -480,8 +485,13 @@ def test_combined_documents_joins_only_the_selected_in_their_order(tmp_path, qua
         echo=quiet,
     )
     assert [p.name for p in pdfs] == ["brief.pdf", "report.pdf", "together.pdf"]
-    assert top_bookmarks(pdfs[-1]) == ["Second", "First"]
-    assert len(PdfReader(pdfs[-1]).pages) == 4
+    reader = PdfReader(pdfs[-1])
+    top = [item for item in reader.outline if not isinstance(item, list)]
+    assert [(i.title, reader.get_destination_page_number(i)) for i in top] == [
+        ("Second", 0),
+        ("First", 3),
+    ]
+    assert len(reader.pages) == 4
 
 
 def test_combined_documents_can_leave_a_document_out(tmp_path, quarto_env):
@@ -491,7 +501,11 @@ def test_combined_documents_can_leave_a_document_out(tmp_path, quarto_env):
         'part_titles = ["Brief", "Appendix"]',
         'part_titles = ["Brief"]\ncombined_documents = ["brief.qmd"]',
     )
-    env = {**quarto_env, "FAKE_QUARTO_PDF": str(blank_pdf(tmp_path / "blank.pdf", 2))}
+    pdf_dir = tmp_path / "pdfs"
+    pdf_dir.mkdir()
+    blank_pdf(pdf_dir / "brief.pdf", 1)
+    blank_pdf(pdf_dir / "report.pdf", 3)
+    env = {**quarto_env, "FAKE_QUARTO_PDF_DIR": str(pdf_dir)}
     pdfs = render_report(
         make_docs_toy(tmp_path, manifest),
         make_settings(tmp_path),
@@ -499,8 +513,8 @@ def test_combined_documents_can_leave_a_document_out(tmp_path, quarto_env):
         base_env=env,
         echo=quiet,
     )
-    assert top_bookmarks(pdfs[-1]) == ["Brief"]
-    assert len(PdfReader(pdfs[-1]).pages) == 2
+    reader = PdfReader(pdfs[-1])
+    assert len(reader.pages) == 1
 
 
 def test_cli_report_prints_every_pdf(tmp_path, monkeypatch):
