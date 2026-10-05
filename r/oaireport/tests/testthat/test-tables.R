@@ -61,3 +61,33 @@ test_that("compare_table lets identifiers break after dots and underscores", {
   expect_match(typst, "[0.82]", fixed = TRUE)
   expect_match(typst, "[Medial JSN]", fixed = TRUE)
 })
+
+style_keys <- function(tab) {
+  out <- tinytable::save_tt(tab, output = "typst")
+  sort(regmatches(out, gregexpr('"[0-9]+_[0-9]+"(?=: )', out, perl = TRUE))[[1]])
+}
+
+test_that("ci_excludes is TRUE only when both limits sit strictly on one side of the null", {
+  expect_equal(ci_excludes(c(0.1, -0.5, -0.2, 0, NA), c(0.3, -0.1, 0.4, 0.2, 0.5)),
+               c(TRUE, TRUE, FALSE, FALSE, FALSE))
+  expect_equal(ci_excludes(c(0.4, 0.8, 1.1), c(0.9, 1.2, 1.5), null = 1), c(TRUE, FALSE, TRUE))
+  expect_equal(ci_excludes(0.2, c(0.5, NA)), c(TRUE, FALSE))
+  expect_error(ci_excludes("a", 1), "numeric")
+})
+
+test_that("compare_table bolds exactly the cells marked TRUE", {
+  df <- data.frame(a = c("x", "y", "z"), b = c("1", "2", "3"))
+  bold <- matrix(FALSE, 3, 2); bold[2, 2] <- TRUE
+  expect_equal(style_keys(compare_table(df, bold = bold)), '"2_1"')  # header is Typst row 0
+  expect_equal(style_keys(compare_table(df)), character())
+  expect_error(compare_table(df, bold = matrix(TRUE, 1, 2)), "bold")
+  expect_error(compare_table(df, bold = matrix("x", 3, 2)), "bold")
+})
+
+test_that("bold lands on the right cell when groups add rows above it", {
+  df <- data.frame(a = c("x", "y", "z"), b = c("1", "2", "3"))
+  bold <- matrix(FALSE, 3, 2); bold[2, 2] <- TRUE; bold[3, 1] <- TRUE
+  tab <- compare_table(df, bold = bold, groups = list(G = 1, H = 3))
+  # rows: header 0, G 1, x 2, y 3, H 4, z 5
+  expect_equal(style_keys(tab), c('"3_1"', '"5_0"'))
+})
