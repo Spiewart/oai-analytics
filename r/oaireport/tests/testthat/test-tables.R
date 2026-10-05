@@ -67,6 +67,18 @@ style_keys <- function(tab) {
   sort(regmatches(out, gregexpr('"[0-9]+_[0-9]+"(?=: )', out, perl = TRUE))[[1]])
 }
 
+# The style-array entry a style key points to, e.g. "(bold: true,)". `key` is "row_col0".
+style_at <- function(tab, key) {
+  lines <- strsplit(tinytable::save_tt(tab, output = "typst"), "\n", fixed = TRUE)[[1]]
+  dict <- regmatches(paste(lines, collapse = " "),
+                     gregexpr('"[0-9]+_[0-9]+": [0-9]+', paste(lines, collapse = " ")))[[1]]
+  index <- as.integer(sub(".*: ", "", dict[startsWith(dict, paste0('"', key, '"'))]))
+  first <- grep("let style-array = (", lines, fixed = TRUE)
+  after <- lines[(first + 1):length(lines)]
+  entries <- after[seq_len(grep("^\\s*\\)\\s*$", after)[1] - 1)]
+  trimws(grep("^\\s*\\(", entries, value = TRUE)[index + 1])
+}
+
 test_that("ci_excludes is TRUE only when both limits sit strictly on one side of the null", {
   expect_equal(ci_excludes(c(0.1, -0.5, -0.2, 0, NA), c(0.3, -0.1, 0.4, 0.2, 0.5)),
                c(TRUE, TRUE, FALSE, FALSE, FALSE))
@@ -78,7 +90,9 @@ test_that("ci_excludes is TRUE only when both limits sit strictly on one side of
 test_that("compare_table bolds exactly the cells marked TRUE", {
   df <- data.frame(a = c("x", "y", "z"), b = c("1", "2", "3"))
   bold <- matrix(FALSE, 3, 2); bold[2, 2] <- TRUE
-  expect_equal(style_keys(compare_table(df, bold = bold)), '"2_1"')  # header is Typst row 0
+  tab <- compare_table(df, bold = bold)
+  expect_equal(style_keys(tab), '"2_1"')  # header is Typst row 0
+  expect_match(style_at(tab, "2_1"), "bold: true", fixed = TRUE)
   expect_equal(style_keys(compare_table(df)), character())
   expect_error(compare_table(df, bold = matrix(TRUE, 1, 2)), "bold")
   expect_error(compare_table(df, bold = matrix("x", 3, 2)), "bold")
@@ -90,4 +104,32 @@ test_that("bold lands on the right cell when groups add rows above it", {
   tab <- compare_table(df, bold = bold, groups = list(G = 1, H = 3))
   # rows: header 0, G 1, x 2, y 3, H 4, z 5
   expect_equal(style_keys(tab), c('"3_1"', '"5_0"'))
+  expect_match(style_at(tab, "3_1"), "bold: true", fixed = TRUE)
+  expect_match(style_at(tab, "5_0"), "bold: true", fixed = TRUE)
+})
+
+test_that("verdict tints move with their rows when groups add rows above them", {
+  df <- data.frame(a = c("x", "y", "z"), verdict = c("replicated", "drift", "missing"))
+  plain <- compare_table(df)
+  expect_equal(style_keys(plain), c('"1_1"', '"2_1"', '"3_1"'))
+  expect_match(style_at(plain, "1_1"), verdict_tints[["replicated"]], fixed = TRUE)
+  expect_match(style_at(plain, "3_1"), verdict_tints[["missing"]], fixed = TRUE)
+  grouped <- compare_table(df, groups = list(G = 1, H = 3))
+  # rows: header 0, G 1, x 2, y 3, H 4, z 5
+  expect_equal(style_keys(grouped), c('"2_1"', '"3_1"', '"5_1"'))
+  expect_match(style_at(grouped, "2_1"), verdict_tints[["replicated"]], fixed = TRUE)
+  expect_match(style_at(grouped, "3_1"), verdict_tints[["drift"]], fixed = TRUE)
+  expect_match(style_at(grouped, "5_1"), verdict_tints[["missing"]], fixed = TRUE)
+})
+
+test_that("compare_table checks groups", {
+  df <- data.frame(a = c("x", "y", "z"), b = c("1", "2", "3"))
+  expect_s4_class(compare_table(df, groups = list(G = 1, H = 3)), "tinytable")
+  expect_error(compare_table(df, groups = list(1, 3)), "groups")        # unnamed
+  expect_error(compare_table(df, groups = list(G = 1, 3)), "groups")     # partly named
+  expect_error(compare_table(df, groups = list(G = "y")), "groups")      # not numeric
+  expect_error(compare_table(df, groups = list(G = 0)), "groups")        # before the first row
+  expect_error(compare_table(df, groups = list(G = 4)), "groups")        # past the last row
+  expect_error(compare_table(df, groups = list(G = 1.5)), "groups")      # not a whole row
+  expect_error(compare_table(df, groups = c(G = 1)), "groups")           # not a list
 })

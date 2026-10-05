@@ -33,6 +33,13 @@ breakable_ids <- function(x) {
   x
 }
 
+# Typst row of data row `i` once `groups` are in: the header is row 0, and each group title at or
+# above a data row pushes it down one. Tints and bold both use this, so they cannot drift apart.
+typst_rows <- function(i, groups) {
+  starts <- if (is.null(groups)) integer() else unlist(groups)
+  i + vapply(i, function(row) sum(starts <= row), integer(1))
+}
+
 #' A tinytable comparison table
 #'
 #' @param df Data frame of cell text; verdict columns are found by their names (`verdict*`).
@@ -61,6 +68,17 @@ compare_table <- function(df, widths = NULL, compact = FALSE, labels = NULL, mul
            nrow(df), " x ", ncol(df), ")", call. = FALSE)
     }
   }
+  if (!is.null(groups)) {
+    whole_rows <- function(g) {
+      is.numeric(g) && length(g) > 0 && !anyNA(g) && all(g == round(g) & g >= 1 & g <= nrow(df))
+    }
+    named <- is.list(groups) && length(groups) > 0 && !is.null(names(groups)) &&
+      !anyNA(names(groups)) && all(nzchar(names(groups)))
+    if (!named || !all(vapply(groups, whole_rows, logical(1)))) {
+      stop("compare_table(): groups must be a named list of whole row numbers between 1 and ",
+           nrow(df), call. = FALSE)
+    }
+  }
   verdict_cols <- grep("^verdict", names(df))
   shown <- format_verdicts(df, compact)
   for (j in seq_along(shown)) {
@@ -73,21 +91,22 @@ compare_table <- function(df, widths = NULL, compact = FALSE, labels = NULL, mul
   tab <- tinytable::theme_typst(do.call(tinytable::tt, args), multipage = multipage)
   # Cell text such as "0.6 (0.4-0.8) *" or "t2.new_pain" is Typst markup unless escaped.
   tab <- tinytable::format_tt(tab, escape = TRUE)
+  if (!is.null(groups)) tab <- tinytable::group_tt(tab, i = groups)
+  # tinytable keys styles by Typst row and does not shift styles made before group_tt, so tints
+  # and bold go on after grouping, each data row moved by typst_rows()
   for (j in verdict_cols) {
     for (verdict in names(verdict_tints)) {
       i <- which(df[[j]] == verdict)
-      if (length(i)) tab <- tinytable::style_tt(tab, i = i, j = j, background = verdict_tints[[verdict]])
+      if (length(i)) {
+        tab <- tinytable::style_tt(tab, i = typst_rows(i, groups), j = j,
+                                   background = verdict_tints[[verdict]])
+      }
     }
   }
-  if (!is.null(groups)) tab <- tinytable::group_tt(tab, i = groups)
   if (!is.null(bold)) {
-    # tinytable keys styles by Typst row (header = 0) and does not shift styles made before
-    # group_tt, so bold goes on after grouping, each data row moved down by the group rows above
-    starts <- if (is.null(groups)) integer() else unlist(groups)
     cells <- which(bold & !is.na(bold), arr.ind = TRUE)
     for (k in seq_len(nrow(cells))) {
-      row <- cells[k, 1]
-      tab <- tinytable::style_tt(tab, i = row + sum(starts <= row), j = cells[k, 2], bold = TRUE)
+      tab <- tinytable::style_tt(tab, i = typst_rows(cells[k, 1], groups), j = cells[k, 2], bold = TRUE)
     }
   }
   tab
