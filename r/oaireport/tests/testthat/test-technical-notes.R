@@ -39,3 +39,26 @@ test_that("standard_tech_notes covers the common methods with plain sentences", 
                     "nondifferential") %in% names(std)))
   expect_true(all(nzchar(std)) && all(grepl("\\.$", std)))
 })
+
+test_that("tech_notes refuses a new key after the list is written, but repeats of listed keys are fine", {
+  notes <- tech_notes(c(alpha = "A.", beta = "B."), defaults = character())
+  notes$ref("alpha")
+  notes$list()
+  expect_error(notes$ref("beta"), "after \\$list\\(\\)")
+  expect_equal(notes$ref("alpha", raw = FALSE), "#super[#link(<tn-alpha>)[a]]")
+  expect_equal(notes$keys(), "alpha")
+})
+
+test_that("tech_notes rejects NA or empty note text up front, naming the keys", {
+  expect_error(tech_notes(c(alpha = NA_character_, beta = "B."), defaults = character()), "alpha")
+  expect_error(tech_notes(c(alpha = "A.", beta = ""), defaults = character()), "beta")
+  expect_error(tech_notes(c(alpha = "A."), defaults = c(gamma = "  ")), "gamma")
+})
+
+test_that("a failing $list() does not leave the registry stuck", {
+  notes <- tech_notes(c(alpha = "A."), defaults = character())
+  notes$ref("alpha")
+  expect_error(notes$list(title = NA_character_), "NA")
+  out <- paste(notes$list(), collapse = "\n")  # expect_match evaluates its argument twice
+  expect_match(out, "<tn-alpha>", fixed = TRUE)
+})
