@@ -22,6 +22,7 @@ from oai.assumptions import load_assumptions
 from oai.config import ConfigError, Settings, load_settings
 from oai.export.egress import check_egress
 from oai.manifest import Analysis, find_analysis
+from oai.pdfcheck import max_right_edge
 from oai.report import ReportError, find_quarto, render_report
 from oai.runner import (
     process_env,
@@ -456,13 +457,6 @@ def _top_bookmarks(pdf: Path) -> list[str]:
     return [item.title for item in PdfReader(pdf).outline if not isinstance(item, list)]
 
 
-def _largest_xmax(pdf: Path) -> float:
-    boxes = subprocess.run(
-        ["pdftotext", "-bbox", str(pdf), "-"], capture_output=True, text=True, check=True
-    ).stdout
-    return max(float(m) for m in re.findall(r'xMax="([0-9.]+)"', boxes))
-
-
 @pytest.mark.realdata
 @pytest.mark.skipif(
     not _report_tools_ready(), reason="Quarto or the r/ report profile is unavailable"
@@ -489,9 +483,10 @@ def test_walking_validation_report_renders(fast_run):
     else:
         assert PLACEHOLDER in page_one
     assert _top_bookmarks(pdfs[2]) == ["Brief", "Appendix: technical report"]
-    if shutil.which("pdftotext"):  # only the margin check needs poppler
-        for pdf in pdfs[:2]:
-            assert _largest_xmax(pdf) <= RIGHT_EDGE[pdf.name] + 0.01, pdf.name
+    for pdf in pdfs[:2]:
+        edge = max_right_edge(pdf)
+        if edge is not None:  # only the margin check needs poppler
+            assert edge <= RIGHT_EDGE[pdf.name] + 0.01, pdf.name
     figures = {p.name for p in (pdfs[0].parent / "figures").iterdir()}
     for name in ("known_groups", "strata", "tipping", "forest_bias", "brief_fig1", "brief_fig4"):
         assert {f"{name}.pdf", f"{name}.png"} <= figures, name
