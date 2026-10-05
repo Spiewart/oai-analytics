@@ -464,6 +464,45 @@ def test_part_titles_default_to_document_names(tmp_path, quarto_env):
     assert top_bookmarks(pdfs[-1]) == ["brief", "report"]
 
 
+def test_combined_documents_joins_only_the_selected_in_their_order(tmp_path, quarto_env):
+    from pypdf import PdfReader
+
+    manifest = DOCS_MANIFEST.replace(
+        'part_titles = ["Brief", "Appendix"]',
+        'part_titles = ["Second", "First"]\ncombined_documents = ["report.qmd", "brief.qmd"]',
+    )
+    env = {**quarto_env, "FAKE_QUARTO_PDF": str(blank_pdf(tmp_path / "blank.pdf", 2))}
+    pdfs = render_report(
+        make_docs_toy(tmp_path, manifest),
+        make_settings(tmp_path),
+        run_missing=True,
+        base_env=env,
+        echo=quiet,
+    )
+    assert [p.name for p in pdfs] == ["brief.pdf", "report.pdf", "together.pdf"]
+    assert top_bookmarks(pdfs[-1]) == ["Second", "First"]
+    assert len(PdfReader(pdfs[-1]).pages) == 4
+
+
+def test_combined_documents_can_leave_a_document_out(tmp_path, quarto_env):
+    from pypdf import PdfReader
+
+    manifest = DOCS_MANIFEST.replace(
+        'part_titles = ["Brief", "Appendix"]',
+        'part_titles = ["Brief"]\ncombined_documents = ["brief.qmd"]',
+    )
+    env = {**quarto_env, "FAKE_QUARTO_PDF": str(blank_pdf(tmp_path / "blank.pdf", 2))}
+    pdfs = render_report(
+        make_docs_toy(tmp_path, manifest),
+        make_settings(tmp_path),
+        run_missing=True,
+        base_env=env,
+        echo=quiet,
+    )
+    assert top_bookmarks(pdfs[-1]) == ["Brief"]
+    assert len(PdfReader(pdfs[-1]).pages) == 2
+
+
 def test_cli_report_prints_every_pdf(tmp_path, monkeypatch):
     make_docs_toy(tmp_path)
     monkeypatch.setenv("OAI_ANALYSES_DIR", str(tmp_path / "analyses"))

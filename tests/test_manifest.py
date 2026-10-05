@@ -295,6 +295,66 @@ def test_combined_and_titles_need_documents(tmp_path, extra, message):
         load_analysis(write_report_analysis(tmp_path, manifest))
 
 
+SELECT_MANIFEST = DOCS_MANIFEST.replace(
+    'part_titles = ["Brief", "Appendix"]',
+    'part_titles = ["Brief"]\ncombined_documents = ["brief.qmd"]',
+)
+
+
+def test_combined_documents_parsed(tmp_path):
+    spec = load_analysis(write_docs_analysis(tmp_path, SELECT_MANIFEST)).report
+    assert spec.combined_documents == ("brief.qmd",)
+    assert spec.part_titles == ("Brief",)
+
+
+def test_combined_documents_default_to_none_selected(tmp_path):
+    assert load_analysis(write_docs_analysis(tmp_path)).report.combined_documents == ()
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    [
+        (
+            'combined_documents = ["brief.qmd"]',
+            "combined_documents = []",
+            "combined_documents must be a non-empty list",
+        ),
+        (
+            'combined_documents = ["brief.qmd"]',
+            'combined_documents = "brief.qmd"',
+            "combined_documents must be a non-empty list",
+        ),
+        (
+            'combined_documents = ["brief.qmd"]',
+            'combined_documents = ["other.qmd"]',
+            "combined_documents other.qmd are not in documents",
+        ),
+        (
+            'combined_documents = ["brief.qmd"]',
+            'combined_documents = ["brief.qmd", "brief.qmd"]',
+            "combined_documents has duplicates",
+        ),
+        (
+            'part_titles = ["Brief"]',
+            'part_titles = ["Brief", "Appendix"]',
+            "one title per document joined",
+        ),
+    ],
+)
+def test_invalid_combined_documents(tmp_path, old, new, message):
+    root = write_docs_analysis(tmp_path, SELECT_MANIFEST.replace(old, new))
+    with pytest.raises(ManifestError, match=re.escape(message)):
+        load_analysis(root)
+
+
+def test_combined_documents_needs_combined(tmp_path):
+    manifest = DOCS_MANIFEST.replace('combined = "together.pdf"\n', "").replace(
+        'part_titles = ["Brief", "Appendix"]', 'combined_documents = ["brief.qmd"]'
+    )
+    with pytest.raises(ManifestError, match=re.escape("combined_documents needs combined")):
+        load_analysis(write_docs_analysis(tmp_path, manifest))
+
+
 R_PROFILE = REPORT_MANIFEST + '\n[r]\nprofile = "report"\n'
 
 

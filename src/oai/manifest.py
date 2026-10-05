@@ -46,6 +46,7 @@ class ReportSpec:
     combined: str | None = None  # a PDF joining the documents' PDFs, in order
     part_titles: tuple[str, ...] = ()  # one bookmark title per document in `combined`
     local_assets: tuple[str, ...] = ()  # untracked files (e.g. *.local.yml) copied when present
+    combined_documents: tuple[str, ...] = ()  # the documents `combined` joins, in order; () = all
 
 
 @dataclass(frozen=True)
@@ -202,8 +203,24 @@ def _parse_report(raw: Any, root: Path, fail: Callable[[str], NoReturn]) -> Repo
         fail("[report] part_titles needs combined")
     if not isinstance(titles, list) or not all(isinstance(t, str) and t.strip() for t in titles):
         fail("[report] part_titles must be a list of titles")
-    if titles and len(titles) != len(documents):
-        fail("[report] part_titles needs one title per document")
+    selected = raw.get("combined_documents")
+    if selected is not None:
+        if combined is None:
+            fail("[report] combined_documents needs combined")
+        if (
+            not isinstance(selected, list)
+            or not selected
+            or not all(isinstance(d, str) for d in selected)
+        ):
+            fail("[report] combined_documents must be a non-empty list of documents")
+        unknown = [d for d in selected if d not in documents]
+        if unknown:
+            fail(f"[report] combined_documents {', '.join(unknown)} are not in documents")
+        if len(set(selected)) != len(selected):
+            fail("[report] combined_documents has duplicates")
+    joined = selected or documents
+    if titles and len(titles) != len(joined):
+        fail(f"[report] part_titles needs one title per document joined ({len(joined)})")
     local_assets = raw.get("local_assets", [])
     if not isinstance(local_assets, list) or not all(_plain_name(a) for a in local_assets):
         fail("[report] local_assets must be a list of file names")
@@ -218,6 +235,7 @@ def _parse_report(raw: Any, root: Path, fail: Callable[[str], NoReturn]) -> Repo
         combined,
         tuple(titles),
         tuple(local_assets),
+        tuple(selected or ()),
     )
 
 

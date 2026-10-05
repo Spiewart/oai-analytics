@@ -151,9 +151,12 @@ def render_report(
                 )
             pdfs.append(pdf)
         if spec.combined:
-            titles = spec.part_titles or tuple(Path(d).stem for d in spec.documents)
-            echo(f"==> {analysis.name}: joining {len(pdfs)} PDFs into {spec.combined}")
-            pdfs.append(combine_pdfs(list(zip(titles, pdfs, strict=True)), out / spec.combined))
+            joined = spec.combined_documents or spec.documents
+            by_document = dict(zip(spec.documents, pdfs, strict=True))
+            titles = spec.part_titles or tuple(Path(d).stem for d in joined)
+            echo(f"==> {analysis.name}: joining {len(joined)} PDFs into {spec.combined}")
+            parts = [(title, by_document[d]) for title, d in zip(titles, joined, strict=True)]
+            pdfs.append(combine_pdfs(parts, out / spec.combined))
     finally:
         for path in local:
             path.unlink(missing_ok=True)
