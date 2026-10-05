@@ -99,6 +99,13 @@ j_pase_any <- vapply(visits, function(v) pase(v, "frequency", "device_walker", "
 j_pase_mid <- vapply(visits, function(v) pase(v, "frequency", "device_walker", "cut2", "j")$estimate, numeric(1))
 correction <- vapply(c("cut1", "cut3"), function(k) item("lo_subset", "times", k, "correction")$estimate, numeric(1))
 strict <- lower_first(item_names[["cut3"]])  # cut 3 of the item: the stricter walker definition
+# Lo et al. 2022's published new-pain odds ratio, and the tipping-point grid's new-pain cells
+t2 <- run$lo2022_t2
+published_or <- oaireport::parse_or(t2$published[t2$metric == "t2.new_pain.or_adj"])$or
+grid_np <- run$bias_tipping[run$bias_tipping$outcome == "new_pain" & !is.na(run$bias_tipping$or), ]
+grid_holds <- sum(grid_np$excludes_1)
+grid_feasible <- nrow(grid_np)
+grid_se_floor <- min(grid_np$se)
 bout_minutes <- assumption("device.purposeful_bout_minutes")
 cutpoint <- assumption("device.mv_cutpoint")
 guide <- assumption("reference.min_bout_minutes_per_week")
@@ -131,7 +138,7 @@ cat("```{=typst}",
 #set text(size: 11pt)
 ```
 
-The Osteoarthritis Initiative (OAI) asked participants whether they had walked for exercise since age 50, and the answer predicts knee outcomes [@lo2022]. We checked that answer, and the walking question of the Physical Activity Scale for the Elderly (PASE), against what the ActiGraph GT1M recorded at 48 and 72 months in `r count(n_validation)` participants. Most say yes (`r pct(n_walkers / n_validation)`), so the question alone separates walkers poorly; *how often* people say they walk carries most of the signal. Our device reference is built from activity counts, which cannot tell walking from other moderate activity, and that is where your step and cadence data come in.
+The Osteoarthritis Initiative (OAI) asked participants whether they had walked for exercise since age 50, and the answer predicts knee outcomes [@lo2022]. In that paper, walkers had about `r pct(1 - published_or)` lower odds of developing frequent knee pain; we also asked how sensitive that association is to how walkers are classified. We checked that answer, and the walking question of the Physical Activity Scale for the Elderly (PASE), against what the ActiGraph GT1M recorded at 48 and 72 months in `r count(n_validation)` participants. Most say yes (`r pct(n_walkers / n_validation)`), so the question alone separates walkers poorly; *how often* people say they walk carries most of the signal. Our device reference is built from activity counts, which cannot tell walking from other moderate activity, and that is where your step and cadence data come in.
 
 ```{=typst}
 #set text(size: 10pt)
@@ -186,21 +193,21 @@ results <- data.frame(
   value = c(sprintf("%s / %s", num(se), num(sp)),
             sprintf("%s → %s", num(j_item[[1]]), num(j_item[[2]])),
             sprintf("%s → %s", num(j_pase_any[["06"]]), num(j_pase_mid[["06"]])),
-            sprintf("%s → %s", num(correction[[1]], 1), num(correction[[2]], 1))),
+            sprintf("%d of %d", grid_holds, grid_feasible)),
   label = c("sensitivity / specificity of “walked for exercise” against the device",
             sprintf("Youden's J: any walker → walks %s", strict),
             sprintf("Youden's J for PASE at 48 months: any walking → %s a week (72 months: %s → %s)",
                     lower_first(pase_names[["cut2"]]), num(j_pase_any[["08"]]), num(j_pase_mid[["08"]])),
-            sprintf("1/J: how much a misclassification correction for Lo et al. 2022 would inflate the difference in walker prevalence between outcome groups: any walker → %s", strict)))
+            sprintf("plausible accuracy settings (sensitivity %s or more) in which the walking–knee-pain association in Lo et al. 2022 holds", num(grid_se_floor))))
 cat(oaireport::sidebar_figure(
   results,
-  ask = "A joint study: rebuild the reference from your step and cadence data (for example, minutes at 100 steps/min or more) and re-run the validation and the bias analysis, pre-specified and jointly authored.",
-  image = "figures/brief_fig1.png",
+  ask = "A joint study: rebuild the reference from your step and cadence data (for example, minutes at 100 steps/min or more) and re-run the validation and the classification sensitivity analysis, pre-specified and jointly authored.",
+  image = "figures/brief_fig1.png", sidebar = 0.35,
   caption = "Each point is a walker definition, placed by its sensitivity and 1 − specificity against the device-defined walker. Triangles: the definitions in use (any walking); the three nearly coincide at the top right. Stricter, frequency-based definitions (circles) give up some sensitivity but gain more specificity, so they move down and to the left, away from the chance line toward higher J. Grey dashed lines join points of equal Youden's J, with each value above the top edge; J = 0 is chance."),
   sep = "\n")
 ```
 
-*The appendix (the full technical report) gives the methods and every result, from the same analysis run.*
+*The appendix summarises every result for clinical readers; the full technical report is available on request.*
 
 ```{=typst}
 #pagebreak()
@@ -293,9 +300,9 @@ cat(oaireport::callout(sprintf(
   fmt(assumption("device.bout_stop_below"))), kind = "warn", title = "The weak link."), sep = "\n")
 ```
 
-Timing is a second gap: the walking item was asked at 96 months about walking since age 50, years after the device waves. Timing alone does not explain the weak agreement, though: PASE, asked at the device visits themselves, separates walkers about as weakly (Youden's J `r range_text(j_pase_any)` for any walking).
+Timing is a second gap: the walking item was asked at 96 months about walking since age 50, years after the device waves. Timing alone does not explain the weak agreement, though: PASE, asked at the device visits themselves, separates walkers about as weakly (Youden's J `r range_text(j_pase_any)` for any walking). The question also asks about a habit of walking for exercise since age 50, the device one week of current activity, so the two may measure different things.
 
-**Why it matters for Lo et al. 2022.** A record-level correction for misclassification divides by Youden's J, so a weak J makes the correction unstable. With the walker definition in use, a correction would scale the difference in walking prevalence between outcome groups by `r num(correction[[1]], 1)`; with the strictest frequency-based definition, by `r num(correction[[2]], 1)`.
+**How sensitive is the Lo et al. 2022 association to classification?** If some participants were misclassified, a re-estimate that allows for it divides the gap in walking between people with and without the outcome by Youden's J. With the walker definition in use, that multiplies the gap by `r num(correction[[1]], 1)`; with the strictest frequency-based definition, by `r num(correction[[2]], 1)`, so a stricter definition gives a steadier re-estimate. If misclassification is the same in people with and without the outcome, the walking–knee-pain association holds in `r grid_holds` of `r grid_feasible` plausible accuracy settings (appendix).
 
 ```{r fig4}
 #| fig-height: 2.1
@@ -319,12 +326,12 @@ fig4 <- ggplot2::ggplot(cf, ggplot2::aes(estimate, definition)) +
   ggplot2::geom_text(ggplot2::aes(x = 0, label = paste0(num(estimate, 1), "×")), hjust = -0.2,
                      colour = "white", size = 2.8, fontface = "bold", family = oaireport::oai_font()) +
   ggplot2::scale_x_continuous(limits = c(0, top), expand = c(0, 0)) +
-  ggplot2::labs(x = "Correction factor 1/J (95% CI)", y = NULL) +
+  ggplot2::labs(x = "Multiplier 1/J (95% CI)", y = NULL) +
   oaireport::theme_oai(base_size = 8)
 oaireport::save_figure(fig4, "brief_fig4", "2col", height = 2.1)
 print(fig4)
 cat(oaireport::table_note(sprintf(
-  "Lo et al. 2022 participants who answered the walking item and have device data (%s classified). For each walker definition by the times-per-month answer, 1/J is the factor by which a record-level misclassification correction scales the difference in walking prevalence between outcome groups, and its sampling error; the interval comes from J's 95%% CI.%s",
+  "Lo et al. 2022 participants who answered the walking item and have device data (%s classified). For each walker definition by the times-per-month answer, 1/J shows how much a re-estimate that allows for misclassification would multiply the difference in walking between people with and without the outcome — how much the re-estimate depends on the walker definition; the interval comes from J's 95%% CI.%s",
   count(item("lo_subset", "times", "cut1", "correction")$n),
   if (any(is.na(cf$hi))) " An arrow marks an interval with no upper limit (J's interval reaches 0)." else ""),
   label = "Figure 4.", close_group = TRUE), sep = "\n")
@@ -346,7 +353,7 @@ cat(oaireport::callout(
 
 ## The proposed joint study
 
-**Aim.** Revalidate the 96-month walking item and PASE walking, and redo the bias analysis of Lo et al. 2022, against walking-specific references (steps per day, minutes at 100 steps/min or more, step-based bouts) defined together and pre-specified.
+**Aim.** Revalidate the 96-month walking item and PASE walking, and revisit the associations in Lo et al. 2022, against walking-specific references (steps per day, minutes at 100 steps/min or more, step-based bouts) defined together and pre-specified.
 
 ```{r roles}
 roles <- data.frame(
@@ -354,7 +361,7 @@ roles <- data.frame(
                   "Step-algorithm expertise; handling of slow gait",
                   "Co-design of the reference definitions"),
   `We bring` = c("Coding of the walking item and PASE; an open, reproducible pipeline",
-                 "Validation statistics; the Lo et al. 2022 bias analysis",
+                 "Validation statistics; the Lo et al. 2022 sensitivity analysis",
                  "Drafting; shared code; aggregate-only outputs"),
   check.names = FALSE)
 oaireport::compare_table(roles, widths = c(1, 1), multipage = FALSE)
@@ -375,7 +382,7 @@ wear_text <- if (sum(repro$wear_mismatch_days) > 0) {
   sprintf(", and wear time within half a minute on all but %s of them", count(sum(repro$wear_mismatch_days)))
 } else ", with the same wear time"
 cat(oaireport::callout(sprintf(
-  "Our pipeline rebuilds the OAI release's day-level accelerometry files from the minute counts, following the OAI processing standard: it matches %s, %s%s. A step-based reference therefore drops into the same validation and bias analyses.",
+  "Our pipeline rebuilds the OAI release's day-level accelerometry files from the minute counts, following the OAI processing standard: it matches %s, %s%s. A step-based reference therefore drops into the same validation and sensitivity analyses.",
   paste(matched, collapse = " and "), differ_text, wear_text), kind = "note", title = "Already built.", cite = "song2010"),
   sep = "\n")
 ```
@@ -386,4 +393,4 @@ cat(oaireport::callout(sprintf(
 #pagebreak()
 ```
 
-**Appendix.** The technical report that follows gives the methods and every result of the validation and the bias analysis, generated from the same analysis run as this brief.
+**Appendix.** The appendix summarises every result for clinical readers; the full technical report is available on request.

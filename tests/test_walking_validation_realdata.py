@@ -22,7 +22,7 @@ from oai.assumptions import load_assumptions
 from oai.config import ConfigError, Settings, load_settings
 from oai.export.egress import check_egress
 from oai.manifest import Analysis, find_analysis
-from oai.pdfcheck import max_right_edge
+from oai.pdfcheck import find_terms, max_right_edge
 from oai.report import ReportError, find_quarto, render_report
 from oai.runner import (
     process_env,
@@ -477,6 +477,8 @@ def test_walking_validation_report_renders(fast_run):
         text = "\n".join(page.extract_text() for page in PdfReader(pdf).pages)
         for bad in (r"\bNA\b", r"\bNaN\b", r"\bInf\b", r"`r "):
             assert not re.search(bad, text), f"{bad!r} in {pdf.name}"
+    # the brief frames the Lo et al. 2022 analysis neutrally (spec 2026-10-05 §1, §3)
+    assert find_terms(pdfs[0], ["bias", "correction", "corrected"], stop_heading="References") == []
     page_one = PdfReader(pdfs[0]).pages[0].extract_text()
     if (analysis.root / "brief.local.yml").exists():
         assert PLACEHOLDER not in page_one
