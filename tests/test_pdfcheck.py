@@ -17,12 +17,27 @@ def test_max_right_edge_without_pdftotext(monkeypatch, tmp_path):
     assert max_right_edge(tmp_path / "x.pdf") is None
 
 
+def test_max_right_edge_raises_on_wordless_pdf(monkeypatch, tmp_path):
+    monkeypatch.setattr("oai.pdfcheck.shutil.which", lambda _: "/usr/bin/pdftotext")
+    monkeypatch.setattr(
+        "oai.pdfcheck.subprocess.run",
+        lambda *args, **kwargs: type("obj", (), {"stdout": "<doc></doc>"})(),
+    )
+    pdf = tmp_path / "blank.pdf"
+    try:
+        max_right_edge(pdf)
+        raise AssertionError("should raise ValueError")
+    except ValueError as e:
+        assert "no words" in str(e)
+
+
 def test_find_terms_whole_words_case_insensitive():
     pages = ["A median difference, not Hodges–Lehmann.", "the bootstrapped value; BOOTSTRAP here"]
     assert find_terms_in(pages, ["Hodges–Lehmann", "bootstrap", "rank-biserial"]) == [
         ("Hodges–Lehmann", 1),
         ("bootstrap", 2),
     ]
+    assert find_terms_in(["the bootstrapped value", "rebootstrap"], ["bootstrap"]) == []
 
 
 def test_find_terms_across_a_line_break():
@@ -49,3 +64,11 @@ def test_find_terms_stops_at_the_last_heading():
         )
         == []
     )
+
+
+def test_find_terms_matches_any_dash_variant():
+    pages = ["Hodges-Lehmann", "non‑differential"]
+    assert find_terms_in(pages, ["Hodges–Lehmann", "non-differential"]) == [
+        ("Hodges–Lehmann", 1),
+        ("non-differential", 2),
+    ]

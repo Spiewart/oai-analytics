@@ -13,7 +13,8 @@ from collections.abc import Sequence
 from pathlib import Path
 
 _XMAX = re.compile(r'xMax="([0-9.]+)"')
-_BROKEN_DASH = re.compile(r"([-–])\s*\n\s*")
+_DASH_CHARS = r"[-‐‑‒–—―−­]"
+_BROKEN_DASH = re.compile(f"({_DASH_CHARS})\\s*\\n\\s*")
 
 
 def right_edge_from_bbox(bbox_html: str) -> float | None:
@@ -23,17 +24,38 @@ def right_edge_from_bbox(bbox_html: str) -> float | None:
 
 
 def max_right_edge(pdf: Path) -> float | None:
-    """The largest word right edge in a PDF, in points; None when pdftotext is unavailable."""
+    """The largest word right edge in a PDF, in points; None when pdftotext is unavailable.
+
+    Raises ValueError if pdftotext runs but finds no words (e.g., a blank PDF).
+    """
     if shutil.which("pdftotext") is None:
         return None
     out = subprocess.run(
-        ["pdftotext", "-bbox", str(pdf), "-"], capture_output=True, text=True, check=True
+        ["pdftotext", "-bbox", str(pdf), "-"],
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+        check=True,
     ).stdout
-    return right_edge_from_bbox(out)
+    edge = right_edge_from_bbox(out)
+    if edge is None:
+        raise ValueError(f"{pdf}: pdftotext found no words")
+    return edge
+
+
+def _escape_with_dash_variants(word: str) -> str:
+    """Escape a word for regex, but replace dash variants with a character class."""
+    result = ""
+    for char in word:
+        if char in "-‐‑‒–—―−­":
+            result += _DASH_CHARS
+        else:
+            result += re.escape(char)
+    return result
 
 
 def _pattern(term: str) -> re.Pattern[str]:
-    words = [re.escape(word) for word in term.split()]
+    words = [_escape_with_dash_variants(word) for word in term.split()]
     return re.compile(r"(?<!\w)" + r"\s+".join(words) + r"(?!\w)", re.IGNORECASE)
 
 
