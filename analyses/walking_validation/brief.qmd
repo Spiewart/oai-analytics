@@ -101,8 +101,10 @@ correction <- vapply(c("cut1", "cut3"), function(k) item("lo_subset", "times", k
 strict <- lower_first(item_names[["cut3"]])  # cut 3 of the item: the stricter walker definition
 # Lo et al. 2022's published new-pain odds ratio, and the tipping-point grid's new-pain cells
 t2 <- run$lo2022_t2
-published_or <- oaireport::parse_or(t2$published[t2$metric == "t2.new_pain.or_adj"])$or
+published_or <- oaireport::parse_or(one(t2, metric = "t2.new_pain.or_adj")$published)$or
+if (is.na(published_or)) stop("the published new-pain odds ratio could not be read from lo2022_t2", call. = FALSE)
 grid_np <- run$bias_tipping[run$bias_tipping$outcome == "new_pain" & !is.na(run$bias_tipping$or), ]
+if (!nrow(grid_np)) stop("bias_tipping has no feasible new_pain cells (every draw was discarded)", call. = FALSE)
 grid_holds <- sum(grid_np$excludes_1)
 grid_feasible <- nrow(grid_np)
 grid_se_floor <- min(grid_np$se)
@@ -138,7 +140,7 @@ cat("```{=typst}",
 #set text(size: 11pt)
 ```
 
-The Osteoarthritis Initiative (OAI) asked participants whether they had walked for exercise since age 50, and the answer predicts knee outcomes [@lo2022]. In that paper, walkers had about `r pct(1 - published_or)` lower odds of developing frequent knee pain; we also asked how sensitive that association is to how walkers are classified. We checked that answer, and the walking question of the Physical Activity Scale for the Elderly (PASE), against what the ActiGraph GT1M recorded at 48 and 72 months in `r count(n_validation)` participants. Most say yes (`r pct(n_walkers / n_validation)`), so the question alone separates walkers poorly; *how often* people say they walk carries most of the signal. Our device reference is built from activity counts, which cannot tell walking from other moderate activity, and that is where your step and cadence data come in.
+The Osteoarthritis Initiative (OAI) asked participants whether they had walked for exercise since age 50, and the answer predicts knee outcomes [@lo2022]. In that paper, walkers had about `r pct(1 - published_or)` lower odds of developing frequent knee pain; we also asked how sensitive that association is to walker classification. We checked the walking answer, and the walking question of the Physical Activity Scale for the Elderly (PASE), against ActiGraph GT1M recordings at 48 and 72 months in `r count(n_validation)` participants. Most say yes (`r pct(n_walkers / n_validation)`), so the question alone separates walkers poorly; *how often* people say they walk carries most of the signal. Our device reference is built from activity counts, which cannot tell walking from other moderate activity; that is where your step and cadence data come in.
 
 ```{=typst}
 #set text(size: 10pt)
@@ -198,11 +200,11 @@ results <- data.frame(
             sprintf("Youden's J: any walker → walks %s", strict),
             sprintf("Youden's J for PASE at 48 months: any walking → %s a week (72 months: %s → %s)",
                     lower_first(pase_names[["cut2"]]), num(j_pase_any[["08"]]), num(j_pase_mid[["08"]])),
-            sprintf("plausible accuracy settings (sensitivity %s or more) in which the walking–knee-pain association in Lo et al. 2022 holds", num(grid_se_floor))))
+            sprintf("possible accuracy settings (sensitivity %s or more), with misclassification the same whether or not knee pain developed, in which the walking–knee-pain association in Lo et al. 2022 holds", num(grid_se_floor))))
 cat(oaireport::sidebar_figure(
   results,
   ask = "A joint study: rebuild the reference from your step and cadence data (for example, minutes at 100 steps/min or more) and re-run the validation and the classification sensitivity analysis, pre-specified and jointly authored.",
-  image = "figures/brief_fig1.png", sidebar = 0.35,
+  image = "figures/brief_fig1.png", sidebar = 0.42,
   caption = "Each point is a walker definition, placed by its sensitivity and 1 − specificity against the device-defined walker. Triangles: the definitions in use (any walking); the three nearly coincide at the top right. Stricter, frequency-based definitions (circles) give up some sensitivity but gain more specificity, so they move down and to the left, away from the chance line toward higher J. Grey dashed lines join points of equal Youden's J, with each value above the top edge; J = 0 is chance."),
   sep = "\n")
 ```
@@ -300,9 +302,9 @@ cat(oaireport::callout(sprintf(
   fmt(assumption("device.bout_stop_below"))), kind = "warn", title = "The weak link."), sep = "\n")
 ```
 
-Timing is a second gap: the walking item was asked at 96 months about walking since age 50, years after the device waves. Timing alone does not explain the weak agreement, though: PASE, asked at the device visits themselves, separates walkers about as weakly (Youden's J `r range_text(j_pase_any)` for any walking). The question also asks about a habit of walking for exercise since age 50, the device one week of current activity, so the two may measure different things.
+Timing is a second gap: the walking item was asked at 96 months about walking since age 50, years after the device waves. Timing alone does not explain the weak agreement, though: PASE, asked at the device visits themselves, separates walkers about as weakly (Youden's J `r range_text(j_pase_any)` for any walking). The question also asks about a habit of walking for exercise since age 50; the device records one week of current activity, so the two may measure different things.
 
-**How sensitive is the Lo et al. 2022 association to classification?** If some participants were misclassified, a re-estimate that allows for it divides the gap in walking between people with and without the outcome by Youden's J. With the walker definition in use, that multiplies the gap by `r num(correction[[1]], 1)`; with the strictest frequency-based definition, by `r num(correction[[2]], 1)`, so a stricter definition gives a steadier re-estimate. If misclassification is the same in people with and without the outcome, the walking–knee-pain association holds in `r grid_holds` of `r grid_feasible` plausible accuracy settings (appendix).
+**How sensitive is the Lo et al. 2022 association to classification?** If some participants were misclassified, a re-estimate that allows for it divides the gap in walking between people with and without the outcome by Youden's J. With the walker definition in use, that multiplies the gap by `r num(correction[[1]], 1)`; with the strictest frequency-based definition, by `r num(correction[[2]], 1)`, so a stricter definition gives a steadier re-estimate. If misclassification is the same in people with and without the outcome, the walking–knee-pain association holds (its 95% interval excludes 1) in `r grid_holds` of `r grid_feasible` plausible accuracy settings (appendix).
 
 ```{r fig4}
 #| fig-height: 2.1

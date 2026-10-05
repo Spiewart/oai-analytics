@@ -470,7 +470,7 @@ def test_walking_validation_report_renders(fast_run):
     pdfs = render_report(analysis, settings, echo=lambda _: None)
     assert [p.name for p in pdfs] == ["brief.pdf", "report.pdf", "walking_validation_brief.pdf"]
     pages = [len(PdfReader(p).pages) for p in pdfs]
-    assert pages[0] <= 6, f"brief has {pages[0]} pages"
+    assert pages[0] == 5, f"brief has {pages[0]} pages"
     assert pages[1] <= 18, f"report has {pages[1]} pages"
     assert pages[2] == pages[0] + pages[1]
     for pdf in pdfs[:2]:
@@ -480,6 +480,7 @@ def test_walking_validation_report_renders(fast_run):
     # the brief frames the Lo et al. 2022 analysis neutrally (spec 2026-10-05 §1, §3)
     assert find_terms(pdfs[0], ["bias", "correction", "corrected"], stop_heading="References") == []
     page_one = PdfReader(pdfs[0]).pages[0].extract_text()
+    assert "The appendix summarises every result" in page_one  # page 1 ends on the appendix pointer
     if (analysis.root / "brief.local.yml").exists():
         assert PLACEHOLDER not in page_one
     else:
