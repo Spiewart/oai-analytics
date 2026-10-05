@@ -48,6 +48,13 @@ def test_combine_carries_the_first_parts_title(tmp_path):
     assert PdfReader(out).metadata.title == "Is reported walking really walking?"
 
 
+def test_combine_flattens_a_title_with_a_line_break(tmp_path):
+    # a hand-broken document title arrives with its break as extra whitespace
+    brief = blank_pdf(tmp_path / "brief.pdf", 1, title="Does reported walking —  \n or walking?")
+    out = combine_pdfs([("Brief", brief)], tmp_path / "both.pdf")
+    assert PdfReader(out).metadata.title == "Does reported walking — or walking?"
+
+
 def test_combine_rejects_no_parts_and_missing_files(tmp_path):
     with pytest.raises(PdfJoinError, match="no PDFs to join"):
         combine_pdfs([], tmp_path / "x.pdf")

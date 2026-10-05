@@ -56,7 +56,7 @@ The brief is 4–6 US-letter pages. Its figures are numbered 1, 2, …; the appe
 
 Layout chosen in the visual companion: A's opening paragraph, B's sidebar and C's figure.
 
-**Title.** "Is reported walking really walking?"
+**Title.** "Does reported walking measure accelerometer activity — or walking?"
 **Subtitle.** "Validating self-reported walking in the OAI against accelerometry — a proposal for joint work". The author and contact line follows (§6.3).
 
 **Opening paragraph.** Plain words, for a first-time reader, in this order:

@@ -1,5 +1,7 @@
 ---
-title: "Is reported walking really walking?"
+title: |
+  Does reported walking measure accelerometer activity —\
+  or walking?
 subtitle: "Validating self-reported walking in the OAI against accelerometry — a proposal for joint work"
 mainfont: Arial
 fontsize: 10pt
@@ -173,7 +175,7 @@ fig1 <- ggplot2::ggplot(pts, ggplot2::aes(fpr, se, colour = source, linetype = s
                  legend.spacing.y = ggplot2::unit(2, "pt"), legend.key.spacing.y = ggplot2::unit(0, "pt"),
                  legend.margin = ggplot2::margin(0, 0, 0, 0), legend.box.spacing = ggplot2::unit(4, "pt"),
                  plot.margin = ggplot2::margin(14, 8, 4, 4))
-oaireport::save_figure(fig1, "brief_fig1", "1col", height = 3.6)
+oaireport::save_figure(fig1, "brief_fig1", "1col", height = 3.35)
 ```
 
 ```{r page1}

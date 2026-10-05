@@ -48,7 +48,8 @@ def combine_pdfs(parts: Sequence[tuple[str, Path]], out: Path) -> Path:
             writer.append(str(path), outline_item=title)
         first = PdfReader(str(parts[0][1])).metadata
         if first is not None and first.title:
-            writer.add_metadata({"/Title": first.title})
+            # one line: a title broken by hand on the page arrives with extra whitespace
+            writer.add_metadata({"/Title": " ".join(first.title.split())})
         with partial.open("wb") as handle:
             writer.write(handle)
         os.replace(partial, out)
