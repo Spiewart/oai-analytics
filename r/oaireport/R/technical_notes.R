@@ -20,14 +20,20 @@ standard_tech_notes <- function() c(
   nondifferential = "Non-differential misclassification: misclassification that is the same in people with and without the outcome; it tends to pull an association toward no effect."
 )
 
-# a, b, …, z, aa, ab, …
+#' Letters of note markers: a, b, …, h, j, k, m, n, p, …, z, aa, ab, …
+#'
+#' The letters i, l and o are skipped everywhere, alone or in two-letter markers: as superscripts
+#' they read as the digits 1 and 0 of numbered citations. The 23 remaining letters continue past z
+#' as two letters (aa, ab, …) on the same reduced alphabet.
+note_alphabet <- setdiff(letters, c("i", "l", "o"))
 note_letter <- function(i) {
+  k <- length(note_alphabet)
   vapply(i, function(n) {
     s <- ""
     while (n > 0) {
-      r <- (n - 1) %% 26
-      s <- paste0(letters[r + 1], s)
-      n <- (n - 1) %/% 26
+      r <- (n - 1) %% k
+      s <- paste0(note_alphabet[r + 1], s)
+      n <- (n - 1) %/% k
     }
     s
   }, character(1))
@@ -38,7 +44,9 @@ note_letter <- function(i) {
 #' `entries` (named character: key = note text) override `defaults`. `$ref(key)` gives the
 #' superscript marker, as inline raw Typst for Markdown prose (`raw = FALSE` for a raw Typst
 #' block); use markers in body prose only, never in table cells or legends (they are escaped).
-#' `$list()` writes the notes once, in order of first reference.
+#' `$list()` writes the notes once, in order of first reference. Markers are letters a, b, …, h,
+#' j, k, m, n, p, …, z, aa, ab, …: i, l and o are skipped, because as superscripts they read as
+#' the digits 1 and 0 of numbered citations (see `note_letter()`).
 tech_notes <- function(entries = character(), defaults = standard_tech_notes()) {
   named_text <- function(x, what) {
     if (!is.character(x) || (length(x) && (is.null(names(x)) || any(!nzchar(names(x)))))) {

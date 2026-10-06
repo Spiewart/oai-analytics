@@ -46,7 +46,11 @@ adjusted_ci <- if (assumption("validity.median_regression_se") == "boot") {
 } else {
   "CI for the adjusted difference: the estimate ± 1.96 × its standard error, the standard error from the median-regression sandwich formula (quantreg's \"nid\" method)."
 }
-impossible <- "a negative number of people in a group (for example, of true walkers among people with the outcome) or sensitivity + specificity of 1 or less"
+# What makes a setting or a draw impossible (oaimodels::reclassify): the grid's blank cells come from a
+# sensitivity below the share of walkers by the question in a group; the simulation's draws mostly from a
+# specificity so low that a group has no true walkers left
+impossible_grid <- "a negative number of people in a group (for example, of true non-walkers, when the sensitivity is below the share of people the question calls walkers among those with or without the outcome) or sensitivity + specificity of 1 or less"
+impossible_sim <- "a negative number of people in a group (for example, of true walkers among people with the outcome) or sensitivity + specificity of 1 or less"
 notes <- oaireport::tech_notes(c(
   median_difference = "Median difference: the Hodges–Lehmann estimate, the median of the differences across all pairs of people, one from each group; it is robust to skewed data and need not equal the gap between the two group medians. Its 95% CI is the Hodges–Lehmann interval from the Wilcoxon rank-sum test.",
   adjusted_ci = adjusted_ci,
@@ -56,9 +60,9 @@ notes <- oaireport::tech_notes(c(
   subgroup_test = "Subgroup differences: a likelihood-ratio test from logistic regression of whether the answer matches the device on the subgroup, among device-defined walkers (sensitivity) and device-defined non-walkers (specificity) separately.",
   tipping_point = sprintf("Tipping-point analysis: the replication's adjusted model is refitted with the walking answers reclassified at random as if the question had a fixed sensitivity (%s to 1) and specificity (%s to 1), in steps of %s, the same in people with and without the outcome. Each setting is refitted %s times and shows the median odds ratio, with a 95%% interval that also includes the model's own uncertainty. A setting is impossible when it implies %s.",
                           num(min(run$bias_tipping$se)), num(min(run$bias_tipping$sp)), num(assumption("bias.tipping_step")),
-                          count(assumption("bias.tipping_iterations")), impossible),
+                          count(assumption("bias.tipping_iterations")), impossible_grid),
   misclassification_simulation = sprintf("Simulation of misclassification (probabilistic bias analysis): in each of %s draws, sensitivity and specificity are drawn from beta distributions fitted to the counts in the Lo et al. 2022 participants with accelerometer data and the outcome observed, the walking answers are reclassified at random to match, and the replication's model is refitted; when misclassification differs between groups, people with and without the outcome get their own draws from their own counts. A draw is discarded when it implies %s, or when the model cannot be refitted; a re-estimate with more than %s of its draws discarded, the limit set in advance, is not reliable.",
-                                         count(assumption("bias.iterations")), impossible, pct(assumption("bias.max_discard_share")))
+                                         count(assumption("bias.iterations")), impossible_sim, pct(assumption("bias.max_discard_share")))
 ))
 # Device measures per day: counts without decimals, minutes to 1 decimal
 cnum <- function(x, measure) ifelse(measure == "counts_per_day", num(x, 0), num(x, 1))
@@ -126,7 +130,7 @@ valid_day_plain <- sprintf("a valid day has at least %s wear hours and a usable 
 - A walker by the question typically recorded `r num(kg_bout$hl, 1)` more minutes a day in bouts of `r purposeful_minutes`+ minutes than a non-walker (the median of the differences over all walker–non-walker pairs; 95% CI `r num(kg_bout$hl_lo, 1)`–`r num(kg_bout$hl_hi, 1)`).
 - The walking question separates device-defined walkers poorly (sensitivity `r num(pick("validation", "se"))`, specificity `r num(pick("validation", "sp"))`, Youden's J `r num(youden("validation"))`); asking how often helps (J `r num(j_strict)` for walking `r tolower(cut_names("times")[["cut3"]])`).
 - In the participants of Lo et al. 2022 [@lo2022], if misclassification is the same with and without the outcome, walking's link to less new frequent knee pain holds in `r sum(grid_np$excludes_1)` of `r nrow(grid_np)` possible accuracy settings (sensitivity `r num(min(grid_np$se))` or more).
-- Activity counts are not specific to walking; a step-based device measure would show whether the question and the device measure the same thing.
+- Activity counts are not specific to walking; a step-based device measure would remove that difference between the question and the device, though not the difference in time frame.
 
 ```{r words}
 #| results: asis
@@ -152,7 +156,7 @@ cat(oaireport::reading_guide(c(
 oaireport::compare_table(data.frame(
   Part = c("Part 1. Does the walking question agree with the device?", "Part 2. What the agreement means for Lo et al. 2022"),
   Who = c("Answered the walking question and have accelerometer data at 48 or 72 months",
-          sprintf("Of those, members of the Lo et al. 2022 cohort (the replication uses all %s cohort members)", count(flow[["lo2022_cohort"]]))),
+          sprintf("Of those, members of the Lo et al. 2022 cohort (the replication uses the cohort of %s)", count(flow[["lo2022_cohort"]]))),
   Participants = count(c(n_val, n_lo)), check.names = FALSE), widths = c(2.4, 3, 1), multipage = FALSE)
 ```
 
@@ -435,9 +439,15 @@ j_compare <- if (abs(j_lo - j_val) < 0.05) "about as weak here as" else if (j_lo
 st <- run$validity_strata[run$validity_strata$sample == "lo_subset" & run$validity_strata$measure %in% c("se", "sp"), ]
 strata_differ <- any(!is.na(st$p_differs) & st$p_differs < 0.05)
 strata_text <- if (strata_differ) "differ across some subgroups" else "do not clearly differ across subgroups"
+# Outcome names inside a sentence: "new frequent knee pain", but "KL grade worsening" kept
+lower_name <- function(x) ifelse(grepl("^[A-Z][a-z]", x), lower_first(x), x)
+lo_t2 <- run$lo2022_table2
+cc_knees <- lo_t2$n[match(paste(names(outcome_names), "or_adj"), paste(lo_t2$outcome, lo_t2$model))]  # complete-case knees
+cc_text <- sprintf("each outcome's model uses the knees with that outcome and the model's covariates observed (complete cases: %s knees)",
+                   and_list(count(cc_knees)))
 ```
 
-The agreement results here use the `r count(n_lo)` participants of Lo et al. 2022 [@lo2022] who answered the walking question and have accelerometer data, a subset of the Part 1 sample. The replication and the sensitivity analyses use the knees of all `r count(n_lo_cohort)` participants of the replicated cohort, with the question's accuracy taken from those `r count(n_lo)`.
+The agreement results here use the `r count(n_lo)` participants of Lo et al. 2022 [@lo2022] who answered the walking question and have accelerometer data, a subset of the Part 1 sample. The replication and the sensitivity analyses use the replicated cohort of `r count(n_lo_cohort)` participants, in which each outcome's model uses the knees with that outcome and the model's covariates observed. The worked example and the simulation of misclassification take the question's accuracy from the participants with accelerometer data; the tipping-point grid uses assumed accuracy values.
 
 ## Agreement in the Lo et al. 2022 participants
 
@@ -460,8 +470,11 @@ cat(oaireport::table_note("Lo et al. 2022 participants with accelerometer data, 
 #| fig-height: 4
 #| results: asis
 cat(oaireport::figure_group(), sep = "\n")
-var_names <- c(kl = "KL grade (worse knee)", pain = "Frequent knee pain", outcome_names)
-st$group <- factor(named(st$variable, var_names), levels = unique(named(st$variable, var_names)))
+var_names <- c(kl = "KL grade, worse knee", pain = "Frequent knee pain", outcome_names)
+vars <- unique(st$variable)
+group_n <- vapply(vars, function(v) sum(st$n[st$variable == v]), numeric(1))  # se n + sp n over its strata
+group_label <- stats::setNames(sprintf("%s (n\u00a0=\u00a0%s)", named(vars, var_names), count(group_n)), vars)
+st$group <- factor(group_label[st$variable], levels = group_label)
 st$stratum <- gsub("-", "–", st$stratum)
 st$measure_name <- factor(ifelse(st$measure == "se", "Sensitivity", "Specificity"), levels = c("Sensitivity", "Specificity"))
 fig_st <- ggplot2::ggplot(st, ggplot2::aes(estimate, stratum, colour = measure_name)) +
@@ -473,7 +486,7 @@ fig_st <- ggplot2::ggplot(st, ggplot2::aes(estimate, stratum, colour = measure_n
   ggplot2::theme(legend.position = "bottom", strip.text.y = ggplot2::element_text(angle = 0, hjust = 0))
 oaireport::save_figure(fig_st, "clinical_strata", "2col", height = 4)
 print(fig_st)
-cat(oaireport::table_note(sprintf("Lo et al. 2022 participants with accelerometer data (n = %s): sensitivity and specificity of the walking answer against the device-defined walker, within subgroups. Subgroups: the Kellgren–Lawrence (KL) grade of the worse knee and frequent knee pain in either knee at baseline; for each outcome, people in whom it did or did not occur in either knee during follow-up (medial JSN: medial joint-space narrowing).", count(n_lo)), label = lab("Figure"), close_group = TRUE), sep = "\n")
+cat(oaireport::table_note(sprintf("Lo et al. 2022 participants with accelerometer data (n = %s; n in each panel: those with the subgroup observed): sensitivity and specificity of the walking answer against the device-defined walker, within subgroups. Subgroups: the Kellgren–Lawrence (KL) grade of the worse knee and frequent knee pain in either knee at baseline; for each outcome, those of the %s with the outcome observed, by whether it occurred in either knee during follow-up (medial JSN: medial joint-space narrowing).", count(n_lo), count(n_lo)), label = lab("Figure"), close_group = TRUE), sep = "\n")
 ```
 
 ## Two ways to read low agreement
@@ -483,7 +496,7 @@ Low agreement between the question and the accelerometer has two readings, and t
 - **Reporting.** Some people may misremember or misreport their walking, so the question misclassifies them.
 - **Different constructs.** The question asks about a long-standing habit of walking for exercise since age 50, at the 96-month visit. The accelerometer recorded one week of current activity of any kind, years earlier. And activity counts do not single out walking. The two may simply measure different things.
 
-A walking-specific accelerometer measure, such as steps and step rate, would separate these readings: it measures walking itself, at the visits the device was worn.
+A walking-specific accelerometer measure, such as steps and step rate, would narrow these readings: it removes one difference (activity of any kind against walking), though not the difference in time frame.
 
 ## The results of Lo et al. 2022, replicated
 
@@ -501,15 +514,24 @@ ours <- oaireport::parse_or(rows$ours)
 lo_table <- data.frame(
   Outcome = unname(outcome_names),
   `Published odds ratio (95% CI)` = sub(" \\*$", "", gsub("-", "–", rows$published)),
-  `This analysis (95% CI)` = oaireport::fmt_ci(ours$or, ours$lo, ours$hi),
+  ours = oaireport::fmt_ci(ours$or, ours$lo, ours$hi),
   check.names = FALSE)
-lo_bold <- cbind(FALSE, oaireport::ci_excludes(pub$lo, pub$hi, 1), oaireport::ci_excludes(ours$lo, ours$hi, 1))
+names(lo_table)[3] <- sprintf("This analysis, n\u00a0=\u00a0%s (95%%\u00a0CI)", count(n_lo_cohort))
+# The published column is bold where the paper reports significance (its "*"): a limit rounded to 1.0
+# can hide an interval that excludes 1
+pub_sig <- !is.na(pub$sig) & pub$sig
+lo_bold <- cbind(FALSE, pub_sig, oaireport::ci_excludes(ours$lo, ours$hi, 1))
+rounds_to_one <- pub_sig & !oaireport::ci_excludes(pub$lo, pub$hi, 1)
+rounds_text <- if (any(rounds_to_one)) {
+  sprintf("; its %s %s to 1.0", and_list(sub(" worsening$", "", lower_name(outcome_names[rounds_to_one]))),
+          if (sum(rounds_to_one) == 1) "interval rounds" else "intervals round")
+} else ""
 oaireport::compare_table(lo_table, widths = c(2.6, 2, 2), multipage = FALSE, bold = lo_bold)
 ```
 
 ```{r note-b-lo}
 #| results: asis
-cat(oaireport::table_note(sprintf("Adjusted odds ratios for walkers against non-walkers, by knee, from Lo et al. 2022 and from this analysis's replication with the published methods (all %s participants of the replicated cohort). Bold: the 95%% CI excludes 1. The published intervals have one decimal, so a published limit of 1.0 is not bold.", count(n_lo_cohort)), label = lab("Table"), close_group = TRUE), sep = "\n")
+cat(oaireport::table_note(sprintf("Adjusted odds ratios for walkers against non-walkers, by knee, from Lo et al. 2022 and from this analysis's replication with the published methods, in which %s. Published column: bold where the paper reports the result as significant%s. This analysis: bold where the 95%% CI excludes 1.", cc_text, rounds_text), label = lab("Table"), close_group = TRUE), sep = "\n")
 ```
 
 ## How sensitive is the association to classification?
@@ -532,7 +554,7 @@ case_dev <- (case_share - (1 - dev_sp)) / dev_j
 
 If the walking question misclassifies some people, how would the association in Lo et al. 2022 change? In the paper's published table, `r pct(case_share)` of the knees that developed new frequent knee pain belonged to walkers, against `r pct(non_share)` of the knees that did not: a gap of `r num(100 * gap, 0)` percentage points. If misclassification is the same in people with and without the outcome`r notes$ref("nondifferential")`, allowing for it divides that gap by Youden's J. If the question's sensitivity were `r num(ex_se)` and its specificity `r num(ex_sp)` (J `r num(ex_j)`), the gap would grow to `r num(100 * gap / ex_j, 0)` points, so the association looks stronger, not weaker. Against the accelerometer, sensitivity is `r num(dev_se)` and specificity `r num(dev_sp)` (J `r num(dev_j)`): the gap would be multiplied by `r num(1 / dev_j, 1)`, and the share of walkers among knees with new pain would become `r pct(case_dev)`, below zero, which is impossible.
 
-The tipping-point analysis`r notes$ref("tipping_point")` repeats this over a grid of accuracy settings, refitting the adjusted model of Lo et al. 2022 in each (Figure A5).
+The tipping-point analysis`r notes$ref("tipping_point")` repeats this over a grid of accuracy settings, refitting the adjusted model of Lo et al. 2022 in each (Figure A5). The grid assumes misclassification is the same in people with and without the outcome, and allowing for that kind can only move the odds ratio away from 1; so the grid cannot show whether an association survives misclassification that differs by group (for that case, see the second column of Table A10).
 
 ```{r b-tipping}
 #| fig-height: 4.6
@@ -540,8 +562,21 @@ The tipping-point analysis`r notes$ref("tipping_point")` repeats this over a gri
 tp <- run$bias_tipping
 tip <- do.call(rbind, lapply(names(outcome_names), function(o) {
   g <- tp[tp$outcome == o & !is.na(tp$or), ]
-  data.frame(outcome = outcome_names[[o]], holds = sum(g$excludes_1, na.rm = TRUE), feasible = nrow(g))
+  perfect <- g$excludes_1[abs(g$se - 1) < 1e-9 & abs(g$sp - 1) < 1e-9]  # the observed association
+  data.frame(outcome = outcome_names[[o]], holds = sum(g$excludes_1, na.rm = TRUE), feasible = nrow(g),
+             perfect = length(perfect) == 1 && isTRUE(perfect))
 }))
+# "Holds" only where the interval excludes 1 at perfect accuracy too
+tip_names <- lower_name(tip$outcome)
+tip_counts <- sprintf("%d of %d", tip$holds, tip$feasible)
+partial <- !tip$perfect & tip$holds > 0
+never <- !tip$perfect & tip$holds == 0
+tip_text <- paste0(cap1(paste(c(
+  if (any(tip$perfect)) sprintf("for %s the association holds in %s possible settings", and_list(tip_names[tip$perfect]), and_list(tip_counts[tip$perfect])),
+  if (any(partial)) sprintf("for %s the interval excludes 1 only under assumed misclassification (%s possible settings), and at perfect accuracy it includes 1",
+                            and_list(tip_names[partial]), and_list(tip_counts[partial])),
+  if (any(never)) sprintf("for %s the interval includes 1 in every possible setting", and_list(tip_names[never]))),
+  collapse = "; ")), ".")
 # A float: at the foot of this page if it fits, else at the top of the next, with the text after it filling this page
 cat("", "```{=typst}", "#place(auto, float: true, clearance: 1.5em)[", "#set align(start)", "```", "", sep = "\n")
 cat(oaireport::figure_group(), sep = "\n")
@@ -554,7 +589,7 @@ fig_tip <- ggplot2::ggplot(tp, ggplot2::aes(x = factor(num(sp)), y = factor(num(
   ggplot2::geom_tile(colour = "white", linewidth = 0.4) +
   ggplot2::geom_text(ggplot2::aes(label = label), size = 1.9, family = oaireport::oai_font(), colour = "grey10") +
   ggplot2::scale_fill_manual(values = c(excludes = "#cde2fb", includes = "grey92", impossible = "white"),
-                             labels = c(excludes = "Holds: 95% interval excludes 1", includes = "95% interval includes 1",
+                             labels = c(excludes = "95% interval excludes 1", includes = "95% interval includes 1",
                                         impossible = "Impossible combination"),
                              drop = FALSE, name = NULL) +
   ggplot2::guides(fill = ggplot2::guide_legend(override.aes = list(colour = "grey60"))) +
@@ -563,8 +598,8 @@ fig_tip <- ggplot2::ggplot(tp, ggplot2::aes(x = factor(num(sp)), y = factor(num(
   ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 90, vjust = 0.5))
 oaireport::save_figure(fig_tip, "clinical_tipping", "2col", height = 4.6)
 print(fig_tip)
-cat(oaireport::table_note(sprintf("Knees of all %s participants of the replicated Lo et al. 2022 cohort. Each cell: the adjusted odds ratio if the walking question had that sensitivity (rows) and specificity (columns), the same in people with and without the outcome; shaded cells keep a 95%% interval that excludes 1, and “–” marks an impossible combination. Possible accuracy settings in which the association holds: %s.",
-  count(n_lo_cohort), paste(sprintf("%s, %d of %d", ifelse(grepl("^[A-Z][a-z]", tip$outcome), lower_first(tip$outcome), tip$outcome), tip$holds, tip$feasible), collapse = "; ")), label = lab("Figure"), close_group = TRUE), sep = "\n")
+cat(oaireport::table_note(sprintf("Replicated Lo et al. 2022 cohort (n = %s; for each outcome, the complete cases of Table A9). Each cell: the adjusted odds ratio if the walking question had that sensitivity (rows) and specificity (columns), the same in people with and without the outcome; shaded cells keep a 95%% interval that excludes 1, and “–” marks an impossible combination. %s",
+  count(n_lo_cohort), tip_text), label = lab("Figure"), close_group = TRUE), sep = "\n")
 cat("", "```{=typst}", "]", "```", "", sep = "\n")
 ```
 
@@ -573,13 +608,13 @@ pba <- run$bias_pba
 adj <- pba[pba$model == "or_adj", ]
 limit <- pct(assumption("bias.max_discard_share"))
 sim_text <- if (all(adj$flagged)) {
-  sprintf("cannot give a reliable single re-estimate: for every outcome, %s of its simulations imply impossible values, more than the limit of %s set in advance (Table A10). That is a limit of the activity-count reference, which is not specific to walking, as much as of the question.",
+  sprintf("cannot give a reliable single re-estimate: for every outcome, %s of its simulations imply impossible values, more than the limit of %s set in advance (Table A10). That is a limit of the activity-count reference, which is not specific to walking.",
           pct_range(adj$discarded), limit)
 } else if (!any(adj$flagged)) {
   sprintf("gives a usable re-estimate: at most %s of its simulations imply impossible values, within the limit of %s set in advance (Table A10).",
           pct(max(adj$discarded)), limit)
 } else {
-  sprintf("gives a reliable re-estimate in only %d of %d combinations of outcome and assumption: in the others, more than the limit of %s set in advance of its simulations imply impossible values (Table A10).",
+  sprintf("gives a reliable re-estimate in only %d of %d combinations of outcome and assumption: in the others, more than %s of its simulations, the limit set in advance, imply impossible values (Table A10).",
           sum(!adj$flagged), nrow(adj), limit)
 }
 ```
@@ -597,12 +632,16 @@ sim <- data.frame(
   `Misclassification the same in both groups` = vapply(names(outcome_names), share, character(1), scenario = "non-differential"),
   `Misclassification differs between groups` = vapply(names(outcome_names), share, character(1), scenario = "differential"),
   check.names = FALSE)
+names(sim)[1] <- sprintf("Outcome (n\u00a0=\u00a0%s)", count(n_lo_cohort))
+priors <- run$bias_priors[run$bias_priors$scenario == "non-differential", ]
+prior_n <- (priors$se_n + priors$sp_n)[match(names(outcome_names), priors$outcome)]  # accuracy from these
 oaireport::compare_table(sim, widths = c(2.6, 2, 2), multipage = FALSE)
 ```
 
 ```{r note-b-simulation}
 #| results: asis
-cat(oaireport::table_note(sprintf("Share of the %s simulations of the adjusted model of Lo et al. 2022 (all %s participants of the replicated cohort) that imply an impossible value, for example a negative number of walkers among people with the outcome; the walking question's accuracy is taken from the accelerometer in the %s participants with its data. Groups: people with and without the outcome, who share one accuracy or each have their own. The full results are in the technical report.", count(adj$n[1]), count(n_lo_cohort), count(n_lo)), label = lab("Table"), close_group = TRUE), sep = "\n")
+cat(oaireport::table_note(sprintf("Share of the %s simulations of the adjusted model of Lo et al. 2022, in the replicated cohort (n = %s; for each outcome, the complete cases of Table A9), that imply an impossible value, for example a negative number of true walkers among people with the outcome. The walking question's accuracy is taken from the accelerometer in those of the %s participants with accelerometer data who have the outcome observed (%s, by outcome); groups: people with and without the outcome, who share one accuracy or each have their own. The full results are in the technical report.",
+  count(adj$n[1]), count(n_lo_cohort), count(n_lo), and_list(count(prior_n))), label = lab("Table"), close_group = TRUE), sep = "\n")
 ```
 
 ```{r b-stricter}
@@ -654,7 +693,7 @@ The accelerometry group's step and step-rate data make a walking-specific exposu
 - minutes a day at 100 or more steps per minute (about moderate intensity in adults aged 61 to 85 [@tudorlocke2021]);
 - bouts of continuous stepping.
 
-Defined together and pre-specified, such an exposure could be put into the models of Lo et al. 2022 in place of the walking question, and the results compared with the question's. That would test directly whether the question and the accelerometer measure the same thing, and how much the association depends on how walking is measured.
+Defined together and pre-specified, such an exposure could be put into the models of Lo et al. 2022 in place of the walking question, and the results compared with the question's. That would show whether, and how much, the association depends on how walking is measured.
 
 ```{=typst}
 #pagebreak()
@@ -676,7 +715,7 @@ device_plain <- sprintf("A bout starts when %s of %s consecutive minutes reach %
                         fmt(assumption("device.bout_stop_below")), fmt(assumption("device.bout_window")), purposeful_minutes, week_plain)
 ```
 
-- **Participants.** Part 1: Osteoarthritis Initiative participants who answered the walking question at the 96-month visit and had usable accelerometer data at the `r sub(" or ", "- or ", sub(" months", "-month", waves_at))` visit (`r valid_day_plain`). Part 2: the `r count(n_lo)` of them in the Lo et al. 2022 cohort; the replication uses the knees of all `r count(n_lo_cohort)` participants of the replicated cohort.
+- **Participants.** Part 1: Osteoarthritis Initiative participants who answered the walking question at the 96-month visit and had usable accelerometer data at the `r sub(" or ", "- or ", sub(" months", "-month", waves_at))` visit (`r valid_day_plain`). Part 2: the `r count(n_lo)` of them in the Lo et al. 2022 cohort; the replication uses the replicated cohort of `r count(n_lo_cohort)` participants, each outcome's model the knees with that outcome and the model's covariates observed.
 - **Accelerometer.** An ActiGraph GT1M worn at the hip for a week [@song2010]. `r device_plain` A device-defined walker shows `r rule_plain`.
 - **Statistics.** Medians and median differences with 95% CIs, and differences adjusted for age, sex and body-mass index. Shares (sensitivity, specificity, predictive values) carry 95% CIs. Rank correlations, agreement beyond chance (kappa), and tests for trend across ordered groups. For Lo et al. 2022: the published models replicated, then refitted under assumed accuracy values (tipping-point grid) and under simulated misclassification.
 - **Source.** Every number comes from the same analysis run as the brief. The full technical report gives every analysis, setting and assumption, and is available on request.

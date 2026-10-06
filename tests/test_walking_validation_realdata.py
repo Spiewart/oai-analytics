@@ -511,6 +511,10 @@ def test_walking_validation_report_renders(fast_run):
     assert _top_bookmarks(pdfs[3]) == ["Brief", "Appendix: results"]
     clinical = pdfs[2]
     assert find_terms(clinical, CLINICAL_BANNED, stop_heading="Technical notes") == []
+    assert (
+        find_terms(clinical, ["bias", "correction", "corrected"], stop_heading="Technical notes")
+        == []
+    )
     clinical_text = "\n".join(page.extract_text() for page in PdfReader(clinical).pages)
     for leftover in ("#super", "{=typst}", "<tn-"):
         assert leftover not in clinical_text, leftover

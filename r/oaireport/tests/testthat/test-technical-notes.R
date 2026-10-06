@@ -23,8 +23,11 @@ test_that("tech_notes rejects unknown keys and bad names, and lists only referen
   expect_equal(tech_notes(defaults = character())$list(), character())
 })
 
-test_that("entries override defaults, and letters continue past z", {
-  expect_equal(note_letter(c(1, 26, 27, 28, 52, 53)), c("a", "z", "aa", "ab", "az", "ba"))
+test_that("entries override defaults, and letters skip i, l and o and continue past z", {
+  expect_equal(note_letter(c(1, 8, 9, 10, 11, 12, 13, 23, 24, 25, 46, 47)),
+               c("a", "h", "j", "k", "m", "n", "p", "z", "aa", "ab", "az", "ba"))
+  expect_false(any(grepl("[ilo]", note_letter(1:2000))))  # i, l and o read as 1, 1 and 0
+  expect_equal(anyDuplicated(note_letter(1:2000)), 0L)
   notes <- tech_notes(c(kappa = "Mine."))
   notes$ref("kappa")
   out <- paste(notes$list(), collapse = "\n")  # expect_match evaluates its argument twice
