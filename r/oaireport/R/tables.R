@@ -40,6 +40,12 @@ typst_rows <- function(i, groups) {
   i + vapply(i, function(row) sum(starts <= row), integer(1))
 }
 
+# Typst rows of the group titles: each group's start plus the number of titles above it
+group_title_rows <- function(groups) {
+  starts <- sort(unlist(groups))
+  starts + seq_along(starts) - 1L
+}
+
 #' A tinytable comparison table
 #'
 #' @param df Data frame of cell text; verdict columns are found by their names (`verdict*`).
@@ -52,8 +58,10 @@ typst_rows <- function(i, groups) {
 #' @param groups Named list like `tinytable::group_tt(i =)`: each group title goes before the
 #'   data row its value names. With `groups`, the grouping is applied inside, so bold lands on
 #'   the right cells; callers must not call `group_tt` on a table that has `bold`.
+#' @param group_style Named list of `tinytable::style_tt()` arguments for the group-title rows
+#'   (bold italic by default), so a title does not read as a data row; `NULL` leaves them plain.
 compare_table <- function(df, widths = NULL, compact = FALSE, labels = NULL, multipage = TRUE,
-                          bold = NULL, groups = NULL) {
+                          bold = NULL, groups = NULL, group_style = list(bold = TRUE, italic = TRUE)) {
   df <- as.data.frame(df)
   if (!is.null(widths) && length(widths) != ncol(df)) {
     stop("widths needs one value per column (", ncol(df), ")", call. = FALSE)
@@ -79,6 +87,12 @@ compare_table <- function(df, widths = NULL, compact = FALSE, labels = NULL, mul
            nrow(df), call. = FALSE)
     }
   }
+  if (!is.null(group_style) && (!is.list(group_style) || !length(group_style) ||
+                                is.null(names(group_style)) || anyNA(names(group_style)) ||
+                                !all(nzchar(names(group_style))))) {
+    stop("compare_table(): group_style must be a named list of style_tt() arguments, or NULL",
+         call. = FALSE)
+  }
   verdict_cols <- grep("^verdict", names(df))
   shown <- format_verdicts(df, compact)
   for (j in seq_along(shown)) {
@@ -92,8 +106,8 @@ compare_table <- function(df, widths = NULL, compact = FALSE, labels = NULL, mul
   # Cell text such as "0.6 (0.4-0.8) *" or "t2.new_pain" is Typst markup unless escaped.
   tab <- tinytable::format_tt(tab, escape = TRUE)
   if (!is.null(groups)) tab <- tinytable::group_tt(tab, i = groups)
-  # tinytable keys styles by Typst row and does not shift styles made before group_tt, so tints
-  # and bold go on after grouping, each data row moved by typst_rows()
+  # tinytable keys styles by Typst row and does not shift styles made before group_tt, so tints,
+  # group-title styles and bold go on after grouping, each data row moved by typst_rows()
   for (j in verdict_cols) {
     for (verdict in names(verdict_tints)) {
       i <- which(df[[j]] == verdict)
@@ -102,6 +116,9 @@ compare_table <- function(df, widths = NULL, compact = FALSE, labels = NULL, mul
                                    background = verdict_tints[[verdict]])
       }
     }
+  }
+  if (!is.null(groups) && !is.null(group_style)) {
+    tab <- do.call(tinytable::style_tt, c(list(tab, i = group_title_rows(groups)), group_style))
   }
   if (!is.null(bold)) {
     cells <- which(bold & !is.na(bold), arr.ind = TRUE)

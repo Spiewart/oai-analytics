@@ -101,7 +101,7 @@ test_that("compare_table bolds exactly the cells marked TRUE", {
 test_that("bold lands on the right cell when groups add rows above it", {
   df <- data.frame(a = c("x", "y", "z"), b = c("1", "2", "3"))
   bold <- matrix(FALSE, 3, 2); bold[2, 2] <- TRUE; bold[3, 1] <- TRUE
-  tab <- compare_table(df, bold = bold, groups = list(G = 1, H = 3))
+  tab <- compare_table(df, bold = bold, groups = list(G = 1, H = 3), group_style = NULL)
   # rows: header 0, G 1, x 2, y 3, H 4, z 5
   expect_equal(style_keys(tab), c('"3_1"', '"5_0"'))
   expect_match(style_at(tab, "3_1"), "bold: true", fixed = TRUE)
@@ -114,12 +114,35 @@ test_that("verdict tints move with their rows when groups add rows above them", 
   expect_equal(style_keys(plain), c('"1_1"', '"2_1"', '"3_1"'))
   expect_match(style_at(plain, "1_1"), verdict_tints[["replicated"]], fixed = TRUE)
   expect_match(style_at(plain, "3_1"), verdict_tints[["missing"]], fixed = TRUE)
-  grouped <- compare_table(df, groups = list(G = 1, H = 3))
+  grouped <- compare_table(df, groups = list(G = 1, H = 3), group_style = NULL)
   # rows: header 0, G 1, x 2, y 3, H 4, z 5
   expect_equal(style_keys(grouped), c('"2_1"', '"3_1"', '"5_1"'))
   expect_match(style_at(grouped, "2_1"), verdict_tints[["replicated"]], fixed = TRUE)
   expect_match(style_at(grouped, "3_1"), verdict_tints[["drift"]], fixed = TRUE)
   expect_match(style_at(grouped, "5_1"), verdict_tints[["missing"]], fixed = TRUE)
+})
+
+test_that("compare_table styles the group-title rows and no data row", {
+  df <- data.frame(a = c("x", "y", "z"), b = c("1", "2", "3"))
+  # rows: header 0, G 1, x 2, y 3, H 4, z 5; the titles span both columns
+  tab <- compare_table(df, groups = list(H = 3, G = 1))
+  expect_equal(style_keys(tab), sort(c('"1_0"', '"1_1"', '"4_0"', '"4_1"')))
+  for (key in c("1_0", "4_0")) {
+    expect_match(style_at(tab, key), "bold: true", fixed = TRUE)
+    expect_match(style_at(tab, key), "italic: true", fixed = TRUE)
+  }
+  # bold data cells keep their own style, without the titles' italic
+  bold <- matrix(FALSE, 3, 2); bold[2, 2] <- TRUE
+  both <- compare_table(df, bold = bold, groups = list(G = 1, H = 3))
+  expect_equal(style_keys(both), sort(c('"1_0"', '"1_1"', '"3_1"', '"4_0"', '"4_1"')))
+  expect_false(grepl("italic", style_at(both, "3_1"), fixed = TRUE))
+  custom <- compare_table(df, groups = list(G = 1), group_style = list(italic = TRUE))
+  expect_match(style_at(custom, "1_0"), "italic: true", fixed = TRUE)
+  expect_false(grepl("bold", style_at(custom, "1_0"), fixed = TRUE))
+  expect_equal(style_keys(compare_table(df, groups = list(G = 1), group_style = NULL)), character())
+  expect_equal(style_keys(compare_table(df)), character())  # no groups, nothing styled
+  expect_error(compare_table(df, groups = list(G = 1), group_style = list(TRUE)), "group_style")
+  expect_error(compare_table(df, groups = list(G = 1), group_style = "bold"), "group_style")
 })
 
 test_that("compare_table checks groups", {
