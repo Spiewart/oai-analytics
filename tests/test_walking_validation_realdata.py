@@ -451,6 +451,27 @@ def _report_tools_ready() -> bool:
 # right edge of the text block, in points: US-letter width less the Typst page's right margin
 RIGHT_EDGE = {"brief.pdf": 550.8, "report.pdf": 547.2, "clinical.pdf": 550.8}
 PLACEHOLDER = "Authors and contact to be added"
+# spec 2026-10-05 §5.2: allowed only after the "Technical notes" heading
+CLINICAL_BANNED = [
+    "Hodges–Lehmann",
+    "rank-biserial",
+    "Jonckheere–Terpstra",
+    "permutation",
+    "bootstrap",
+    "Wilson",
+    "Spearman–Brown",
+    "deattenuated",
+    "limits of agreement",
+    "non-differential",
+    "differential misclassification",
+    "probabilistic bias analysis",
+    "bias analysis",
+    "draws",
+    "discarded",
+    "device wave",
+    "purposeful bout",
+    "MV",
+]
 
 
 def _top_bookmarks(pdf: Path) -> list[str]:
@@ -488,6 +509,12 @@ def test_walking_validation_report_renders(fast_run):
     else:
         assert PLACEHOLDER in page_one
     assert _top_bookmarks(pdfs[3]) == ["Brief", "Appendix: results"]
+    clinical = pdfs[2]
+    assert find_terms(clinical, CLINICAL_BANNED, stop_heading="Technical notes") == []
+    clinical_text = "\n".join(page.extract_text() for page in PdfReader(clinical).pages)
+    for leftover in ("#super", "{=typst}", "<tn-"):
+        assert leftover not in clinical_text, leftover
+    assert "Technical notes" in clinical_text
     for pdf in pdfs[:3]:
         edge = max_right_edge(pdf)
         if edge is not None:  # only the margin check needs poppler

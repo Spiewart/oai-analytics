@@ -24,6 +24,7 @@ local_assets = ["brief.local.yml"]               # optional, untracked: copied w
 
 - `entry` and `documents` cannot be used together.
 - `part_titles` needs `combined`, takes one title per document, and defaults to the file names without `.qmd`.
+- `combined_documents = [...]` chooses which documents `combined` joins, in that order (default: all); `part_titles` then has one title per joined document. It needs `combined`, and lists documents from `documents`, each once.
 - `combined` must be a bare `.pdf` file name that does not collide with a document's PDF or an asset. Joining needs `pypdf`, a dev dependency (`uv sync` installs it).
 - Local assets are never required, and are removed from the report folder after rendering, with everything else but the PDFs and `figures/`.
 - `oai report <analysis>` prints one `Report:` line per PDF.
@@ -71,12 +72,21 @@ unhyphenated (the body text is justified and hyphenated, which garbles narrow ce
 | `save_figure(plot, name, "1col"/"2col")` | `figures/<name>.pdf` + 300 dpi `.png` at 3.5 in / 7 in |
 | `forest_plot(estimates, facet = , sources = )` | Odds ratios by outcome, up to four sources |
 | `flow_diagram(flow, labels, published)` | Cohort flow from `flow.csv`, "ours [published]" |
-| `compare_table(df, widths, labels, multipage)` | tinytable with ✓ / △ / – verdicts (columns named `verdict*`), display headers, Typst-escaped cells; breaks across pages unless `multipage = FALSE` |
+| `compare_table(df, widths, labels, multipage, bold, groups, group_style)` | tinytable with ✓ / △ / – verdicts (columns named `verdict*`), display headers, Typst-escaped cells; breaks across pages unless `multipage = FALSE`. `bold`: a logical matrix of the table's shape, TRUE cells in bold. `groups`: a named list of row numbers, each name a group title set before that data row (as `tinytable::group_tt(i =)`, applied inside so bold stays on the right cells). `group_style`: `style_tt()` arguments for the group titles, bold italic by default; `NULL` leaves them plain |
 | `parse_or(text)` | `"0.6 (0.4-0.8) *"` → or, lo, hi, sig |
 | `table_note(text, close_group)`, `figure_group()` | A legend in small type under a table or figure, built in R from the run's assumptions and results; `figure_group()` keeps a figure and its legend on one page |
 | `ledger_markdown(path)` | `ASSUMPTIONS.md` as lines for a `results: asis` chunk: title and comment dropped, keys given break points so they wrap in table cells |
 
 Give long tables a Markdown heading, not a caption: captions do not survive page breaks in Typst.
+
+## Plain-language documents
+
+A document for readers outside statistics (e.g. `analyses/walking_validation/clinical.qmd`) keeps technical terms out of its text and bolds what is significant. `oaireport` and `oai` give the pieces:
+
+- `tech_notes(entries)` makes a note registry. `$ref(key)` gives a superscript letter (a, b, …, in order of first reference) linked to the note; `$list()` writes the "Technical notes" list, each note linked back to its first marker. Use markers in prose only, never in table cells or legends, and write the list once, at the end.
+- `standard_tech_notes()` gives default texts for common methods (median difference, Wilson and bootstrap CIs, test for trend, rank correlation, sensitivity and specificity, predictive values, Youden's J, kappa, limits of agreement, median regression, tipping-point analysis, misclassification simulation, non-differential misclassification). Entries passed to `tech_notes()` override or extend them; put the run's settings (resamples, iterations) in the text.
+- `ci_excludes(lo, hi, null = 0)` is TRUE when a 95% CI lies strictly on one side of the null (use `null = 1` for odds ratios); a limit at the null or a missing limit is FALSE. Pass the result to `compare_table(bold =)`. With grouped rows, pass `groups` to `compare_table()` instead of calling `group_tt` yourself, so bold lands on the right cells.
+- `oai.pdfcheck.find_terms(pdf, terms, stop_heading=)` lists the terms found before the last `stop_heading` (whole words, any case), and `max_right_edge(pdf)` gives the largest right edge of any word, in points (`None` without `pdftotext`). Tests use them to keep jargon out of a document's text and its text inside the margins.
 
 ## The `report` renv profile
 

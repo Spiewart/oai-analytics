@@ -1,7 +1,7 @@
 # Clinical-Reader Version of the Walking-Validation Results — Design
 
 **Date:** 2026-10-05
-**Status:** Draft for review
+**Status:** Implemented
 **Builds on:** `2026-10-03-northwestern-brief-design.md` (the brief and the technical report), `2026-10-01-walking-validation-design.md`
 
 ## 1. Purpose

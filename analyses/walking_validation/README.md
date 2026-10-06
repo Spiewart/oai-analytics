@@ -26,11 +26,12 @@ Needs the replication's frame for the matching exposure coding:
 
 ## Sending the brief
 
-`uv run oai report walking_validation` writes three PDFs to `<results>/walking_validation/report/`, where `<results>` is the results folder (`$OAI_RESULTS_DIR`). It needs a finished run: add `--run` to run it first. The PDFs are:
+`uv run oai report walking_validation` writes four PDFs to `<results>/walking_validation/report/`, where `<results>` is the results folder (`$OAI_RESULTS_DIR`). It needs a finished run: add `--run` to run it first. The PDFs are:
 
 - `brief.pdf`: the 4–6 page brief to the accelerometry group;
-- `report.pdf`: the technical report;
-- `walking_validation_brief.pdf`: both joined, the brief first and the report as its appendix, with a bookmark for each part. **This is the file to send.**
+- `report.pdf`: the technical report, kept as the full record and available on request;
+- `clinical.pdf`: every result for clinical readers, in plain language, with technical terms in linked notes;
+- `walking_validation_brief.pdf`: the brief and the clinical version joined, the clinical version as the brief's appendix, with a bookmark for each part. **This is the file to send.**
 
 The brief's author and contact line comes from `brief.local.yml`, which is git-ignored. Copy `brief.local.example.yml` to `brief.local.yml` and fill it in. Without the file, the brief prints a placeholder. After filling it in, re-render and check that page 1 still ends with the appendix pointer: a long author line can push it onto page 2.
 
