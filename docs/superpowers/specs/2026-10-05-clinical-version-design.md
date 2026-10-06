@@ -67,12 +67,12 @@ Any analysis's documents can use them. See §6.
 4. **The timing paragraph** gains the constructs point:
    "The question also asks about a habit of walking for exercise since age 50, the device one week of current activity, so the two may measure different things."
 5. **Appendix pointers** (the page-1 italic line and the page-5 line) read:
-   "The appendix summarises every result for clinical readers; the full technical report is available on request."
+   "The appendix summarises the main results for clinical readers; the full technical report is available on request."
 6. **Page 1 still ends on the appendix pointer.** Figure 1's height shrinks as needed. The brief stays at 5 pages.
 
 ## 4. The clinical version (`analyses/walking_validation/clinical.qmd`)
 
-- **Title:** "Walking question and accelerometry in the OAI: results". Subtitle: "Appendix to the brief: every result in plain language. The full technical report is available on request."
+- **Title:** "Walking question and accelerometry in the OAI: results". Subtitle: "Appendix to the brief: the main results in plain language. The full technical report is available on request."
 - **Numbering:** tables and figures are A1, A2, … (it is the appendix).
 - **Footer:** "Appendix — page n".
 - **Style:** the brief's fonts, colours and navy headings.

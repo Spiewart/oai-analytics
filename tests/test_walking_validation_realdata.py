@@ -503,11 +503,16 @@ def test_walking_validation_report_renders(fast_run):
     # the brief frames the Lo et al. 2022 analysis neutrally (spec 2026-10-05 §1, §3)
     assert find_terms(pdfs[0], ["bias", "correction", "corrected"], stop_heading="References") == []
     page_one = PdfReader(pdfs[0]).pages[0].extract_text()
-    assert "The appendix summarises every result" in page_one  # page 1 ends on the appendix pointer
+    # page 1 ends on the appendix pointer
+    assert "The appendix summarises the main results" in page_one
     if (analysis.root / "brief.local.yml").exists():
         assert PLACEHOLDER not in page_one
     else:
         assert PLACEHOLDER in page_one
+    # wherever page 1 gives the tipping-grid count, it gives the grid's specificity range too
+    for pdf in (pdfs[0], pdfs[2]):
+        first = " ".join(PdfReader(pdf).pages[0].extract_text().split())
+        assert re.search(r"specificity \d\.\d\d–1", first), pdf.name
     assert _top_bookmarks(pdfs[3]) == ["Brief", "Appendix: results"]
     clinical = pdfs[2]
     assert find_terms(clinical, CLINICAL_BANNED, stop_heading="Technical notes") == []

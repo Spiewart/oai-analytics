@@ -108,6 +108,17 @@ if (!nrow(grid_np)) stop("bias_tipping has no feasible new_pain cells (every dra
 grid_holds <- sum(grid_np$excludes_1)
 grid_feasible <- nrow(grid_np)
 grid_se_floor <- min(grid_np$se)
+grid_sp_floor <- min(grid_np$sp)
+# A grid axis as "floor–top", the top written "1" at perfect accuracy
+grid_span <- function(floor, x) paste0(num(floor), "–", if (isTRUE(all.equal(max(x), 1))) "1" else num(max(x)))
+# The whole grid examined (possible settings or not), for page 3
+grid_all <- run$bias_tipping
+grid_all_se_floor <- min(grid_all$se)
+grid_all_sp_floor <- min(grid_all$sp)
+# The specificity of the definition in use, measured against the device in the Lo et al. 2022
+# participants: the accuracy behind the multiplier correction[["cut1"]] (1/J)
+sp_measured <- item("lo_subset", "times", "cut1", "sp")$estimate
+sp_place <- if (sp_measured >= grid_all_sp_floor) "lies within the grid" else "lies below the grid"
 bout_minutes <- assumption("device.purposeful_bout_minutes")
 cutpoint <- assumption("device.mv_cutpoint")
 guide <- assumption("reference.min_bout_minutes_per_week")
@@ -200,7 +211,8 @@ results <- data.frame(
             sprintf("Youden's J: any walker → walks %s", strict),
             sprintf("Youden's J for PASE at 48 months: any walking → %s a week (72 months: %s → %s)",
                     lower_first(pase_names[["cut2"]]), num(j_pase_any[["08"]]), num(j_pase_mid[["08"]])),
-            sprintf("possible accuracy settings (sensitivity %s or more), with misclassification the same whether or not knee pain developed, in which the walking–knee-pain association in Lo et al. 2022 holds", num(grid_se_floor))))
+            sprintf("possible accuracy settings examined (sensitivity %s, specificity %s), with misclassification the same whether or not knee pain developed, in which the walking–knee-pain association in Lo et al. 2022 holds",
+                    grid_span(grid_se_floor, grid_np$se), grid_span(grid_sp_floor, grid_np$sp))))
 cat(oaireport::sidebar_figure(
   results,
   ask = "A joint study: rebuild the reference from your step and cadence data (for example, minutes at 100 steps/min or more) and re-run the validation and the classification sensitivity analysis, pre-specified and jointly authored.",
@@ -209,7 +221,7 @@ cat(oaireport::sidebar_figure(
   sep = "\n")
 ```
 
-*The appendix summarises every result for clinical readers; the full technical report is available on request.*
+*The appendix summarises the main results for clinical readers; the full technical report is available on request.*
 
 ```{=typst}
 #pagebreak()
@@ -304,7 +316,7 @@ cat(oaireport::callout(sprintf(
 
 Timing is a second gap: the walking item was asked at 96 months about walking since age 50, years after the device waves. Timing alone does not explain the weak agreement, though: PASE, asked at the device visits themselves, separates walkers about as weakly (Youden's J `r range_text(j_pase_any)` for any walking). The question also asks about a habit of walking for exercise since age 50; the device records one week of current activity, so the two may measure different things.
 
-**How sensitive is the Lo et al. 2022 association to classification?** If some participants were misclassified, a re-estimate that allows for it divides the gap in walking between people with and without the outcome by Youden's J. With the walker definition in use, that multiplies the gap by `r num(correction[[1]], 1)`; with the strictest frequency-based definition, by `r num(correction[[2]], 1)`, so a stricter definition gives a steadier re-estimate. If misclassification is the same in people with and without the outcome, the walking–knee-pain association holds (its 95% interval excludes 1) in `r grid_holds` of `r grid_feasible` possible accuracy settings (appendix).
+**How sensitive is the Lo et al. 2022 association to classification?** If misclassification is the same in people with and without the outcome, a re-estimate that allows for it divides the gap in walking between people with and without the outcome by Youden's J, which can only move the odds ratio further from 1. With the walker definition in use, that multiplies the gap by `r num(correction[[1]], 1)`; with the strictest frequency-based definition, by `r num(correction[[2]], 1)`, so a stricter definition gives a steadier re-estimate. Over a grid of accuracy settings (sensitivity `r grid_span(grid_all_se_floor, grid_all$se)`, specificity `r grid_span(grid_all_sp_floor, grid_all$sp)`), the walking–knee-pain association holds (its 95% interval excludes 1) in `r grid_holds` of the `r grid_feasible` possible settings, all with sensitivity `r num(grid_se_floor)` or more; the specificity measured against the device in these participants, `r num(sp_measured)`, `r sp_place` (appendix).
 
 ```{r fig4}
 #| fig-height: 2.1
@@ -395,4 +407,4 @@ cat(oaireport::callout(sprintf(
 #pagebreak()
 ```
 
-**Appendix.** The appendix summarises every result for clinical readers; the full technical report is available on request.
+**Appendix.** The appendix summarises the main results for clinical readers; the full technical report is available on request.

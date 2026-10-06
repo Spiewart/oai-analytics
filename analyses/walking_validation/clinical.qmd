@@ -1,6 +1,6 @@
 ---
 title: "Walking question and accelerometry in the OAI: results"
-subtitle: "Appendix to the brief: every result in plain language. The full technical report is available on request."
+subtitle: "Appendix to the brief: the main results in plain language. The full technical report is available on request."
 mainfont: Arial
 fontsize: 10pt
 brand:
@@ -55,6 +55,7 @@ notes <- oaireport::tech_notes(c(
   median_difference = "Median difference: the Hodges–Lehmann estimate, the median of the differences across all pairs of people, one from each group; it is robust to skewed data and need not equal the gap between the two group medians. Its 95% CI is the Hodges–Lehmann interval from the Wilcoxon rank-sum test.",
   adjusted_ci = adjusted_ci,
   bootstrap_ci = sprintf("Bootstrap 95%% CI: participants are resampled with replacement %s times, the estimate is recomputed each time, and the middle 95%% of the results forms the interval (a percentile interval).", reps),
+  rank_correlation = "Rank correlation: Spearman's correlation between the ranks of two measures, from −1 to 1. Its 95% CI uses Fisher's z transformation with the Bonett–Wright standard error.",
   trend_test = sprintf("Test for trend: the Jonckheere–Terpstra test of whether a measure rises across ordered groups; its p-value comes from %s random permutations of the group labels.", count(jt_b)),
   # Part 2 (validity.R's classification_by_stratum; bias.R's tipping grid and pba draws)
   subgroup_test = "Subgroup differences: a likelihood-ratio test from logistic regression of whether the answer matches the device on the subgroup, among device-defined walkers (sensitivity) and device-defined non-walkers (specificity) separately.",
@@ -80,17 +81,21 @@ figure_file <- function(name, width = "100%") {
   }
   c("", "```{=typst}", sprintf('#image("%s", width: %s)', path, width), "```", "")
 }
+# "(95% CI)" in a table header, kept on one line
+ci_header <- function(x) gsub("(95% CI)", "(95%\u00a0CI)", x, fixed = TRUE)
 # Sensitivity, specificity, predictive values and Youden's J in one sample (no bold: no null)
 class_table <- function(sample) {
   get <- function(m, col = "estimate") pick(sample, m, col)
   rows <- c(se = "Sensitivity", sp = "Specificity", ppv = "Positive predictive value", npv = "Negative predictive value")
-  data.frame(
+  tab <- data.frame(
     Measure = c(unname(rows), "Youden's J"),
     `Estimate (95% CI)` = c(vapply(names(rows), function(m) oaireport::fmt_ci(get(m), get(m, "lo"), get(m, "hi")), character(1)),
                             num(youden(sample))),
     `Based on` = c(vapply(names(rows), function(m) sprintf("%s of %s", count(get(m, "k")), count(get(m, "n"))), character(1)),
                    "sensitivity + specificity − 1"),
     check.names = FALSE)
+  names(tab) <- ci_header(names(tab))
+  tab
 }
 lower_first <- function(x) paste0(tolower(substr(x, 1, 1)), substring(x, 2))
 and_list <- function(x) if (length(x) <= 1) x else paste(paste(x[-length(x)], collapse = ", "), "and", x[length(x)])
@@ -103,6 +108,8 @@ kg_bout <- kg[kg$measure == "purposeful_min", ]
 dz <- run$validity_dose[run$validity_dose$sample == "validation", ]
 j_strict <- ci_get("validation", "times", "cut3", "j")
 grid_np <- run$bias_tipping[run$bias_tipping$outcome == "new_pain" & !is.na(run$bias_tipping$or), ]
+# A grid axis as "floor–top", the top written "1" at perfect accuracy
+grid_span <- function(floor, x) paste0(num(floor), "–", if (isTRUE(all.equal(max(x), 1))) "1" else num(max(x)))
 # The walker by the question, as the run codes a yes without an amount (report_setup.R's item_def)
 walker_plain <- switch(yes_without,
   `non-walker` = , exclude = "answered yes to the 96-month question “walked for exercise since age 50” (at least 20 minutes a day, at least 10 times) and said how much they walk (years, months a year or times a month).",
@@ -129,7 +136,7 @@ valid_day_plain <- sprintf("a valid day has at least %s wear hours and a usable 
 - `r count(n_val)` participants had a walking answer and accelerometer data (48 or 72 months); `r pct(n_walk / n_val)` were walkers.
 - A walker by the question typically recorded `r num(kg_bout$hl, 1)` more minutes a day in bouts of `r purposeful_minutes`+ minutes than a non-walker (the median of the differences over all walker–non-walker pairs; 95% CI `r num(kg_bout$hl_lo, 1)`–`r num(kg_bout$hl_hi, 1)`).
 - The walking question separates device-defined walkers poorly (sensitivity `r num(pick("validation", "se"))`, specificity `r num(pick("validation", "sp"))`, Youden's J `r num(youden("validation"))`); asking how often helps (J `r num(j_strict)` for walking `r tolower(cut_names("times")[["cut3"]])`).
-- In the participants of Lo et al. 2022 [@lo2022], if misclassification is the same with and without the outcome, walking's link to less new frequent knee pain holds in `r sum(grid_np$excludes_1)` of `r nrow(grid_np)` possible accuracy settings (sensitivity `r num(min(grid_np$se))` or more).
+- If misclassification is the same with and without the outcome, walking's link to less new frequent knee pain in Lo et al. 2022 [@lo2022] holds in `r sum(grid_np$excludes_1)` of `r nrow(grid_np)` possible accuracy settings examined (sensitivity `r grid_span(min(grid_np$se), grid_np$se)`, specificity `r grid_span(min(grid_np$sp), grid_np$sp)`).
 - Activity counts are not specific to walking; a step-based device measure would remove that difference between the question and the device, though not the difference in time frame.
 
 ```{r words}
@@ -210,6 +217,7 @@ names(kg_table)[2:4] <- c(sprintf("Walkers, median (n = %s)", count(kg$n_walke
                           sprintf("Non-walkers, median (n = %s)", count(kg$n_nonwalkers[1])),
                           "Difference (95% CI)")
 kg_bold <- cbind(FALSE, FALSE, FALSE, oaireport::ci_excludes(kg$hl_lo, kg$hl_hi), oaireport::ci_excludes(kg$adj_lo, kg$adj_hi))
+names(kg_table) <- ci_header(names(kg_table))
 oaireport::compare_table(kg_table, widths = c(2.2, 1.5, 1.5, 1.7, 1.7), multipage = FALSE, bold = kg_bold)
 ```
 
@@ -324,6 +332,7 @@ freq <- do.call(rbind, blocks)
 starts <- cumsum(c(1, vapply(blocks, nrow, integer(1))))[seq_along(blocks)]
 freq_bold <- cbind(matrix(FALSE, nrow(freq), 3), freq$bold_j)
 freq$bold_j <- NULL
+names(freq) <- ci_header(names(freq))
 oaireport::compare_table(freq, widths = c(2.4, 1.6, 1.6, 1.8), multipage = FALSE, bold = freq_bold,
                          groups = as.list(stats::setNames(starts, titles)))
 ```
@@ -363,6 +372,7 @@ wk <- do.call(rbind, lapply(comp_visits, function(v) {
 wk_bold <- cbind(FALSE, wk$b_rho, wk$b_diff, wk$b_kappa)
 wk <- wk[c("Visit", "rho", "diff", "kappa")]
 names(wk)[2:4] <- c("Rank correlation (95% CI)", "Reported − device, median minutes a week (95% CI)", sprintf("Agreement on %s+ minutes a week, kappa (95%% CI)", fmt(guide)))
+names(wk) <- ci_header(names(wk))
 oaireport::compare_table(wk, widths = c(1.5, 1.8, 2.1, 2.1), multipage = FALSE, bold = wk_bold)
 ```
 
@@ -418,6 +428,7 @@ pt_bold <- cbind(matrix(FALSE, nrow(pt), 4), pt$b_rho)
 pt$b_rho <- NULL
 names(pt)[5] <- "Rank correlation with device bout minutes (95% CI)"
 rho_n <- vapply(pase_visits, function(v) pv(v, "purposeful_min", "rho", "n"), numeric(1))
+names(pt) <- ci_header(names(pt))
 oaireport::compare_table(pt, widths = c(1.4, 1.6, 1.6, 1.05, 2), multipage = FALSE, bold = pt_bold)
 ```
 
@@ -526,6 +537,7 @@ rounds_text <- if (any(rounds_to_one)) {
   sprintf("; its %s %s to 1.0", and_list(sub(" worsening$", "", lower_name(outcome_names[rounds_to_one]))),
           if (sum(rounds_to_one) == 1) "interval rounds" else "intervals round")
 } else ""
+names(lo_table) <- ci_header(names(lo_table))
 oaireport::compare_table(lo_table, widths = c(2.6, 2, 2), multipage = FALSE, bold = lo_bold)
 ```
 
@@ -550,11 +562,13 @@ ex_se <- ex$se; ex_sp <- ex$sp; ex_j <- ex_se + ex_sp - 1
 dev <- function(stat) ci_get("lo_subset", "times", "cut1", stat)
 dev_se <- dev("se"); dev_sp <- dev("sp"); dev_j <- dev("j")
 case_dev <- (case_share - (1 - dev_sp)) / dev_j
+# Table A10's columns, named in the text below as in the table
+sim_cols <- c(nondiff = "Misclassification the same in both groups", diff = "Misclassification differs between groups")
 ```
 
-If the walking question misclassifies some people, how would the association in Lo et al. 2022 change? In the paper's published table, `r pct(case_share)` of the knees that developed new frequent knee pain belonged to walkers, against `r pct(non_share)` of the knees that did not: a gap of `r num(100 * gap, 0)` percentage points. If misclassification is the same in people with and without the outcome`r notes$ref("nondifferential")`, allowing for it divides that gap by Youden's J. If the question's sensitivity were `r num(ex_se)` and its specificity `r num(ex_sp)` (J `r num(ex_j)`), the gap would grow to `r num(100 * gap / ex_j, 0)` points, so the association looks stronger, not weaker. Against the accelerometer, sensitivity is `r num(dev_se)` and specificity `r num(dev_sp)` (J `r num(dev_j)`): the gap would be multiplied by `r num(1 / dev_j, 1)`, and the share of walkers among knees with new pain would become `r pct(case_dev)`, below zero, which is impossible.
+If the walking question misclassifies some people, how would the association in Lo et al. 2022 change? In the paper's published table, `r pct(case_share, 1)` of the knees that developed new frequent knee pain belonged to walkers, against `r pct(non_share, 1)` of the knees that did not: a gap of `r num(100 * gap, 1)` percentage points. If misclassification is the same in people with and without the outcome`r notes$ref("nondifferential")`, allowing for it divides that gap by Youden's J. If the question's sensitivity were `r num(ex_se)` and its specificity `r num(ex_sp)` (J `r num(ex_j)`), the gap would grow to `r num(100 * gap / ex_j, 1)` points, so the association looks stronger, not weaker. Against the accelerometer, sensitivity is `r num(dev_se)` and specificity `r num(dev_sp)` (J `r num(dev_j)`): the gap would be multiplied by `r num(1 / dev_j, 1)`, and the share of walkers among knees with new pain would become `r pct(case_dev)`, below zero, which is impossible.
 
-The tipping-point analysis`r notes$ref("tipping_point")` repeats this over a grid of accuracy settings, refitting the adjusted model of Lo et al. 2022 in each (Figure A5). The grid assumes misclassification is the same in people with and without the outcome, and allowing for that kind can only move the odds ratio away from 1; so the grid cannot show whether an association survives misclassification that differs by group (for that case, see the second column of Table A10).
+The tipping-point analysis`r notes$ref("tipping_point")` repeats this over a grid of accuracy settings, refitting the adjusted model of Lo et al. 2022 in each (Figure A5). The grid assumes misclassification is the same in people with and without the outcome, and allowing for that kind can only move the odds ratio away from 1; so the grid cannot show whether an association survives misclassification that differs by group. The simulation below also tries that case (Table A10, column “`r sim_cols[["diff"]]`”).
 
 ```{r b-tipping}
 #| fig-height: 4.6
@@ -608,7 +622,7 @@ pba <- run$bias_pba
 adj <- pba[pba$model == "or_adj", ]
 limit <- pct(assumption("bias.max_discard_share"))
 sim_text <- if (all(adj$flagged)) {
-  sprintf("cannot give a reliable single re-estimate: for every outcome, %s of its simulations imply impossible values, more than the limit of %s set in advance (Table A10). That is a limit of the activity-count reference, which is not specific to walking.",
+  sprintf("cannot give a reliable single re-estimate: for every outcome, %s of its simulations imply impossible values, more than the limit of %s set in advance (Table A10). That reflects how weakly the question and activity counts agree; activity counts are not specific to walking.",
           pct_range(adj$discarded), limit)
 } else if (!any(adj$flagged)) {
   sprintf("gives a usable re-estimate: at most %s of its simulations imply impossible values, within the limit of %s set in advance (Table A10).",
@@ -629,10 +643,9 @@ A simulation of misclassification`r notes$ref("misclassification_simulation")` t
 share <- function(o, scenario) pct(adj$discarded[adj$outcome == o & adj$scenario == scenario])
 sim <- data.frame(
   Outcome = unname(outcome_names),
-  `Misclassification the same in both groups` = vapply(names(outcome_names), share, character(1), scenario = "non-differential"),
-  `Misclassification differs between groups` = vapply(names(outcome_names), share, character(1), scenario = "differential"),
-  check.names = FALSE)
-names(sim)[1] <- sprintf("Outcome (n\u00a0=\u00a0%s)", count(n_lo_cohort))
+  nondiff = vapply(names(outcome_names), share, character(1), scenario = "non-differential"),
+  diff = vapply(names(outcome_names), share, character(1), scenario = "differential"))
+names(sim) <- c(sprintf("Outcome (n\u00a0=\u00a0%s)", count(n_lo_cohort)), sim_cols[["nondiff"]], sim_cols[["diff"]])
 priors <- run$bias_priors[run$bias_priors$scenario == "non-differential", ]
 prior_n <- (priors$se_n + priors$sp_n)[match(names(outcome_names), priors$outcome)]  # accuracy from these
 oaireport::compare_table(sim, widths = c(2.6, 2, 2), multipage = FALSE)
@@ -664,7 +677,8 @@ st_rows <- do.call(rbind, lapply(names(defs), function(k) {
 steadier <- all(diff(st_rows$j) > 0)
 st_n <- st_rows$n[1]
 st_rows$Definition <- gsub("/", "\u2060/\u2060", st_rows$Definition)
-names(st_rows)[c(1, 4)] <- c(sprintf("Definition (n\u00a0=\u00a0%s)", count_na(st_n)), "Youden's J (95%\u00a0CI)")
+names(st_rows)[1] <- sprintf("Definition (n\u00a0=\u00a0%s)", count_na(st_n))
+names(st_rows) <- ci_header(names(st_rows))
 st_bold <- cbind(matrix(FALSE, nrow(st_rows), 3), st_rows$b_j, FALSE)
 st_rows$b_j <- NULL; st_rows$j <- NULL; st_rows$n <- NULL
 no_times <- ci_get("lo_subset", "times", "no_band", "count")  # walkers who did not say how many times a month they walk

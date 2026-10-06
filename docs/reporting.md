@@ -23,7 +23,7 @@ local_assets = ["brief.local.yml"]               # optional, untracked: copied w
 ```
 
 - `entry` and `documents` cannot be used together.
-- `part_titles` needs `combined`, takes one title per document, and defaults to the file names without `.qmd`.
+- `part_titles` needs `combined`, takes one title per joined document (all documents unless `combined_documents` chooses), and defaults to the file names without `.qmd`.
 - `combined_documents = [...]` chooses which documents `combined` joins, in that order (default: all); `part_titles` then has one title per joined document. It needs `combined`, and lists documents from `documents`, each once.
 - `combined` must be a bare `.pdf` file name that does not collide with a document's PDF or an asset. Joining needs `pypdf`, a dev dependency (`uv sync` installs it).
 - Local assets are never required, and are removed from the report folder after rendering, with everything else but the PDFs and `figures/`.
