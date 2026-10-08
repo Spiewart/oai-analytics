@@ -270,3 +270,64 @@ test_that("hex_cells sizes and anchors its cells on rounded bounds, not on the d
   expect_true(all(abs(2 * cu - round(2 * cu)) < 1e-9))
   expect_true(all(abs(cv - round(cv)) < 1e-9))
 })
+
+test_that("vs_reference compares each level with the first, Holm-adjusted within the set", {
+  group <- factor(rep(c("ref", "a", "b"), each = 40), levels = c("ref", "a", "b"))
+  y <- c(rep(c(TRUE, FALSE), c(8, 32)), rep(c(TRUE, FALSE), c(10, 30)), rep(c(TRUE, FALSE), c(30, 10)))
+  out <- vs_reference(y, group, test = "fisher")
+  expect_equal(out$level, c("a", "b"))
+  raw <- c(stats::fisher.test(table(group[group %in% c("ref", "a")] == "a", y[group %in% c("ref", "a")]))$p.value,
+           stats::fisher.test(table(group[group %in% c("ref", "b")] == "b", y[group %in% c("ref", "b")]))$p.value)
+  expect_equal(out$p, raw)
+  expect_equal(out$p_adj, stats::p.adjust(raw, "holm"))
+  expect_equal(out$n, c(80L, 80L))
+})
+
+test_that("vs_reference runs a Wilcoxon rank-sum test for numbers and drops missing values", {
+  group <- factor(c(rep("0", 30), rep("x", 30)), levels = c("0", "x"))
+  y <- c(seq(0, 29), seq(10, 39))
+  y[c(1, 31)] <- NA
+  out <- vs_reference(y, group, test = "wilcoxon", adjust = "none")
+  ok <- !is.na(y)
+  expected <- stats::wilcox.test(y[ok & group == "x"], y[ok & group == "0"], exact = FALSE)$p.value
+  expect_equal(out$p, expected)
+  expect_equal(out$p_adj, expected)
+  expect_equal(out$n, 58L)
+})
+
+test_that("vs_reference gives NA for a level or reference too small to test, and rejects bad input", {
+  group <- factor(c("r", "r", "a", "b", "b"), levels = c("r", "a", "b", "c"))
+  out <- vs_reference(c(TRUE, FALSE, TRUE, NA, NA), group, test = "fisher")
+  expect_equal(out$level, c("a", "b", "c"))
+  expect_true(is.na(out$p[2]) && is.na(out$p[3]))
+  expect_error(vs_reference(c(1, 2), factor(c("a", "b")), test = "fisher"), "logical")
+  expect_error(vs_reference(c(TRUE, FALSE), c("a", "b")), "factor")
+  expect_error(vs_reference(c(1, 2), factor(c("a", "b")), test = "t"), "test")
+})
+
+test_that("youden_diff is the paired change in J from the base cut, with a bootstrap Wald test", {
+  set.seed(3)
+  code <- sample(0:3, 400, replace = TRUE)
+  reference <- stats::runif(400) < 0.15 + 0.15 * code
+  out <- youden_diff(code, reference, cuts = c(1, 2, 3), reps = 300, seed = 7)
+  expect_equal(out$cut, c(2, 3))
+  j <- function(cut) { t <- code >= cut; mean(t[reference]) + mean(!t[!reference]) - 1 }
+  expect_equal(out$estimate, c(j(2) - j(1), j(3) - j(1)))
+  expect_equal(out$hi - out$estimate, out$estimate - out$lo)  # symmetric Wald interval
+  z <- out$estimate / ((out$hi - out$lo) / (2 * stats::qnorm(0.975)))
+  expect_equal(out$p, 2 * stats::pnorm(-abs(z)))
+  expect_equal(out$p_adj, stats::p.adjust(out$p, "holm"))
+  expect_equal(out$n, c(400L, 400L))
+  # reproducible, and the caller's random-number stream is untouched
+  set.seed(11); before <- stats::runif(1)
+  set.seed(11); again <- youden_diff(code, reference, cuts = c(1, 2, 3), reps = 300, seed = 7); after <- stats::runif(1)
+  expect_equal(again, out)
+  expect_equal(before, after)
+})
+
+test_that("youden_diff drops missing pairs and needs at least two cuts", {
+  code <- c(0, 1, 2, 3, NA, 2, 1, 0, 3, 2)
+  reference <- c(FALSE, FALSE, TRUE, TRUE, TRUE, NA, FALSE, FALSE, TRUE, TRUE)
+  expect_equal(youden_diff(code, reference, cuts = c(1, 2), reps = 50, seed = 1)$n, 8L)
+  expect_error(youden_diff(code, reference, cuts = 1), "two cuts")
+})

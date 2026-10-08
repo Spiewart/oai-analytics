@@ -155,3 +155,61 @@ hex_cells <- function(x, y, bins = 30, min_count = 10) {
   rownames(cells) <- NULL
   cells[cells$count >= min_count, , drop = FALSE]
 }
+
+#' Each level of `group` against its first level (the reference), for a figure's between-group
+#' marks: Fisher's exact test of a logical `y` (`test = "fisher"`), or a Wilcoxon rank-sum test of
+#' a numeric `y` (`"wilcoxon"`, normal approximation). P-values are adjusted across the levels
+#' with `stats::p.adjust(method = adjust)`. A level or reference with no complete case, or a
+#' logical `y` with one value only, gives NA. Returns level, p, p_adj and n (people in the pair).
+vs_reference <- function(y, group, test = c("fisher", "wilcoxon"), adjust = "holm") {
+  test <- test[1]
+  if (!test %in% c("fisher", "wilcoxon")) stop('vs_reference(): test must be "fisher" or "wilcoxon"', call. = FALSE)
+  if (!is.factor(group)) stop("vs_reference(): group must be a factor (its first level is the reference)", call. = FALSE)
+  if (test == "fisher" && !is.logical(y)) stop("vs_reference(): the Fisher test needs a logical y", call. = FALSE)
+  if (test == "wilcoxon" && !is.numeric(y)) stop("vs_reference(): the Wilcoxon test needs a numeric y", call. = FALSE)
+  ok <- !is.na(y) & !is.na(group)
+  ref <- levels(group)[1]
+  rows <- lapply(levels(group)[-1], function(lv) {
+    a <- y[ok & group == lv]
+    r <- y[ok & group == ref]
+    p <- if (!length(a) || !length(r)) NA_real_ else if (test == "fisher") {
+      both <- c(a, r)
+      if (length(unique(both)) < 2) NA_real_ else
+        stats::fisher.test(table(factor(rep(c("level", "ref"), c(length(a), length(r)))), factor(both, c(FALSE, TRUE))))$p.value
+    } else stats::wilcox.test(a, r, exact = FALSE)$p.value
+    data.frame(level = lv, p = p, n = length(a) + length(r))
+  })
+  out <- do.call(rbind, rows)
+  out$p_adj <- stats::p.adjust(out$p, method = adjust)
+  out$n <- as.integer(out$n)
+  out[c("level", "p", "p_adj", "n")]
+}
+
+#' The paired change in Youden's J when a walker is `code >= cut` instead of `code >= cuts[1]`,
+#' for each later cut, in the same people against `reference`. Each person-level bootstrap
+#' resample (seeded by `seed`, leaving the caller's random-number stream alone) recomputes every
+#' J, so the changes are paired. The 95% interval and the p-value are Wald's, with the bootstrap
+#' standard error: estimate ± 1.96 SE, p = 2 Φ(−|estimate / SE|); `p_adj` adjusts the p-values
+#' across the cuts (`stats::p.adjust(method = adjust)`). Returns cut, estimate, lo, hi, p, p_adj, n.
+youden_diff <- function(code, reference, cuts, reps = 1000, seed = 1, adjust = "holm") {
+  cuts <- unlist(cuts)  # an assumptions array may arrive as a list
+  if (length(cuts) < 2) stop("youden_diff(): needs at least two cuts (the first is the base)", call. = FALSE)
+  ok <- !is.na(code) & !is.na(reference)
+  code <- code[ok]
+  r <- as.logical(reference[ok])
+  j <- function(cut, i) {
+    t <- code[i] >= cut
+    rr <- r[i]
+    if (!any(rr) || all(rr)) NA_real_ else mean(t[rr]) + mean(!t[!rr]) - 1
+  }
+  diffs <- function(i) vapply(cuts[-1], function(cut) j(cut, i) - j(cuts[1], i), numeric(1))
+  all_people <- seq_along(code)
+  estimate <- diffs(all_people)
+  boots <- with_seed(seed, replicate(reps, diffs(sample.int(length(code), replace = TRUE))))
+  boots <- matrix(boots, nrow = length(cuts) - 1)
+  se <- apply(boots, 1, stats::sd, na.rm = TRUE)
+  z <- stats::qnorm(0.975)
+  p <- 2 * stats::pnorm(-abs(estimate / se))
+  data.frame(cut = cuts[-1], estimate = estimate, lo = estimate - z * se, hi = estimate + z * se,
+             p = p, p_adj = stats::p.adjust(p, method = adjust), n = length(code))
+}

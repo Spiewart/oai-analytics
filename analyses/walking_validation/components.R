@@ -33,6 +33,13 @@ guideline <- A[["reference.min_bout_minutes_per_week"]]
 item_cuts <- list(times = A[["components.item_times_cuts"]], months = A[["components.item_months_cuts"]])
 min_cell <- A[["components.min_cell_count"]]
 hex_bins <- A[["components.hex_bins"]]
+# Figure marks: each level against the lowest, and the paired change in Youden's J from any walking
+share_test <- A[["components.group_test_share"]]
+minutes_test <- A[["components.group_test_minutes"]]
+p_adjust <- A[["components.p_adjust"]]
+if (!identical(A[["components.j_diff_test"]], "bootstrap_wald")) {
+  stop("unknown components.j_diff_test: ", A[["components.j_diff_test"]], call. = FALSE)
+}
 n_codes <- c(times = 3, months = 3, years = 4)
 q <- function(x, p) if (any(!is.na(x))) unname(stats::quantile(x, p, na.rm = TRUE)) else NA_real_
 # Small or empty selections give NA rather than an error or a misleading p = 1
@@ -61,6 +68,25 @@ between_wave <- function(m) {
 pase <- list(); item <- list(); hex <- list()
 add <- function(...) pase[[length(pase) + 1]] <<- data.frame(..., stringsAsFactors = FALSE)
 add_item <- function(...) item[[length(item) + 1]] <<- data.frame(..., stringsAsFactors = FALSE)
+# One row per compared level: the p-value and the adjusted one (oaimodels::vs_reference)
+add_marks <- function(adder, base, marks) {
+  for (i in seq_len(nrow(marks))) {
+    for (stat in c("p", "p_adj")) {
+      do.call(adder, c(base, list(level = marks$level[i], statistic = paste0(stat, "_vs_ref"),
+                                  estimate = marks[[stat]][i], lo = NA, hi = NA, n = marks$n[i])))
+    }
+  }
+}
+# One row per stricter cut: the change in J with its interval, then its p-values (oaimodels::youden_diff)
+add_j_diff <- function(adder, base, d) {
+  for (i in seq_len(nrow(d))) {
+    lv <- list(level = paste0("cut", d$cut[i]))
+    do.call(adder, c(base, lv, list(statistic = "j_diff", estimate = d$estimate[i], lo = d$lo[i], hi = d$hi[i], n = d$n[i])))
+    for (stat in c("p", "p_adj")) {
+      do.call(adder, c(base, lv, list(statistic = paste0(stat, "_j_diff"), estimate = d[[stat]][i], lo = NA, hi = NA, n = d$n[i])))
+    }
+  }
+}
 add_rows <- function(adder, base, rows) {
   for (i in seq_len(nrow(rows))) {
     do.call(adder, c(base, list(statistic = rows$measure[i], estimate = rows$estimate[i],
@@ -91,6 +117,9 @@ for (v in visits) {
   }
   add(visit = v, component = "frequency", comparator = "bout_days_per_week", level = "all",
       statistic = "jt_p", estimate = safe_jt(bout_days[at], freq), lo = NA, hi = NA, n = sum(at))
+  fig_base <- list(visit = v, component = "frequency", comparator = "device_walker")
+  add_marks(add, fig_base, oaimodels::vs_reference(as.logical(dw[at]), freq, test = share_test, adjust = p_adjust))
+  add_j_diff(add, fig_base, oaimodels::youden_diff(days[at], dw[at], freq_cuts, reps = reps, seed = seed, adjust = p_adjust))
   rho <- safe_rho(days[at], bout_days[at])
   add(visit = v, component = "frequency", comparator = "bout_days_per_week", level = "all",
       statistic = "rho", estimate = rho[["rho"]], lo = rho[["lo"]], hi = rho[["hi"]], n = rho[["n"]])
@@ -149,6 +178,8 @@ for (v in visits) {
     }
     add(visit = v, component = "weekly", comparator = comp, level = "all", statistic = "jt_p",
         estimate = safe_jt(device_min[ok], bins), lo = NA, hi = NA, n = sum(ok))
+    add_marks(add, list(visit = v, component = "weekly", comparator = comp),
+              oaimodels::vs_reference(device_min[ok], bins, test = minutes_test, adjust = p_adjust))
     a <- oaimodels::paired_agreement(report_min[ok], device_min[ok], reps = reps, seed = seed)
     add(visit = v, component = "weekly", comparator = comp, level = "all", statistic = "median_diff",
         estimate = a[["estimate"]], lo = a[["lo"]], hi = a[["hi"]], n = a[["n"]])
@@ -202,6 +233,11 @@ for (sample in names(samples)) {
       code[banded] <- as.numeric(as.character(level[banded]))
       cuts <- oaimodels::cut_classification(code, persons$device_walker[s], item_cuts[[component]],
                                             reps = reps, seed = seed)
+      item_base <- list(sample = sample, component = component)
+      add_marks(add_item, item_base, oaimodels::vs_reference(as.logical(persons$device_walker[s]), level,
+                                                             test = share_test, adjust = p_adjust))
+      add_j_diff(add_item, item_base, oaimodels::youden_diff(code, persons$device_walker[s], item_cuts[[component]],
+                                                             reps = reps, seed = seed, adjust = p_adjust))
       for (k in unique(cuts$cut)) {
         add_rows(add_item, list(sample = sample, component = component, level = paste0("cut", k)),
                  cuts[cuts$cut == k, ])

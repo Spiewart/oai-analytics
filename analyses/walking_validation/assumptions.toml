@@ -222,6 +222,32 @@ value = { pase_days = ["Never", "1–2 days", "3–4 days", "5–7 days"], pase_
 status = "confirmed"
 source = "formats.pdf in the OAI release: TIME10X (VxxPASE2), TIME18X (VxxPASE2HR), TMSMNTH (V10WKTMAR4), MNTHYR (V10WKMOAR4), YEAR7Z (V10WKYRAR4); codes 77 (refused) and 88 (don't know) are no answer"
 
+[components.group_test_share]
+value = "fisher"
+status = "assumed"
+source = "Figure marks (abstract): each answer level's share of device-defined walkers against the lowest level (non-walkers; PASE never), Fisher's exact test"
+
+[components.group_test_minutes]
+value = "wilcoxon"
+status = "assumed"
+source = "Figure marks (abstract): device minutes a week in bouts in each band of PASE weekly walking against 0 hours, Wilcoxon rank-sum test"
+
+[components.p_adjust]
+value = "holm"
+status = "assumed"
+source = "Figure marks (abstract): p-values adjusted within each panel, across the levels compared with one reference (and across the stricter cuts for the change in Youden's J)"
+choices = ["holm", "bonferroni", "none"]
+
+[components.j_diff_test]
+value = "bootstrap_wald"
+status = "assumed"
+source = "Figure marks (abstract): paired change in Youden's J from any walking to each stricter definition, in the same people; person-level bootstrap SE (validity.bootstrap_reps resamples), Wald 95% CI and p"
+
+[components.star_levels]
+value = [0.05, 0.01, 0.001]
+status = "assumed"
+source = "Figure marks (abstract): *, ** and *** for an adjusted p below each level"
+
 [variants.wave48]
 description = "Device = 48-month wave only"
 set = { "device.wave_combination" = "06" }
