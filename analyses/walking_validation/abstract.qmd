@@ -1,6 +1,5 @@
 ---
 title: "Conference abstract (draft)"
-subtitle: "The walking question against accelerometry: validation only. Every number is read from the run; text/abstract.txt holds the same text, ready to paste, with each field's character count."
 mainfont: Arial
 fontsize: 10pt
 brand:
