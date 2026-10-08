@@ -159,27 +159,52 @@ fig_weekly <- function(marks = FALSE) {
   cal <- cp[cp$component == "weekly" & cp$comparator == "purposeful_week" & cp$statistic == "median", ]
   cal$level <- factor(cal$level, levels = unique(cal$level))  # the step writes the bins in order
   cal$visit_name <- fig_wave_names[cal$visit]
+  if (marks) return(fig_weekly_marked(cal, count))
   fig <- ggplot2::ggplot(cal, ggplot2::aes(level, estimate)) +
     ggplot2::geom_pointrange(ggplot2::aes(ymin = lo, ymax = hi), colour = fig_colours[["pase"]], size = 0.3) +
     ggplot2::geom_text(ggplot2::aes(y = hi, label = paste0("n = ", count(n))), vjust = -0.6, size = 2.2,
-                       colour = "grey35", family = oaireport::oai_font())
-  used <- character()
-  if (marks) {
-    first <- levels(cal$level)[1]
-    cal$p <- vapply(seq_len(nrow(cal)), function(i) {
-      if (as.character(cal$level[i]) == first) NA_real_ else
-        fig_pase(cal$visit[i], "weekly", "purposeful_week", as.character(cal$level[i]), "p_adj_vs_ref")$estimate
-    }, numeric(1))
-    cal$stars <- fig_stars(cal$p)
-    used <- cal$stars
-    fig <- fig + ggplot2::geom_text(data = cal, ggplot2::aes(y = hi, label = stars), vjust = -1.6, size = 3,
-                                    family = oaireport::oai_font())
-  }
-  fig <- fig +
-    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, if (marks) 0.22 else 0.15))) +
+                       colour = "grey35", family = oaireport::oai_font()) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.15))) +
     ggplot2::facet_wrap(~visit_name) +
     ggplot2::labs(x = "Estimated weekly walking from PASE (hours per week)",
                   y = "Device purposeful-bout\nminutes per week") +
     oaireport::theme_oai(base_size = 8)
-  fig_with_stars(fig, used)
+  fig_with_stars(fig, character())
+}
+
+# The abstract's Figure 3: each visit in its own colour (PASE's vermillion at 48 months, bluish
+# green at 72), each panel titled at top left by a dot of its colour and the visit, and each band
+# marked against 0 hours (adjusted p)
+fig_visit_colours <- c(`48 months` = oaireport::brief_colours[["pase"]], `72 months` = "#009E73")
+fig_weekly_marked <- function(cal, count) {
+  first <- levels(cal$level)[1]
+  cal$p <- vapply(seq_len(nrow(cal)), function(i) {
+    if (as.character(cal$level[i]) == first) NA_real_ else
+      fig_pase(cal$visit[i], "weekly", "purposeful_week", as.character(cal$level[i]), "p_adj_vs_ref")$estimate
+  }, numeric(1))
+  cal$stars <- fig_stars(cal$p)
+  cal$x <- as.integer(cal$level)
+  cal$visit_name <- factor(cal$visit_name, levels = unique(cal$visit_name))
+  top <- max(cal$hi, na.rm = TRUE)
+  titles <- data.frame(visit_name = factor(levels(cal$visit_name), levels = levels(cal$visit_name)),
+                       x = 0.55, y = 1.32 * top)
+  fig <- ggplot2::ggplot(cal, ggplot2::aes(x, estimate, colour = visit_name)) +
+    ggplot2::geom_pointrange(ggplot2::aes(ymin = lo, ymax = hi), size = 0.3) +
+    ggplot2::geom_text(ggplot2::aes(y = hi, label = paste0("n = ", count(n))), vjust = -0.6, size = 2.2,
+                       colour = "grey35", family = oaireport::oai_font()) +
+    ggplot2::geom_text(ggplot2::aes(y = hi, label = stars), vjust = -1.6, size = 3, colour = "black",
+                       family = oaireport::oai_font()) +
+    ggplot2::geom_point(data = titles, ggplot2::aes(x, y), size = 2.4) +
+    ggplot2::geom_text(data = titles, ggplot2::aes(x + 0.2, y, label = visit_name), hjust = 0, size = 3,
+                       fontface = "bold", colour = "grey10", family = oaireport::oai_font()) +
+    ggplot2::scale_colour_manual(values = fig_visit_colours, guide = "none") +
+    ggplot2::scale_x_continuous(breaks = seq_along(levels(cal$level)), labels = levels(cal$level),
+                                expand = ggplot2::expansion(add = 0.45)) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.08))) +
+    ggplot2::facet_wrap(~visit_name) +
+    ggplot2::labs(x = "Estimated weekly walking from PASE (hours per week)",
+                  y = "Device purposeful-bout\nminutes per week") +
+    oaireport::theme_oai(base_size = 8) +
+    ggplot2::theme(strip.text = ggplot2::element_blank(), strip.background = ggplot2::element_blank())
+  fig_with_stars(fig, cal$stars)
 }
