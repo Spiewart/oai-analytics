@@ -27,6 +27,18 @@ fig_item <- function(sample, component, level, statistic) {
 # The star cut-offs, largest first (one star for each a p-value is below)
 fig_star_levels <- function() sort(unlist(fig_assumption("components.star_levels")), decreasing = TRUE)
 fig_stars <- function(p) oaireport::p_stars(p, levels = fig_star_levels())
+# The distinct marks a figure shows, kept on the plot (attr "stars") for its caption's key
+fig_with_stars <- function(fig, stars) {
+  attr(fig, "stars") <- sort(unique(stars[stars != ""]))
+  fig
+}
+# A caption's key for the marks shown, fewest stars first: "*p<0.05, ***p<0.001"
+fig_star_key <- function(stars) {
+  if (!length(stars)) return("")
+  stars <- stars[order(nchar(stars))]
+  levels <- fig_star_levels()
+  paste(sprintf("%sp<%s", stars, format(levels[nchar(stars)], scientific = FALSE, drop0trailing = TRUE)), collapse = ", ")
+}
 fig_labels <- function() lapply(fig_assumption("components.answer_labels"), unlist)
 fig_visits <- c("06", "08")
 fig_wave_names <- c(`06` = "48 months", `08` = "72 months")
@@ -62,31 +74,22 @@ fig_definitions <- function(marks = FALSE) {
     ggplot2::geom_point(data = pts[rev(seq_len(nrow(pts))), ], ggplot2::aes(shape = current, fill = source),
                         size = 2.6, colour = "white", stroke = 0.6)
   stricter_label <- "Stricter, frequency-based"
-  shape_ncol <- NULL
+  used <- character()
   if (marks) {
     pts$stars <- fig_stars(pts$p)
-    marked <- pts$stars[pts$cut != "cut1"]
-    # The legend speaks for every circle only when each circle is a stricter definition, i.e. PASE's
-    # any-walking point is a triangle (walker threshold 0)
-    if (all(marked != "") && pase_any_is_walker) {
-      # Every stricter definition differs from any walking: say so once, in the legend, since the
-      # two PASE series crowd each other and share a colour
-      least <- marked[which.min(nchar(marked))]
-      stricter_label <- if (length(unique(marked)) == 1) sprintf("%s (%s vs any walking)", stricter_label, least) else
-        sprintf("%s (all %s or more vs any walking)", stricter_label, least)
-      shape_ncol <- 1
-    } else {
-      # Item below-right of its points, PASE at 48 months to the left, at 72 months above
-      side <- ifelse(grepl("^Walking item", pts$source), "item", ifelse(grepl("72", pts$source), "above", "left"))
-      pts$hjust <- c(item = -0.35, left = 1.35, above = 0.5)[side]
-      pts$vjust <- c(item = 1.1, left = 0.5, above = -0.9)[side]
-      fig <- fig +
-        ggplot2::geom_text(data = pts[pts$stars != "", , drop = FALSE],
-                           ggplot2::aes(label = stars, hjust = hjust, vjust = vjust),
-                           size = 3, show.legend = FALSE, family = oaireport::oai_font())
-    }
+    used <- pts$stars
+    # Each series' stars on its own side, on a white ground so lines never cut them: the walking
+    # question to the right, PASE at 72 months (up and left of 48's) to the left, at 48 months below
+    side <- ifelse(grepl("^Walking item", pts$source), "right", ifelse(grepl("72", pts$source), "left", "below"))
+    pts$hjust <- c(right = -0.3, left = 1.3, below = 0.5)[side]
+    pts$vjust <- c(right = 0.5, left = 0.5, below = 1.5)[side]
+    fig <- fig +
+      ggplot2::geom_label(data = pts[pts$stars != "", , drop = FALSE],
+                          ggplot2::aes(label = stars, hjust = hjust, vjust = vjust), fill = "white",
+                          border.colour = NA, label.padding = ggplot2::unit(0.08, "lines"),
+                          size = 3.2, show.legend = FALSE, family = oaireport::oai_font())
   }
-  fig +
+  fig <- fig +
     ggplot2::scale_colour_manual(values = c(fig_colours[["item"]], fig_colours[["pase"]], fig_colours[["pase"]]), name = NULL) +
     ggplot2::scale_linetype_manual(values = c("solid", "solid", "dashed"), name = NULL) +
     ggplot2::scale_fill_manual(values = c(fig_colours[["item"]], fig_colours[["pase"]], fig_colours[["pase"]]), name = NULL) +
@@ -95,12 +98,15 @@ fig_definitions <- function(marks = FALSE) {
     ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1), clip = "off") +
     ggplot2::labs(x = "1 − specificity", y = "Sensitivity") +
     ggplot2::guides(colour = source_key, linetype = source_key, fill = source_key,
-                    shape = ggplot2::guide_legend(order = 2, ncol = shape_ncol, override.aes = list(fill = "black"))) +
+                    shape = ggplot2::guide_legend(order = 2, ncol = if (marks) 1 else NULL, override.aes = list(fill = "black"))) +
     oaireport::theme_oai(base_size = 8) +
     ggplot2::theme(legend.position = "bottom", legend.box = "vertical",
                    legend.spacing.y = ggplot2::unit(2, "pt"), legend.key.spacing.y = ggplot2::unit(0, "pt"),
                    legend.margin = ggplot2::margin(0, 0, 0, 0), legend.box.spacing = ggplot2::unit(4, "pt"),
                    plot.margin = ggplot2::margin(14, 8, 4, 4))
+  # The marked copy is drawn wider (two columns), legend at the right, so the stars have room
+  if (marks) fig <- fig + ggplot2::theme(legend.position = "right", legend.justification = "left")
+  fig_with_stars(fig, used)
 }
 
 # Figure 2: the share who are device-defined walkers at each reported frequency, the walking item
@@ -128,7 +134,7 @@ fig_shares <- function(marks = FALSE) {
   bars$question <- factor(bars$question, levels = unique(bars$question))
   bars$label <- if (marks) trimws(paste(pct(bars$estimate), fig_stars(bars$p))) else pct(bars$estimate)
   x_top <- min(1, max(bars$hi, na.rm = TRUE) + if (marks) 0.2 else 0.15)
-  ggplot2::ggplot(bars, ggplot2::aes(estimate, answer, fill = fill)) +
+  fig <- ggplot2::ggplot(bars, ggplot2::aes(estimate, answer, fill = fill)) +
     ggplot2::geom_col(width = 0.65) +
     ggplot2::geom_errorbar(ggplot2::aes(xmin = lo, xmax = hi), width = 0.25, linewidth = 0.3, orientation = "y") +
     # A fixed gap after the whisker; with marks the labels differ in width, so hjust would not do
@@ -141,6 +147,7 @@ fig_shares <- function(marks = FALSE) {
     ggplot2::facet_wrap(~question, scales = "free_y") +
     ggplot2::labs(x = "Share who are device-defined walkers (95% CI)", y = NULL) +
     oaireport::theme_oai(base_size = 8)
+  fig_with_stars(fig, if (marks) fig_stars(bars$p) else character())
 }
 
 # Figure 3: device bout minutes a week (median, interquartile range) in each band of PASE weekly
@@ -156,6 +163,7 @@ fig_weekly <- function(marks = FALSE) {
     ggplot2::geom_pointrange(ggplot2::aes(ymin = lo, ymax = hi), colour = fig_colours[["pase"]], size = 0.3) +
     ggplot2::geom_text(ggplot2::aes(y = hi, label = paste0("n = ", count(n))), vjust = -0.6, size = 2.2,
                        colour = "grey35", family = oaireport::oai_font())
+  used <- character()
   if (marks) {
     first <- levels(cal$level)[1]
     cal$p <- vapply(seq_len(nrow(cal)), function(i) {
@@ -163,13 +171,15 @@ fig_weekly <- function(marks = FALSE) {
         fig_pase(cal$visit[i], "weekly", "purposeful_week", as.character(cal$level[i]), "p_adj_vs_ref")$estimate
     }, numeric(1))
     cal$stars <- fig_stars(cal$p)
+    used <- cal$stars
     fig <- fig + ggplot2::geom_text(data = cal, ggplot2::aes(y = hi, label = stars), vjust = -1.6, size = 3,
                                     family = oaireport::oai_font())
   }
-  fig +
+  fig <- fig +
     ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, if (marks) 0.22 else 0.15))) +
     ggplot2::facet_wrap(~visit_name) +
     ggplot2::labs(x = "Estimated weekly walking from PASE (hours per week)",
                   y = "Device purposeful-bout\nminutes per week") +
     oaireport::theme_oai(base_size = 8)
+  fig_with_stars(fig, used)
 }

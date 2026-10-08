@@ -531,7 +531,8 @@ def _check_abstract(pdf: Path, paste: Path) -> None:
     pdf_text = re.sub(
         r"\s+", "", "".join(page.extract_text() for page in PdfReader(pdf).pages)
     ).translate(curly)
-    for name in ("PURPOSE", "METHODS", "RESULTS", "CONCLUSIONS"):  # Methods holds the star key
+    # every pasted field but the title (a heading) appears verbatim; captions carry the star keys
+    for name in [f for f in fields if f != "TITLE"]:
         assert re.sub(r"\s+", "", fields[name]) in pdf_text, name
 
 
