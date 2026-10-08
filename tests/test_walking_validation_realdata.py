@@ -526,8 +526,12 @@ def _check_abstract(pdf: Path, paste: Path) -> None:
         assert not re.search(rf"\b{abbreviation}\b", title), abbreviation
     assert find_terms(pdf, ["bias", "correction", "corrected"]) == []
     # the PDF shows the pasted text (whitespace ignored: lines wrap at hyphens and spaces)
-    pdf_text = re.sub(r"\s+", "", "".join(page.extract_text() for page in PdfReader(pdf).pages))
-    for name in ("PURPOSE", "CONCLUSIONS"):
+    # typesetting curls straight quotes; the comparison ignores that and all whitespace
+    curly = str.maketrans({"\u2019": "'", "\u2018": "'", "\u201c": '"', "\u201d": '"'})
+    pdf_text = re.sub(
+        r"\s+", "", "".join(page.extract_text() for page in PdfReader(pdf).pages)
+    ).translate(curly)
+    for name in ("PURPOSE", "METHODS", "RESULTS", "CONCLUSIONS"):  # Methods holds the star key
         assert re.sub(r"\s+", "", fields[name]) in pdf_text, name
 
 

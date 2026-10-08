@@ -24,7 +24,9 @@ fig_pase <- function(v, component, comparator, level, statistic) {
 fig_item <- function(sample, component, level, statistic) {
   fig_row(run$validity_components_item, sample = sample, component = component, level = level, statistic = statistic)
 }
-fig_stars <- function(p) oaireport::p_stars(p, levels = unlist(fig_assumption("components.star_levels")))
+# The star cut-offs, largest first (one star for each a p-value is below)
+fig_star_levels <- function() sort(unlist(fig_assumption("components.star_levels")), decreasing = TRUE)
+fig_stars <- function(p) oaireport::p_stars(p, levels = fig_star_levels())
 fig_labels <- function() lapply(fig_assumption("components.answer_labels"), unlist)
 fig_visits <- c("06", "08")
 fig_wave_names <- c(`06` = "48 months", `08` = "72 months")
@@ -35,16 +37,19 @@ fig_colours <- oaireport::brief_colours
 fig_definitions <- function(marks = FALSE) {
   cuts <- c("cut1", "cut2", "cut3")
   pase_any_is_walker <- fig_assumption("pase.walker_threshold") == 0
+  # p: the stricter definition's change in J from any walking (adjusted); only read with marks
   item_pts <- do.call(rbind, lapply(cuts, function(k) data.frame(
     source = "Walking item (times per month)", cut = k,
     se = fig_item("validation", "times", k, "se")$estimate,
     fpr = 1 - fig_item("validation", "times", k, "sp")$estimate,
-    current = k == "cut1")))
+    current = k == "cut1",
+    p = if (marks && k != "cut1") fig_item("validation", "times", k, "p_adj_j_diff")$estimate else NA_real_)))
   pase_pts <- do.call(rbind, lapply(fig_visits, function(v) do.call(rbind, lapply(cuts, function(k) data.frame(
     source = sprintf("PASE days per week, %s", fig_wave_names[[v]]), cut = k,
     se = fig_pase(v, "frequency", "device_walker", k, "se")$estimate,
     fpr = 1 - fig_pase(v, "frequency", "device_walker", k, "sp")$estimate,
-    current = k == "cut1" && pase_any_is_walker)))))
+    current = k == "cut1" && pase_any_is_walker,
+    p = if (marks && k != "cut1") fig_pase(v, "frequency", "device_walker", k, "p_adj_j_diff")$estimate else NA_real_)))))
   pts <- rbind(item_pts, pase_pts)
   pts$source <- factor(pts$source, levels = unique(pts$source))
   # One source per row (a single row is wider than the column); keys show the line, solid or dashed
@@ -59,13 +64,11 @@ fig_definitions <- function(marks = FALSE) {
   stricter_label <- "Stricter, frequency-based"
   shape_ncol <- NULL
   if (marks) {
-    pts$p <- c(vapply(cuts, function(k) if (k == "cut1") NA_real_ else fig_item("validation", "times", k, "p_adj_j_diff")$estimate, numeric(1)),
-               unlist(lapply(fig_visits, function(v) vapply(cuts, function(k) {
-                 if (k == "cut1") NA_real_ else fig_pase(v, "frequency", "device_walker", k, "p_adj_j_diff")$estimate
-               }, numeric(1)))))
     pts$stars <- fig_stars(pts$p)
     marked <- pts$stars[pts$cut != "cut1"]
-    if (all(marked != "")) {
+    # The legend speaks for every circle only when each circle is a stricter definition, i.e. PASE's
+    # any-walking point is a triangle (walker threshold 0)
+    if (all(marked != "") && pase_any_is_walker) {
       # Every stricter definition differs from any walking: say so once, in the legend, since the
       # two PASE series crowd each other and share a colour
       least <- marked[which.min(nchar(marked))]
@@ -128,8 +131,9 @@ fig_shares <- function(marks = FALSE) {
   ggplot2::ggplot(bars, ggplot2::aes(estimate, answer, fill = fill)) +
     ggplot2::geom_col(width = 0.65) +
     ggplot2::geom_errorbar(ggplot2::aes(xmin = lo, xmax = hi), width = 0.25, linewidth = 0.3, orientation = "y") +
-    ggplot2::geom_text(ggplot2::aes(x = hi, label = label), hjust = -0.25, size = 2.6,
-                       family = oaireport::oai_font()) +
+    # A fixed gap after the whisker; with marks the labels differ in width, so hjust would not do
+    ggplot2::geom_text(ggplot2::aes(x = hi, label = label), hjust = if (marks) 0 else -0.25,
+                       nudge_x = if (marks) 0.012 else 0, size = 2.6, family = oaireport::oai_font()) +
     ggplot2::scale_fill_manual(values = c(item_ref = fig_colours[["muted"]], item = fig_colours[["item"]],
                                           pase_ref = fig_colours[["pase_muted"]], pase = fig_colours[["pase"]]),
                                guide = "none") +

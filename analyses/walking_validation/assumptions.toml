@@ -235,7 +235,7 @@ source = "Abstract figure marks: device bout minutes in each PASE weekly band vs
 [components.p_adjust]
 value = "holm"
 status = "assumed"
-source = "Abstract figure marks: p-values adjusted within each panel (and across stricter cuts)"
+source = "Abstract figure marks: p-values adjusted within each panel (change in J: each series)"
 choices = ["holm", "bonferroni", "none"]
 
 [components.j_diff_test]

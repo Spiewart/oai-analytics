@@ -331,3 +331,31 @@ test_that("youden_diff drops missing pairs and needs at least two cuts", {
   expect_equal(youden_diff(code, reference, cuts = c(1, 2), reps = 50, seed = 1)$n, 8L)
   expect_error(youden_diff(code, reference, cuts = 1), "two cuts")
 })
+
+test_that("youden_diff's standard error comes from paired resamples", {
+  set.seed(3)
+  code <- sample(0:3, 400, replace = TRUE)
+  reference <- stats::runif(400) < 0.15 + 0.15 * code
+  out <- youden_diff(code, reference, cuts = c(1, 2, 3), reps = 300, seed = 7)
+  jj <- function(cut, i) { t <- code[i] >= cut; r <- reference[i]; mean(t[r]) + mean(!t[!r]) - 1 }
+  manual <- with_seed(7, replicate(300, { i <- sample.int(400, replace = TRUE); c(jj(2, i) - jj(1, i), jj(3, i) - jj(1, i)) }))
+  expect_equal((out$hi - out$lo) / (2 * stats::qnorm(0.975)), apply(manual, 1, stats::sd))
+  # nobody at code 1: cut 2 classifies exactly as cut 1, so a paired change is 0 in every resample
+  code0 <- ifelse(code == 1, 0, code)
+  same <- youden_diff(code0, reference, cuts = c(1, 2, 3), reps = 100, seed = 7)
+  expect_equal(c(same$estimate[1], same$lo[1], same$hi[1]), c(0, 0, 0))
+  expect_true(is.na(same$p[1]))  # no variation to test: NA, not NaN
+})
+
+test_that("vs_reference uses the normal approximation without ties, gives NA for all-tied data and empty output for one level", {
+  group <- factor(rep(c("0", "x"), each = 6), levels = c("0", "x"))
+  y <- c(1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12)
+  expect_equal(vs_reference(y, group, test = "wilcoxon")$p,
+               stats::wilcox.test(y[7:12], y[1:6], exact = FALSE)$p.value)
+  expect_false(isTRUE(all.equal(vs_reference(y, group, test = "wilcoxon")$p,
+                                stats::wilcox.test(y[7:12], y[1:6], exact = TRUE)$p.value)))
+  expect_true(is.na(vs_reference(rep(0, 12), group, test = "wilcoxon")$p))
+  one <- vs_reference(c(TRUE, FALSE), factor(c("a", "a")), test = "fisher")
+  expect_equal(nrow(one), 0L)
+  expect_equal(names(one), c("level", "p", "p_adj", "n"))
+})

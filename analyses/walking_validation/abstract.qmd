@@ -99,8 +99,10 @@ walker_short <- switch(yes_without,
 device_at <- if (combination == "mean") sprintf("%s (averaged when both valid)", waves_at) else waves_at
 pase_against <- if (comp_paired) "against the device at the same visit" else sprintf("against %s", combined_text)
 test_name <- c(fisher = "Fisher's exact", wilcoxon = "Wilcoxon rank-sum")
+adjusted <- switch(fig_assumption("components.p_adjust"), none = "unadjusted",
+                   sprintf("%s-adjusted", tools::toTitleCase(fig_assumption("components.p_adjust"))))
 test_names <- paste(paste(unique(test_name[c(fig_assumption("components.group_test_share"), fig_assumption("components.group_test_minutes"))]), collapse = " or "), "test")
-star_levels <- unlist(fig_assumption("components.star_levels"))
+star_levels <- fig_star_levels()
 star_key <- paste(sprintf("%sp<%s", strrep("*", seq_along(star_levels)), format(star_levels, scientific = FALSE, drop0trailing = TRUE)), collapse = ", ")
 methods <- paste0(
   sprintf("Participants answered the walking question at 96 months and had ActiGraph GT1M data at %s, with ≥%s valid days of ≥%s wear hours. ",
@@ -109,8 +111,8 @@ methods <- paste0(
   sprintf("We compared device activity between walkers and non-walkers (Hodges–Lehmann differences) and estimated sensitivity, specificity and Youden's J against the device-defined walker, for any walking and for stricter definitions by times a month (walkers below the cut counted as non-walkers). "),
   sprintf("PASE days walked outside the home in the past week were assessed likewise, %s, and PASE weekly minutes were compared with device minutes in bouts (Spearman correlation). ",
           pase_against),
-  sprintf("Figures compare each level with the lowest (%s) and each stricter definition's J with any walking (paired bootstrap), %s-adjusted: %s.",
-          test_names, tools::toTitleCase(fig_assumption("components.p_adjust")), star_key))
+  sprintf("Figures compare each level with the lowest (%s) and each stricter definition's J with any walking (paired bootstrap), %s: %s.",
+          test_names, adjusted, star_key))
 
 # Known groups: say only what each interval shows
 bout <- kg_row("purposeful_min"); counts <- kg_row("counts_per_day")
@@ -177,9 +179,11 @@ device_walker_short <- switch(walker_rule,
   any_bout = sprintf("≥1 moderate-to-vigorous bout of ≥%s minutes", purposeful_minutes),
   bout_minutes = sprintf("≥%s minutes a week in moderate-to-vigorous bouts of ≥%s minutes", fmt(guide), purposeful_minutes),
   stop("unknown reference.walker_rule: ", walker_rule, call. = FALSE))
+# Figure 2's references: non-walkers on the question, PASE's lowest days answer
+lowest_levels <- sprintf("non-walkers or %s", tolower(unlist(assumption("components.answer_labels")$pase_days)[1]))
 figures <- c(
   abstract_fig1 = sprintf("Walker definitions by sensitivity and 1 − specificity against the device. %s; grey lines: equal J. Stars: J differs from any walking.", triangles),
-  abstract_fig2 = sprintf("Share who are device-defined walkers (%s; 95%% CI) by reported walking frequency: the question, and PASE at %s. Stars: vs the lowest level.", device_walker_short, wave("06")),
+  abstract_fig2 = sprintf("Share who are device-defined walkers (%s; 95%% CI) by reported walking frequency: the question, and PASE at %s. Stars: vs %s.", device_walker_short, wave("06"), lowest_levels),
   abstract_fig3 = sprintf("Device minutes a week in bouts (median, interquartile range) by PASE-reported weekly walking, at %s. Stars: vs 0 hours.", at_visits))
 # The image order numbers the figures, so a caption needs no "Figure N." of its own
 captions <- stats::setNames(unname(figures), sprintf("Figure %d caption", seq_along(figures)))
@@ -203,7 +207,8 @@ close(paste_file)
 #| results: asis
 body <- c(Purpose = purpose, Methods = methods, Results = results, Conclusions = conclusions)
 cat("## ", title, "\n\n", sep = "")
-for (f in names(body)) cat(sprintf("**%s.** %s\n\n", f, body[[f]]))
+# Escape * so Markdown prints the star key rather than reading it as emphasis
+for (f in names(body)) cat(sprintf("**%s.** %s\n\n", f, gsub("*", "\\*", body[[f]], fixed = TRUE)))
 widths <- c(abstract_fig1 = "55%", abstract_fig2 = "100%", abstract_fig3 = "100%")
 for (i in seq_along(figures)) {
   cat(oaireport::figure_group(), sep = "\n")

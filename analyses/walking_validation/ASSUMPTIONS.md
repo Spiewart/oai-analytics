@@ -40,7 +40,7 @@
 | `components.item_times_cuts` | `[1, 2, 3]` | Spec amendment 12b: frequency-restricted walker = a walker whose times-per-month band is at least k |  |
 | `components.j_diff_test` | `bootstrap_wald` | Abstract figure marks: paired change in Youden's J from any walking; bootstrap SE, Wald CI and p |  |
 | `components.min_cell_count` | `10` | Spec amendment 12 outputs: hexagonal cells of the agreement figure with fewer participants are not written, so the report stays aggregate |  |
-| `components.p_adjust` | `holm` (choices: holm, bonferroni, none) | Abstract figure marks: p-values adjusted within each panel (and across stricter cuts) |  |
+| `components.p_adjust` | `holm` (choices: holm, bonferroni, none) | Abstract figure marks: p-values adjusted within each panel (change in J: each series) |  |
 | `components.pase_frequency_cuts` | `[1, 2, 3]` | Spec amendment 12a: PASE item 2 frequency cuts on the days code (>= 1: at least 1-2 days; >= 2: at least 3-4 days; = 3: 5-7 days) |  |
 | `components.pase_weekly_hours_bins` | `[0.0, 2.0, 5.0, 10.0]` | Spec amendment 12a: bin edges of estimated weekly walking hours (0; under 2; 2 to under 5; 5 to under 10; 10 or more) |  |
 | `components.star_levels` | `[0.05, 0.01, 0.001]` | Abstract figure marks: *, ** and *** below each adjusted p |  |

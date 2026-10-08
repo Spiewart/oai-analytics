@@ -179,7 +179,9 @@ vs_reference <- function(y, group, test = c("fisher", "wilcoxon"), adjust = "hol
     } else stats::wilcox.test(a, r, exact = FALSE)$p.value
     data.frame(level = lv, p = p, n = length(a) + length(r))
   })
+  if (!length(rows)) return(data.frame(level = character(), p = numeric(), p_adj = numeric(), n = integer()))
   out <- do.call(rbind, rows)
+  out$p[is.nan(out$p)] <- NA_real_  # an all-tied comparison
   out$p_adj <- stats::p.adjust(out$p, method = adjust)
   out$n <- as.integer(out$n)
   out[c("level", "p", "p_adj", "n")]
@@ -191,6 +193,9 @@ vs_reference <- function(y, group, test = c("fisher", "wilcoxon"), adjust = "hol
 #' J, so the changes are paired. The 95% interval and the p-value are Wald's, with the bootstrap
 #' standard error: estimate ± 1.96 SE, p = 2 Φ(−|estimate / SE|); `p_adj` adjusts the p-values
 #' across the cuts (`stats::p.adjust(method = adjust)`). Returns cut, estimate, lo, hi, p, p_adj, n.
+#' A resample in which J is undefined (no device walker or non-walker) is left out of the SE; a
+#' change with no variation (SE 0, e.g. no one between two cuts) gets p = NA. The interval is not
+#' clipped to [-1, 1], which matters only in very small samples.
 youden_diff <- function(code, reference, cuts, reps = 1000, seed = 1, adjust = "holm") {
   cuts <- unlist(cuts)  # an assumptions array may arrive as a list
   if (length(cuts) < 2) stop("youden_diff(): needs at least two cuts (the first is the base)", call. = FALSE)
@@ -209,7 +214,7 @@ youden_diff <- function(code, reference, cuts, reps = 1000, seed = 1, adjust = "
   boots <- matrix(boots, nrow = length(cuts) - 1)
   se <- apply(boots, 1, stats::sd, na.rm = TRUE)
   z <- stats::qnorm(0.975)
-  p <- 2 * stats::pnorm(-abs(estimate / se))
+  p <- ifelse(is.finite(se) & se > 0, 2 * stats::pnorm(-abs(estimate / se)), NA_real_)
   data.frame(cut = cuts[-1], estimate = estimate, lo = estimate - z * se, hi = estimate + z * se,
              p = p, p_adj = stats::p.adjust(p, method = adjust), n = length(code))
 }
