@@ -11,3 +11,13 @@ ci_excludes <- function(lo, hi, null = 0) {
   lo <- rep_len(as.numeric(lo), n); hi <- rep_len(as.numeric(hi), n)
   !is.na(lo) & !is.na(hi) & (lo > null | hi < null)
 }
+
+#' Significance stars for a figure: one star for each level in `levels` that p is below (by
+#' default * p < 0.05, ** p < 0.01, *** p < 0.001); "" for a missing or larger p.
+p_stars <- function(p, levels = c(0.05, 0.01, 0.001)) {
+  if (!is.numeric(levels) || !length(levels) || anyNA(levels)) {
+    stop("p_stars(): levels must be numbers, e.g. c(0.05, 0.01, 0.001)", call. = FALSE)
+  }
+  n <- vapply(p, function(x) if (is.na(x)) 0L else sum(x < levels), integer(1))
+  strrep("*", n)
+}

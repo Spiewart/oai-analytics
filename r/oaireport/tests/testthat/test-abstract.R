@@ -33,3 +33,10 @@ test_that("char_budget rejects unnamed, duplicated or missing sections and bad n
 test_that("char_budget takes a list of single strings as well as a character vector", {
   expect_equal(char_budget(list(A = "ab", B = "c"), limit = 10)$characters, c(2L, 1L, 3L, 10L, 7L))
 })
+
+test_that("p_stars marks each p-value below each level, and nothing for NA or larger p", {
+  expect_equal(p_stars(c(0.0004, 0.001, 0.009, 0.01, 0.049, 0.05, 0.2, NA)),
+               c("***", "**", "**", "*", "*", "", "", ""))
+  expect_equal(p_stars(c(0.02, 0.07, 0.2), levels = c(0.1, 0.05)), c("**", "*", ""))
+  expect_error(p_stars(0.1, levels = c(0.05, NA)), "levels")
+})

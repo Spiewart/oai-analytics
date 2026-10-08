@@ -94,6 +94,7 @@ A conference abstract (e.g. `analyses/walking_validation/abstract.qmd`) builds e
 
 - `char_budget(sections, images, per_image = 560, limit = 5000)` counts each named field's characters, spaces included, and a symbol such as ≥ or ρ once. It charges `per_image` for each image, tables included, since a portal charges an image up to that much. It returns a table of each part, Total, Limit and Margin, and stops the render when the total is over the limit. Set `limit` and `per_image` from the meeting's rules.
 - Write the fields to `text/<name>.txt`, one block per field with its count, for pasting into the submission form; `oai report` keeps `text/` beside the PDFs, and `oai check-egress` scans it with the rest of the folder.
+- `p_stars(p, levels = c(0.05, 0.01, 0.001))` gives "*", "**" or "***" for a figure's between-group marks. Compute the p-values in the analysis step (`oaimodels::vs_reference()` tests each level against the first, Fisher's exact or Wilcoxon rank-sum, adjusted across the levels; `oaimodels::youden_diff()` gives the paired change in Youden's J between cut-offs with a bootstrap Wald test) and record the tests and the adjustment in `assumptions.toml`.
 - Reuse a figure another document saved with that analysis's `figure_file()` (list the saving document first in `[report] documents`); `save_figure()` already writes a 300 dpi PNG for upload.
 
 ## The `report` renv profile

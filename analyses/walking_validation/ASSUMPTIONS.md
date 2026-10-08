@@ -33,17 +33,17 @@
 | `bias.seed` | `20261001` | Fixed seed; iteration i uses seed + i, so results do not depend on core count |  |
 | `bias.tipping_iterations` | `200` | Spec 7 |  |
 | `bias.tipping_step` | `0.05` | Spec 7: sensitivity 0.60-1.00 x specificity 0.40-1.00 |  |
-| `components.group_test_minutes` | `wilcoxon` | Figure marks (abstract): device minutes a week in bouts in each band of PASE weekly walking against 0 hours, Wilcoxon rank-sum test |  |
-| `components.group_test_share` | `fisher` | Figure marks (abstract): each answer level's share of device-defined walkers against the lowest level (non-walkers; PASE never), Fisher's exact test |  |
+| `components.group_test_minutes` | `wilcoxon` | Abstract figure marks: device bout minutes in each PASE weekly band vs 0 hours, Wilcoxon rank-sum |  |
+| `components.group_test_share` | `fisher` | Abstract figure marks: each level's share of device walkers vs the lowest, Fisher's exact test |  |
 | `components.hex_bins` | `30` | Spec amendment 12 outputs: hexagonal grid size of the agreement figure (about this many cells per axis); with components.min_cell_count it decides which cells are shown |  |
 | `components.item_months_cuts` | `[1, 2, 3]` | Spec amendment 12b: the same for the months-per-year band (secondary) |  |
 | `components.item_times_cuts` | `[1, 2, 3]` | Spec amendment 12b: frequency-restricted walker = a walker whose times-per-month band is at least k |  |
-| `components.j_diff_test` | `bootstrap_wald` | Figure marks (abstract): paired change in Youden's J from any walking to each stricter definition, in the same people; person-level bootstrap SE (validity.bootstrap_reps resamples), Wald 95% CI and p |  |
+| `components.j_diff_test` | `bootstrap_wald` | Abstract figure marks: paired change in Youden's J from any walking; bootstrap SE, Wald CI and p |  |
 | `components.min_cell_count` | `10` | Spec amendment 12 outputs: hexagonal cells of the agreement figure with fewer participants are not written, so the report stays aggregate |  |
-| `components.p_adjust` | `holm` (choices: holm, bonferroni, none) | Figure marks (abstract): p-values adjusted within each panel, across the levels compared with one reference (and across the stricter cuts for the change in Youden's J) |  |
+| `components.p_adjust` | `holm` (choices: holm, bonferroni, none) | Abstract figure marks: p-values adjusted within each panel (and across stricter cuts) |  |
 | `components.pase_frequency_cuts` | `[1, 2, 3]` | Spec amendment 12a: PASE item 2 frequency cuts on the days code (>= 1: at least 1-2 days; >= 2: at least 3-4 days; = 3: 5-7 days) |  |
 | `components.pase_weekly_hours_bins` | `[0.0, 2.0, 5.0, 10.0]` | Spec amendment 12a: bin edges of estimated weekly walking hours (0; under 2; 2 to under 5; 5 to under 10; 10 or more) |  |
-| `components.star_levels` | `[0.05, 0.01, 0.001]` | Figure marks (abstract): *, ** and *** for an adjusted p below each level |  |
+| `components.star_levels` | `[0.05, 0.01, 0.001]` | Abstract figure marks: *, ** and *** below each adjusted p |  |
 | `device.purposeful_bout_minutes` | `10` | Spec 5: purposeful walking proxy = minutes in >= 10-minute MV bouts |  |
 | `device.wave_combination` | `mean` (choices: mean, 06, 08) | Spec 4: habitual activity = mean over a person's valid waves |  |
 | `exposure.amount_split` | `median` (choices: median) | Spec 5: lower/upper halves of lifetime sessions among walkers (median split) |  |

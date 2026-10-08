@@ -37,6 +37,7 @@ knitr:
 
 ```{r setup}
 run <- oaireport::load_results()$default
+source("brief_figures.R")  # Figures 1-3, shared with abstract.qmd
 assumption <- function(key) run$assumptions$assumptions[[key]]$value
 num <- function(x, digits = 2) formatC(x, format = "f", digits = digits, big.mark = ",")
 count <- function(x) formatC(x, format = "d", big.mark = ",")
@@ -159,42 +160,7 @@ The Osteoarthritis Initiative (OAI) asked participants whether they had walked f
 
 ```{r fig1}
 #| include: false
-cuts <- c("cut1", "cut2", "cut3")
-item_pts <- do.call(rbind, lapply(cuts, function(k) data.frame(
-  source = "Walking item (times per month)", cut = k,
-  se = item("validation", "times", k, "se")$estimate,
-  fpr = 1 - item("validation", "times", k, "sp")$estimate,
-  current = k == "cut1")))
-pase_pts <- do.call(rbind, lapply(visits, function(v) do.call(rbind, lapply(cuts, function(k) data.frame(
-  source = sprintf("PASE days per week, %s", wave_names[[v]]), cut = k,
-  se = pase(v, "frequency", "device_walker", k, "se")$estimate,
-  fpr = 1 - pase(v, "frequency", "device_walker", k, "sp")$estimate,
-  current = k == "cut1" && pase_any_is_walker)))))
-pts <- rbind(item_pts, pase_pts)
-pts$source <- factor(pts$source, levels = unique(pts$source))
-# One source per row (a single row is wider than the column); keys show the line, solid or dashed
-source_key <- ggplot2::guide_legend(ncol = 1, order = 1, override.aes = list(shape = NA),
-                                    theme = ggplot2::theme(legend.key.width = ggplot2::unit(2, "lines")))
-fig1 <- ggplot2::ggplot(pts, ggplot2::aes(fpr, se, colour = source, linetype = source)) +
-  oaireport::youden_contours() +
-  ggplot2::geom_line(linewidth = 0.6) +
-  # Filled markers with a white outline, item drawn last: its triangle sits just below PASE's
-  ggplot2::geom_point(data = pts[rev(seq_len(nrow(pts))), ], ggplot2::aes(shape = current, fill = source),
-                      size = 2.6, colour = "white", stroke = 0.6) +
-  ggplot2::scale_colour_manual(values = c(colours[["item"]], colours[["pase"]], colours[["pase"]]), name = NULL) +
-  ggplot2::scale_linetype_manual(values = c("solid", "solid", "dashed"), name = NULL) +
-  ggplot2::scale_fill_manual(values = c(colours[["item"]], colours[["pase"]], colours[["pase"]]), name = NULL) +
-  ggplot2::scale_shape_manual(values = c(`TRUE` = 24, `FALSE` = 21), name = NULL,
-                              labels = c(`TRUE` = "Definition in use", `FALSE` = "Stricter, frequency-based")) +
-  ggplot2::coord_equal(xlim = c(0, 1), ylim = c(0, 1), clip = "off") +
-  ggplot2::labs(x = "1 − specificity", y = "Sensitivity") +
-  ggplot2::guides(colour = source_key, linetype = source_key, fill = source_key,
-                  shape = ggplot2::guide_legend(order = 2, override.aes = list(fill = "black"))) +
-  oaireport::theme_oai(base_size = 8) +
-  ggplot2::theme(legend.position = "bottom", legend.box = "vertical",
-                 legend.spacing.y = ggplot2::unit(2, "pt"), legend.key.spacing.y = ggplot2::unit(0, "pt"),
-                 legend.margin = ggplot2::margin(0, 0, 0, 0), legend.box.spacing = ggplot2::unit(4, "pt"),
-                 plot.margin = ggplot2::margin(14, 8, 4, 4))
+fig1 <- fig_definitions()
 oaireport::save_figure(fig1, "brief_fig1", "1col", height = 3.35)
 ```
 
@@ -235,36 +201,9 @@ Reported walking frequency tracks the device in a clear gradient, which a yes/no
 #| fig-height: 2.6
 #| results: asis
 cat(oaireport::figure_group(), sep = "\n")
-level_rows <- function(get, levels, names, question, fill) {
-  do.call(rbind, lapply(seq_along(levels), function(i) {
-    r <- get(levels[[i]])
-    data.frame(question = question, answer = names[[i]], estimate = r$estimate, lo = r$lo, hi = r$hi,
-               fill = if (i == 1) paste0(fill, "_ref") else fill)
-  }))
-}
 # PASE days answer levels 0 to length(labels) - 1: level i is labels$pase_days[i + 1]
 pase_levels <- as.character(seq_along(labels$pase_days) - 1)
-bars <- rbind(
-  level_rows(function(l) item("validation", "times", l, "share"),
-             c("none", as.character(seq_along(labels$times))), c("Non-walkers", labels$times),
-             "Walking item: times per month", "item"),
-  level_rows(function(l) pase("06", "frequency", "device_walker", l, "share"),
-             pase_levels, labels$pase_days, "PASE: days walked last week (48 months)", "pase"))
-bars$answer <- factor(bars$answer, levels = rev(unique(bars$answer)))
-bars$question <- factor(bars$question, levels = unique(bars$question))
-x_top <- min(1, max(bars$hi, na.rm = TRUE) + 0.15)
-fig2 <- ggplot2::ggplot(bars, ggplot2::aes(estimate, answer, fill = fill)) +
-  ggplot2::geom_col(width = 0.65) +
-  ggplot2::geom_errorbar(ggplot2::aes(xmin = lo, xmax = hi), width = 0.25, linewidth = 0.3, orientation = "y") +
-  ggplot2::geom_text(ggplot2::aes(x = hi, label = pct(estimate)), hjust = -0.25, size = 2.6,
-                     family = oaireport::oai_font()) +
-  ggplot2::scale_fill_manual(values = c(item_ref = colours[["muted"]], item = colours[["item"]],
-                                        pase_ref = colours[["pase_muted"]], pase = colours[["pase"]]),
-                             guide = "none") +
-  ggplot2::scale_x_continuous(labels = function(x) paste0(100 * x, "%"), limits = c(0, x_top), expand = c(0, 0)) +
-  ggplot2::facet_wrap(~question, scales = "free_y") +
-  ggplot2::labs(x = "Share who are device-defined walkers (95% CI)", y = NULL) +
-  oaireport::theme_oai(base_size = 8)
+fig2 <- fig_shares()
 oaireport::save_figure(fig2, "brief_fig2", "2col", height = 2.6)
 print(fig2)
 pase72 <- vapply(pase_levels, function(l) pase("08", "frequency", "device_walker", l, "share")$estimate, numeric(1))
@@ -281,18 +220,7 @@ Combining PASE's two walking answers (days × hours a day) gives an estimate of 
 #| fig-height: 2.6
 #| results: asis
 cat(oaireport::figure_group(), sep = "\n")
-cal <- cp[cp$component == "weekly" & cp$comparator == "purposeful_week" & cp$statistic == "median", ]
-cal$level <- factor(cal$level, levels = unique(cal$level))  # the step writes the bins in order
-cal$visit_name <- wave_names[cal$visit]
-fig3 <- ggplot2::ggplot(cal, ggplot2::aes(level, estimate)) +
-  ggplot2::geom_pointrange(ggplot2::aes(ymin = lo, ymax = hi), colour = colours[["pase"]], size = 0.3) +
-  ggplot2::geom_text(ggplot2::aes(y = hi, label = paste0("n = ", count(n))), vjust = -0.6, size = 2.2,
-                     colour = "grey35", family = oaireport::oai_font()) +
-  ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.05, 0.15))) +
-  ggplot2::facet_wrap(~visit_name) +
-  ggplot2::labs(x = "Estimated weekly walking from PASE (hours per week)",
-                y = "Device purposeful-bout\nminutes per week") +
-  oaireport::theme_oai(base_size = 8)
+fig3 <- fig_weekly()
 oaireport::save_figure(fig3, "brief_fig3", "2col", height = 2.6)
 print(fig3)
 cat(oaireport::table_note(sprintf(

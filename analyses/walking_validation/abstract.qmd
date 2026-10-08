@@ -33,6 +33,7 @@ knitr:
 
 ```{r setup}
 source("report_setup.R")
+source("brief_figures.R")  # the brief's Figures 1-3; the abstract draws them with between-group marks
 # The submission rules: at most 5,000 characters, counting the title, the body and spaces; each
 # image (a table counts as one) is charged up to 560, so it is charged 560 here
 limit <- 5000
@@ -86,7 +87,7 @@ guide <- assumption("reference.min_bout_minutes_per_week")
 ```
 
 ```{r text}
-title <- "DOES A SELF-REPORTED WALKING-FOR-EXERCISE QUESTION AGREE WITH ACCELEROMETRY? A VALIDATION STUDY IN THE OSTEOARTHRITIS INITIATIVE"
+title <- "DOES A SELF-REPORTED WALKING-FOR-EXERCISE QUESTION AGREE WITH ACCELEROMETRY IN THE OSTEOARTHRITIS INITIATIVE?"
 
 purpose <- "In the Osteoarthritis Initiative, a question about walking for exercise since age 50 has been linked to fewer people developing frequent knee pain but, to our knowledge, has not been compared with a device measure. We assessed how well it, and the walking items of the Physical Activity Scale for the Elderly (PASE), agree with accelerometry."
 
@@ -95,30 +96,32 @@ walker_short <- switch(yes_without,
   walker = "answered yes",
   exclude = "answered yes and said how much they walk (a yes with no amount was left out)",
   stop("unknown exposure.yes_without_amount_as: ", yes_without, call. = FALSE))
-device_at <- if (combination == "mean") sprintf("%s (averaged when both were valid)", waves_at) else waves_at
-# The frequency definitions leave out walkers who gave no times-a-month answer
-n_freq <- item_get("cut1", "se", "n") + item_get("cut1", "sp", "n")
-freq_left_out <- n_val - n_freq
+device_at <- if (combination == "mean") sprintf("%s (averaged when both valid)", waves_at) else waves_at
 pase_against <- if (comp_paired) "against the device at the same visit" else sprintf("against %s", combined_text)
+test_name <- c(fisher = "Fisher's exact", wilcoxon = "Wilcoxon rank-sum")
+test_names <- paste(paste(unique(test_name[c(fig_assumption("components.group_test_share"), fig_assumption("components.group_test_minutes"))]), collapse = " or "), "test")
+star_levels <- unlist(fig_assumption("components.star_levels"))
+star_key <- paste(sprintf("%sp<%s", strrep("*", seq_along(star_levels)), format(star_levels, scientific = FALSE, drop0trailing = TRUE)), collapse = ", ")
 methods <- paste0(
-  sprintf("Participants answered the walking question at the 96-month visit and had accelerometer data (ActiGraph GT1M) at %s; a valid day had at least %s wear hours, and a usable visit at least %s valid days. ",
-          device_at, fmt(assumption("device.valid_day_hours")), fmt(assumption("device.min_valid_days"))),
+  sprintf("Participants answered the walking question at 96 months and had ActiGraph GT1M data at %s, with ≥%s valid days of ≥%s wear hours. ",
+          device_at, fmt(assumption("device.min_valid_days")), fmt(assumption("device.valid_day_hours"))),
   sprintf("Walkers %s. A device-defined walker showed %s (%s counts a minute or more). ", walker_short, rule_plain, fmt(cutpoint)),
-  sprintf("We compared device activity between walkers and non-walkers (Hodges–Lehmann differences) and estimated sensitivity, specificity and Youden's J against the device-defined walker, for any walking and for stricter definitions by times a month (walkers below the cut counted as non-walkers%s). ",
-          if (freq_left_out > 0) sprintf("; %s without a frequency left out", count(freq_left_out)) else ""),
-  sprintf("PASE days of walking outside the home in the past week were assessed the same way, %s, and PASE weekly minutes were compared with device minutes in bouts (Spearman correlation; kappa at %s minutes a week).",
-          pase_against, fmt(guide)))
+  sprintf("We compared device activity between walkers and non-walkers (Hodges–Lehmann differences) and estimated sensitivity, specificity and Youden's J against the device-defined walker, for any walking and for stricter definitions by times a month (walkers below the cut counted as non-walkers). "),
+  sprintf("PASE days walked outside the home in the past week were assessed likewise, %s, and PASE weekly minutes were compared with device minutes in bouts (Spearman correlation). ",
+          pase_against),
+  sprintf("Figures compare each level with the lowest (%s) and each stricter definition's J with any walking (paired bootstrap), %s-adjusted: %s.",
+          test_names, tools::toTitleCase(fig_assumption("components.p_adjust")), star_key))
 
 # Known groups: say only what each interval shows
-bout <- kg_row("purposeful_min"); counts <- kg_row("counts_per_day"); light <- kg_row("light_min")
+bout <- kg_row("purposeful_min"); counts <- kg_row("counts_per_day")
 more <- function(r) !is.na(r$hl_lo) & r$hl_lo > 0
 kg_verb <- function(r) {
   if (more(r)) "more" else if (!is.na(r$hl_hi) & r$hl_hi < 0) "fewer" else if (r$hl >= 0) "not clearly more" else "not clearly fewer"
 }
 kg_ci <- function(r, digits, lead = "", label = FALSE) sprintf("(%s%s)", lead, ci_text(r$hl, r$hl_lo, r$hl_hi, digits, inner = TRUE, label = label))
-kg_sentence <- sprintf("Walkers recorded %s minutes a day in bouts of %s+ minutes %s, %s activity counts a day %s and %s light-activity minutes %s.",
+kg_sentence <- sprintf("Walkers recorded %s minutes a day in bouts of %s+ minutes %s and %s activity counts a day %s.",
                        kg_verb(bout), purposeful_minutes, kg_ci(bout, 1, "difference ", label = TRUE),
-                       kg_verb(counts), kg_ci(counts, 0), kg_verb(light), kg_ci(light, 1))
+                       kg_verb(counts), kg_ci(counts, 0))
 # Frequency: J for any walking and the stricter cuts (walkers below a cut count as non-walkers)
 j_cuts <- vapply(names(item_cuts), item_get, numeric(1), stat = "j")
 j_rises <- all(diff(j_cuts) > 0)
@@ -141,16 +144,13 @@ pase_sentence <- sprintf("PASE separated device-defined walkers %s%s: J %s for a
                          j_band(pase_any), if (pase_like) " too" else "", pair(pase_any), at_visits,
                          pair(pase_mid), cut_floor(pase_cuts[["cut2"]]))
 rho <- vapply(comp_visits, weekly, numeric(1), level = "all", stat = "rho")
-kappa <- vapply(comp_visits, weekly, numeric(1), level = "guideline", stat = "kappa")
 diff_min <- vapply(comp_visits, weekly, numeric(1), level = "all", stat = "median_diff")
 rho_word <- ladder(rho, c(0.3, 0.5), c("weakly", "moderately", "strongly"))
-# Landis and Koch's bands for kappa
-kappa_word <- ladder(kappa, c(-Inf, 0, 0.2, 0.4, 0.6, 0.8), c("poor", "poor", "slight", "fair", "moderate", "substantial", "almost perfect"))
 both <- if (length(unique(num(diff_min, 0))) == 1) " at both visits" else ""
 gap <- if (all(diff_min > 0)) sprintf("exceeded them by a median of %s minutes a week%s", pair(diff_min, 0), both) else
   sprintf("differed from them by a median of %s minutes a week%s", pair(diff_min, 0), both)
-weekly_sentence <- sprintf("PASE weekly minutes correlated %s with device minutes in bouts (Spearman ρ %s), %s, and showed %s agreement on reaching %s minutes a week (kappa %s).",
-                           rho_word, pair(rho), gap, kappa_word, fmt(guide), pair(kappa))
+weekly_sentence <- sprintf("PASE weekly minutes correlated %s with device minutes in bouts (Spearman ρ %s) and %s.",
+                           rho_word, pair(rho), gap)
 results <- paste(
   sprintf("Of %s participants, %s (%s) were walkers by the question and %s (%s) by the device.", count(n_val), count(n_walk), pct(n_walk / n_val), count(n_dev), pct(n_dev / n_val)),
   kg_sentence,
@@ -159,22 +159,30 @@ results <- paste(
 
 active <- more(bout) || more(counts)
 freq_gain <- if (!j_rises) "did not consistently raise agreement" else if (max(j_cuts) < 0.3) "raised agreement only modestly" else "raised agreement"
-weeks <- if (combination == "mean") "one or two weeks" else "one week"
 conclusions <- paste(
-  sprintf("%s, but the walking question separated device-defined walkers %s%s; requiring more frequent walking %s.",
+  sprintf("%s, but the question separated device-defined walkers %s%s; requiring more frequent walking %s.",
           if (active) "Self-reported walkers were more active by accelerometry" else "Self-reported walkers were not clearly more active by accelerometry",
-          separates, if (pase_like) ", as did the PASE walking items" else "", freq_gain),
-  sprintf("The low agreement has two readings: the question may misclassify walking, or it may capture a long-term walking habit that %s of hip-worn activity counts, which do not single out walking, cannot reflect.", weeks))
+          separates, if (pase_like) ", as did PASE" else "", freq_gain),
+  "The disagreement between self-reported walking and accelerometer-defined walking likely reflects self-report capturing a long-term habit that is not reflected in short-term accelerometry or that it may misclassify accelerometer-defined walking.")
 
-# The brief's Figures 1-3, each uploaded as its own image; the captions say what each shows.
+# The brief's Figures 1-3 with between-group marks, each saved and uploaded as its own image
+oaireport::save_figure(fig_definitions(marks = TRUE), "abstract_fig1", "1col", height = 3.35)
+oaireport::save_figure(fig_shares(marks = TRUE), "abstract_fig2", "2col", height = 2.6)
+oaireport::save_figure(fig_weekly(marks = TRUE), "abstract_fig3", "2col", height = 2.6)
 # PASE's any-walking point is a triangle (a definition in use) only at walker threshold 0, as in the brief
-triangles <- if (assumption("pase.walker_threshold") == 0) "Triangles: any walking (in use), nearly coinciding at top right" else
+triangles <- if (assumption("pase.walker_threshold") == 0) "Triangles: any walking (in use), nearly coinciding" else
   "Triangle: any walking on the question (in use)"
+device_walker_short <- switch(walker_rule,
+  bout_days = sprintf("≥%s-minute moderate-to-vigorous bouts on ≥%s days a week", purposeful_minutes, fmt(assumption("reference.min_bout_days_per_week"))),
+  any_bout = sprintf("≥1 moderate-to-vigorous bout of ≥%s minutes", purposeful_minutes),
+  bout_minutes = sprintf("≥%s minutes a week in moderate-to-vigorous bouts of ≥%s minutes", fmt(guide), purposeful_minutes),
+  stop("unknown reference.walker_rule: ", walker_rule, call. = FALSE))
 figures <- c(
-  brief_fig1 = sprintf("Walker definitions by sensitivity and 1 − specificity against the device. %s; grey lines: equal Youden's J.", triangles),
-  brief_fig2 = sprintf("Share who are device-defined walkers (95%% CI) by reported walking frequency: the question, and PASE at %s.", wave("06")),
-  brief_fig3 = sprintf("Device minutes a week in bouts (median, interquartile range) by PASE-reported weekly walking, at %s.", at_visits))
-captions <- stats::setNames(sprintf("Figure %d. %s", seq_along(figures), figures), sprintf("Figure %d caption", seq_along(figures)))
+  abstract_fig1 = sprintf("Walker definitions by sensitivity and 1 − specificity against the device. %s; grey lines: equal J. Stars: J differs from any walking.", triangles),
+  abstract_fig2 = sprintf("Share who are device-defined walkers (%s; 95%% CI) by reported walking frequency: the question, and PASE at %s. Stars: vs the lowest level.", device_walker_short, wave("06")),
+  abstract_fig3 = sprintf("Device minutes a week in bouts (median, interquartile range) by PASE-reported weekly walking, at %s. Stars: vs 0 hours.", at_visits))
+# The image order numbers the figures, so a caption needs no "Figure N." of its own
+captions <- stats::setNames(unname(figures), sprintf("Figure %d caption", seq_along(figures)))
 images <- length(figures)
 
 fields <- c(Title = title, Purpose = purpose, Methods = methods, Results = results,
@@ -196,7 +204,7 @@ close(paste_file)
 body <- c(Purpose = purpose, Methods = methods, Results = results, Conclusions = conclusions)
 cat("## ", title, "\n\n", sep = "")
 for (f in names(body)) cat(sprintf("**%s.** %s\n\n", f, body[[f]]))
-widths <- c(brief_fig1 = "55%", brief_fig2 = "100%", brief_fig3 = "100%")
+widths <- c(abstract_fig1 = "55%", abstract_fig2 = "100%", abstract_fig3 = "100%")
 for (i in seq_along(figures)) {
   cat(oaireport::figure_group(), sep = "\n")
   cat(figure_file(names(figures)[i], width = widths[[names(figures)[i]]]), sep = "\n")

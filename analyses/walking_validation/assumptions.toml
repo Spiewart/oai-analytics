@@ -225,28 +225,28 @@ source = "formats.pdf in the OAI release: TIME10X (VxxPASE2), TIME18X (VxxPASE2H
 [components.group_test_share]
 value = "fisher"
 status = "assumed"
-source = "Figure marks (abstract): each answer level's share of device-defined walkers against the lowest level (non-walkers; PASE never), Fisher's exact test"
+source = "Abstract figure marks: each level's share of device walkers vs the lowest, Fisher's exact test"
 
 [components.group_test_minutes]
 value = "wilcoxon"
 status = "assumed"
-source = "Figure marks (abstract): device minutes a week in bouts in each band of PASE weekly walking against 0 hours, Wilcoxon rank-sum test"
+source = "Abstract figure marks: device bout minutes in each PASE weekly band vs 0 hours, Wilcoxon rank-sum"
 
 [components.p_adjust]
 value = "holm"
 status = "assumed"
-source = "Figure marks (abstract): p-values adjusted within each panel, across the levels compared with one reference (and across the stricter cuts for the change in Youden's J)"
+source = "Abstract figure marks: p-values adjusted within each panel (and across stricter cuts)"
 choices = ["holm", "bonferroni", "none"]
 
 [components.j_diff_test]
 value = "bootstrap_wald"
 status = "assumed"
-source = "Figure marks (abstract): paired change in Youden's J from any walking to each stricter definition, in the same people; person-level bootstrap SE (validity.bootstrap_reps resamples), Wald 95% CI and p"
+source = "Abstract figure marks: paired change in Youden's J from any walking; bootstrap SE, Wald CI and p"
 
 [components.star_levels]
 value = [0.05, 0.01, 0.001]
 status = "assumed"
-source = "Figure marks (abstract): *, ** and *** for an adjusted p below each level"
+source = "Abstract figure marks: *, ** and *** below each adjusted p"
 
 [variants.wave48]
 description = "Device = 48-month wave only"

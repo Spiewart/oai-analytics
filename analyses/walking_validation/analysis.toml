@@ -64,5 +64,5 @@ combined = "walking_validation_brief.pdf"
 combined_documents = ["brief.qmd", "clinical.qmd"]
 part_titles = ["Brief", "Appendix: results"]
 runs = ["default"]
-assets = ["ASSUMPTIONS.md", "references.bib", "report_setup.R"]
+assets = ["ASSUMPTIONS.md", "references.bib", "report_setup.R", "brief_figures.R"]
 local_assets = ["brief.local.yml"]
