@@ -481,14 +481,18 @@ def _top_bookmarks(pdf: Path) -> list[str]:
 
 
 def _check_abstract(pdf: Path, paste: Path) -> None:
-    """The paste file's counts are right, the total is within the limit, the title follows the
-    submission rules (capitals, no abbreviations) and the framing stays neutral."""
+    """The paste file's counts are right, each image it lists exists and is charged, the total is
+    within the limit, the title follows the submission rules (capitals, no abbreviations) and the
+    framing stays neutral."""
     text = paste.read_text(encoding="utf-8")
-    fields_part, budget_part = text.split("\nCHARACTER BUDGET\n")
+    fields_part, rest = text.split("\nIMAGES TO UPLOAD\n")
+    uploads_part, budget_part = rest.split("\nCHARACTER BUDGET\n")
     fields = {}
     for block in fields_part.strip().split("\n\n"):
         head, body = block.split("\n", 1)
-        name, count = re.fullmatch(r"(.+) \(([\d,]+) characters\)", head).groups()
+        match = re.fullmatch(r"(.+) \(([\d,]+) characters\)", head)
+        assert match, f"unexpected field heading {head!r}"
+        name, count = match.groups()
         assert len(body) == int(count.replace(",", "")), name
         fields[name] = body
     assert list(fields) == [
@@ -497,22 +501,34 @@ def _check_abstract(pdf: Path, paste: Path) -> None:
         "METHODS",
         "RESULTS",
         "CONCLUSIONS",
-        "FIGURE CAPTION",
+        *(f"FIGURE {i} CAPTION" for i in range(1, len(uploads_part.strip().splitlines()) + 1)),
     ]
-    budget = {
-        line[:24].strip(): int(line[24:].strip().replace(",", ""))
-        for line in budget_part.strip().splitlines()
-    }
-    images = sum(v for k, v in budget.items() if k.startswith("Images"))
+    for i, line in enumerate(uploads_part.strip().splitlines(), start=1):
+        figure, path = line.split(": ")
+        assert figure == f"Figure {i}"
+        assert (paste.parent.parent / path).is_file(), path
+    budget = {}
+    for line in budget_part.strip().splitlines():
+        part, value = line.rsplit(None, 1)
+        budget[part.strip()] = int(value.replace(",", ""))
+    [images_row] = [k for k in budget if k.startswith("Images")]
+    assert images_row.startswith(f"Images ({len(uploads_part.strip().splitlines())} ×")
+    images = budget[images_row]
     total = sum(len(body) for body in fields.values()) + images
     assert budget["Total"] == total
     assert total <= ABSTRACT_LIMIT, total
     title = fields["TITLE"]
     assert title == title.upper()
-    assert not re.search(r"\b(OAI|PASE)\b", title)
+    # no abbreviation in the title: those the body defines in brackets, and the usual suspects
+    body = " ".join(fields[f] for f in ("PURPOSE", "METHODS", "RESULTS", "CONCLUSIONS"))
+    defined = set(re.findall(r"\(([A-Z][A-Z0-9]+)\)", body))
+    for abbreviation in defined | {"OAI", "PASE", "GT1M", "CI", "BMI"}:
+        assert not re.search(rf"\b{abbreviation}\b", title), abbreviation
     assert find_terms(pdf, ["bias", "correction", "corrected"]) == []
-    pdf_text = " ".join(" ".join(page.extract_text() for page in PdfReader(pdf).pages).split())
-    assert fields["CONCLUSIONS"].split(".")[0] in pdf_text
+    # the PDF shows the pasted text (whitespace ignored: lines wrap at hyphens and spaces)
+    pdf_text = re.sub(r"\s+", "", "".join(page.extract_text() for page in PdfReader(pdf).pages))
+    for name in ("PURPOSE", "CONCLUSIONS"):
+        assert re.sub(r"\s+", "", fields[name]) in pdf_text, name
 
 
 @pytest.mark.realdata
@@ -541,7 +557,7 @@ def test_walking_validation_report_renders(fast_run):
     assert pages["brief.pdf"] <= 6, pages
     assert pages["report.pdf"] <= 18, pages
     assert pages["clinical.pdf"] <= 12, pages
-    assert pages["abstract.pdf"] <= 2, pages
+    assert pages["abstract.pdf"] <= 3, pages
     assert pages["walking_validation_brief.pdf"] == pages["brief.pdf"] + pages["clinical.pdf"]
     for pdf in documents:
         text = "\n".join(page.extract_text() for page in PdfReader(pdf).pages)

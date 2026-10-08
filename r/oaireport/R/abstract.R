@@ -11,12 +11,19 @@ char_budget <- function(sections, images = 0, per_image = 560, limit = 5000) {
     stop("char_budget(): every section must be named", call. = FALSE)
   }
   if (anyDuplicated(names(sections))) stop("char_budget(): section names must be unique", call. = FALSE)
+  if (is.list(sections)) {
+    if (!all(vapply(sections, function(x) is.character(x) && length(x) == 1, logical(1)))) {
+      stop("char_budget(): each section must be one string", call. = FALSE)
+    }
+    sections <- unlist(sections)
+  }
+  if (!is.character(sections)) stop("char_budget(): sections must be character strings", call. = FALSE)
   if (any(is.na(sections))) stop("char_budget(): sections must not be missing (NA)", call. = FALSE)
   whole <- function(x) is.numeric(x) && length(x) == 1 && !is.na(x) && x >= 0 && x == round(x)
   if (!whole(images)) stop("char_budget(): images must be a whole number, 0 or more", call. = FALSE)
   if (!whole(per_image)) stop("char_budget(): per_image must be a whole number, 0 or more", call. = FALSE)
   if (!whole(limit) || limit == 0) stop("char_budget(): limit must be a whole number above 0", call. = FALSE)
-  counts <- nchar(unlist(sections), type = "chars")
+  counts <- nchar(sections, type = "chars")
   parts <- names(sections)
   if (images > 0) {
     counts <- c(counts, images * per_image)

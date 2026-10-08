@@ -26,4 +26,10 @@ test_that("char_budget rejects unnamed, duplicated or missing sections and bad n
   expect_error(char_budget(c(A = "x"), images = 1.5), "images")
   expect_error(char_budget(c(A = "x"), limit = NA), "limit")
   expect_error(char_budget(character()), "at least one")
+  expect_error(char_budget(c(A = 12345)), "character")
+  expect_error(char_budget(list(A = c("x", "y"))), "one string")
+})
+
+test_that("char_budget takes a list of single strings as well as a character vector", {
+  expect_equal(char_budget(list(A = "ab", B = "c"), limit = 10)$characters, c(2L, 1L, 3L, 10L, 7L))
 })
