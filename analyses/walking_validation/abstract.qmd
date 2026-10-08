@@ -163,7 +163,7 @@ conclusions <- paste(
   sprintf("%s, but the question separated device-defined walkers %s%s; requiring more frequent walking %s.",
           if (active) "Self-reported walkers were more active by accelerometry" else "Self-reported walkers were not clearly more active by accelerometry",
           separates, if (pase_like) ", as did PASE" else "", freq_gain),
-  "The disagreement between self-reported walking and accelerometer-defined walking likely reflects self-report capturing a long-term habit that is not reflected in short-term accelerometry or that it may misclassify accelerometer-defined walking.")
+  "The disagreement between self-reported walking and accelerometer-defined walking may reflect self-report capturing a long-term habit that is not reflected in short-term accelerometry or that it may misclassify accelerometer-defined walking.")
 
 # The brief's Figures 1-3 with between-group marks, each saved and uploaded as its own image
 oaireport::save_figure(fig_definitions(marks = TRUE), "abstract_fig1", "1col", height = 3.35)
