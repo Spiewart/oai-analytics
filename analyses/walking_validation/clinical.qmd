@@ -223,7 +223,19 @@ oaireport::compare_table(kg_table, widths = c(2.2, 1.5, 1.5, 1.7, 1.7), multipag
 
 ```{r note-a-known-groups}
 #| results: asis
-cat(oaireport::table_note(paste(sprintf("Validation sample, by the walking question; non-walkers %s.", nonwalker_plain), "Medians are per day of accelerometer wear; the difference is the typical (median) difference between a walker and a non-walker, so it need not equal the gap between the two medians, and the adjusted difference is the difference in medians after allowing for age, sex and body-mass index.", bold_rule), label = lab("Table"), close_group = TRUE), sep = "\n")
+# A median of 0.0 bout minutes reads as "no one had a bout": say how many in each group had none
+bout_groups <- c(nonwalkers = "non-walkers", walkers = "walkers")
+bout_none <- unlist(Map(function(g, label) {
+  if (kg_bout[[paste0("median_", g)]] == 0) sprintf("at least half of %s", label)
+  else if (kg_bout[[paste0("q25_", g)]] == 0) sprintf("at least a quarter of %s", label)
+}, names(bout_groups), bout_groups))
+bout_zero <- names(bout_groups)[vapply(names(bout_groups), function(g) kg_bout[[paste0("median_", g)]] == 0, logical(1))]
+bout_some <- length(bout_zero) > 0 && all(vapply(bout_zero, function(g) kg_bout[[paste0("q75_", g)]] > 0, logical(1)))
+bout_text <- if (length(bout_none)) {
+  paste0(toupper(substr(paste(bout_none, collapse = " and "), 1, 1)), substring(paste(bout_none, collapse = " and "), 2),
+         " recorded no minutes in bouts", if (bout_some) ", so a median of 0.0 does not mean that no one in the group had a bout", ".")
+} else ""
+cat(oaireport::table_note(paste(sprintf("Validation sample, by the walking question; non-walkers %s.", nonwalker_plain), "Medians are per day of accelerometer wear; the difference is the typical (median) difference between a walker and a non-walker, so it need not equal the gap between the two medians, and the adjusted difference is the difference in medians after allowing for age, sex and body-mass index.", bout_text, bold_rule), label = lab("Table"), close_group = TRUE), sep = "\n")
 ```
 
 ```{r a-known-groups-figure}
