@@ -1,0 +1,188 @@
+---
+title: "Conference abstract (draft)"
+subtitle: "The walking question against accelerometry: validation only. Every number is read from the run; text/abstract.txt holds the same text, ready to paste, with each field's character count."
+mainfont: Arial
+fontsize: 10pt
+brand:
+  typography:
+    headings:
+      color: "#0b2e59"
+format:
+  typst:
+    papersize: us-letter
+    margin:
+      x: 0.85in
+      y: 0.75in
+    include-in-header:
+      text: |
+        #set text(hyphenate: false, overhang: false)
+        #set page(footer: context align(center, text(size: 8pt, fill: luma(90))[Abstract — page #counter(page).display()]))
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: cairo_pdf
+    fig-width: 7
+---
+
+```{=typst}
+#set par(justify: false)
+```
+
+```{r setup}
+source("report_setup.R")
+# The submission rules: at most 5,000 characters, counting the title, the body and spaces; each
+# image (a table counts as one) is charged up to 560, so it is charged 560 here
+limit <- 5000
+per_image <- 560
+images <- 1
+
+lower_first <- function(x) paste0(tolower(substr(x, 1, 1)), substring(x, 2))
+# A cut label as the least it implies: "At least 4–8 times/month" -> "at least 4 times a month"
+cut_floor <- function(x) {
+  x <- sub("^At least (\\d+)–\\d+", "at least \\1", x)
+  x <- sub("times/month", "times a month", x, fixed = TRUE)
+  sub(" days$", " days a week", lower_first(x))
+}
+one <- function(x, what) {
+  if (length(x) != 1 || is.na(x)) stop("abstract.qmd: no single value for ", what, call. = FALSE)
+  x
+}
+# "1.4 (95% CI 0.7 to 2.1)"; inside a parenthesis already, "1.4; 95% CI 0.7 to 2.1"
+ci_text <- function(est, lo, hi, digits = 2, inner = FALSE) {
+  sprintf(if (inner) "%s; 95%% CI %s to %s" else "%s (95%% CI %s to %s)", num(est, digits), num(lo, digits), num(hi, digits))
+}
+
+n_val <- one(run$metrics[["sample.validation.persons"]], "validation persons")
+n_walk <- one(run$metrics[["sample.validation.walkers"]], "validation walkers")
+n_dev <- one(pick("validation", "se", "n"), "device walkers")
+kg <- run$validity_known_groups[run$validity_known_groups$sample == "validation", ]
+kg_row <- function(m) {
+  r <- kg[kg$measure == m, ]
+  if (nrow(r) != 1) stop("abstract.qmd: no single known-groups row for ", m, call. = FALSE)
+  r
+}
+se <- pick("validation", "se"); sp <- pick("validation", "sp")
+auc <- pick("validation", "auc")
+item_cuts <- cut_names("times")
+pase_cuts <- cut_names("pase")
+item_j <- function(k, col = "estimate") one(ci_get("validation", "times", k, "j", col), paste("item J", k))
+pase_j <- function(v, k) one(cp_get(v, "frequency", "device_walker", k, "j"), paste("PASE J", v, k))
+weekly <- function(v, level, stat) one(cp_get(v, "weekly", "purposeful_week", level, stat), paste("PASE weekly", v, stat))
+guide <- assumption("reference.min_bout_minutes_per_week")
+and2 <- function(x) if (length(x) == 1) x[[1]] else paste(paste(x[-length(x)], collapse = ", "), "and", x[length(x)])
+pair <- function(x, digits = 2) if (length(unique(num(x, digits))) == 1) num(x[1], digits) else and2(num(x, digits))
+at_visits <- paste(and2(sub(" months$", "", wave(comp_visits))), "months")  # "48 and 72 months"
+```
+
+```{r text}
+title <- "DOES A SELF-REPORTED WALKING-FOR-EXERCISE QUESTION AGREE WITH ACCELEROMETRY? A VALIDATION STUDY IN THE OSTEOARTHRITIS INITIATIVE"
+
+purpose <- "In the Osteoarthritis Initiative (OAI), a single question about walking for exercise since age 50 has been linked to fewer people developing frequent knee pain, but it has not been compared with a device measure. We assessed how well this question, and the walking items of the Physical Activity Scale for the Elderly (PASE), agree with hip-worn accelerometry."
+
+walker_short <- switch(yes_without,
+  `non-walker` = "answered yes and said how much they walk",
+  walker = "answered yes",
+  exclude = "answered yes and said how much they walk (a yes with no amount was left out)",
+  stop("unknown exposure.yes_without_amount_as: ", yes_without, call. = FALSE))
+methods <- paste0(
+  sprintf("Participants answered the walking question at the 96-month visit and had accelerometer data (ActiGraph GT1M) at %s; a valid day had at least %s wear hours, and a usable visit at least %s valid days. ",
+          waves_at, fmt(assumption("device.valid_day_hours")), fmt(assumption("device.min_valid_days"))),
+  sprintf("Walkers %s. A device-defined walker showed %s (%s counts a minute or more). ", walker_short, rule_plain, fmt(cutpoint)),
+  "We compared device activity between walkers and non-walkers (Hodges–Lehmann median differences; median regression adjusted for age, sex and body-mass index), and estimated sensitivity, specificity and Youden's J against the device-defined walker, for any walking and for stricter definitions by times a month, and the area under the curve for reported lifetime walking sessions. ",
+  sprintf("PASE days of walking in the past week, at the device visits, were assessed the same way, and PASE weekly walking minutes were compared with device minutes in bouts (Spearman correlation; kappa at %s minutes a week).", fmt(guide)))
+
+# Known groups: say only what each interval shows
+bout <- kg_row("purposeful_min"); counts <- kg_row("counts_per_day"); light <- kg_row("light_min")
+more <- function(r) !is.na(r$hl_lo) & r$hl_lo > 0
+kg_text <- function(r, label, digits) {
+  verb <- if (more(r)) "more" else if (!is.na(r$hl_hi) & r$hl_hi < 0) "fewer" else if (r$hl >= 0) "not clearly more" else "not clearly fewer"
+  sprintf("%s %s (median difference %s)", verb, label, ci_text(r$hl, r$hl_lo, r$hl_hi, digits, inner = TRUE))
+}
+kg_sentence <- sprintf("Walkers recorded %s, %s and %s.",
+                       kg_text(bout, sprintf("minutes a day in bouts of %s+ minutes", purposeful_minutes), 1),
+                       kg_text(counts, "activity counts a day", 0),
+                       kg_text(light, "light-activity minutes a day", 1))
+# Frequency: J for any walking and the stricter cuts, among walkers who said how often
+j_cuts <- vapply(names(item_cuts), item_j, numeric(1))
+j_rises <- all(diff(j_cuts) > 0)
+freq_sentence <- sprintf("Among walkers who said how often they walk, J %s from %s for any walking to %s for %s and %s for %s.",
+                         if (j_rises) "rose" else "went",
+                         num(j_cuts[["cut1"]]),
+                         sprintf("%s (95%% CI %s to %s)", num(j_cuts[["cut2"]]), num(item_j("cut2", "lo")), num(item_j("cut2", "hi"))),
+                         cut_floor(item_cuts[["cut2"]]),
+                         sprintf("%s (95%% CI %s to %s)", num(j_cuts[["cut3"]]), num(item_j("cut3", "lo")), num(item_j("cut3", "hi"))),
+                         cut_floor(item_cuts[["cut3"]]))
+# PASE: as weakly as the question when its any-walking J is within 0.1 of the question's
+pase_any <- vapply(comp_visits, pase_j, numeric(1), k = "cut1")
+pase_mid <- vapply(comp_visits, pase_j, numeric(1), k = "cut2")
+j_item <- se + sp - 1
+pase_like <- all(abs(pase_any - j_item) <= 0.1)
+pase_sentence <- sprintf("PASE agreed %s: J %s for any walking at %s, and %s for %s.",
+                         if (pase_like) "about as weakly" else "differently",
+                         pair(pase_any), at_visits, pair(pase_mid), cut_floor(pase_cuts[["cut2"]]))
+rho <- vapply(comp_visits, weekly, numeric(1), level = "all", stat = "rho")
+kappa <- vapply(comp_visits, weekly, numeric(1), level = "guideline", stat = "kappa")
+diff_min <- vapply(comp_visits, weekly, numeric(1), level = "all", stat = "median_diff")
+strength <- function(r) if (all(r < 0.3)) "weakly" else if (all(r < 0.5)) "moderately" else "strongly"
+kappa_word <- if (all(kappa <= 0.2)) "slight" else if (all(kappa <= 0.4)) "fair" else "moderate"
+gap <- if (all(diff_min > 0)) sprintf("exceeded them by a median of %s minutes a week", pair(diff_min, 0)) else
+  sprintf("differed from them by a median of %s minutes a week", pair(diff_min, 0))
+weekly_sentence <- sprintf("PASE weekly minutes correlated %s with device minutes in bouts (Spearman ρ %s), %s, and showed %s agreement on reaching %s minutes a week (kappa %s).",
+                           strength(rho), pair(rho), gap, kappa_word, fmt(guide), pair(kappa))
+results <- paste(
+  sprintf("Of %s participants, %s (%s) were walkers by the question and %s (%s) by the device.", count(n_val), count(n_walk), pct(n_walk / n_val), count(n_dev), pct(n_dev / n_val)),
+  kg_sentence,
+  sprintf("Against the device, sensitivity was %s and specificity %s, Youden's J %s; reported lifetime walking sessions separated device-defined walkers with an area under the curve of %s.",
+          ci_text(se, pick("validation", "se", "lo"), pick("validation", "se", "hi")),
+          ci_text(sp, pick("validation", "sp", "lo"), pick("validation", "sp", "hi")),
+          num(j_item),
+          ci_text(auc, pick("validation", "auc", "lo"), pick("validation", "auc", "hi"))),
+  freq_sentence, pase_sentence, weekly_sentence)
+
+active <- more(bout) || more(counts)
+conclusions <- paste(
+  sprintf("%s, but the walking question separated device-defined walkers %s%s; asking how often people walk %s agreement.",
+          if (active) "Self-reported walkers were more active by accelerometry" else "Self-reported walkers were not clearly more active by accelerometry",
+          if (j_item < 0.3) "poorly" else "moderately",
+          if (pase_like) ", as did the PASE walking items" else "",
+          if (j_rises) "improved" else "did not consistently improve"),
+  "The low agreement has two readings: the question may misclassify walking, or it may capture a long-term walking habit that one week of activity counts, which are not specific to walking, does not reflect. A step- and cadence-based device reference would help tell these apart.")
+
+caption <- sprintf("Figure 1. Walker definitions placed by sensitivity and 1 − specificity against the device-defined walker: the walking question by times a month, and PASE by days a week at %s. Triangles: any walking; circles: stricter definitions. Grey lines join points of equal Youden's J.", at_visits)
+
+fields <- c(Title = title, Purpose = purpose, Methods = methods, Results = results,
+            Conclusions = conclusions, `Figure caption` = caption)
+budget <- oaireport::char_budget(fields, images = images, per_image = per_image, limit = limit)
+
+# The paste file: one block per field, each with its count, then the budget
+dir.create("text", showWarnings = FALSE)
+blocks <- unlist(lapply(names(fields), function(f) c(sprintf("%s (%s characters)", toupper(f), count(nchar(fields[[f]]))), fields[[f]], "")))
+budget_lines <- sprintf("%-24s %s", budget$part, count(budget$characters))
+writeLines(c(blocks, "CHARACTER BUDGET", budget_lines), file.path("text", "abstract.txt"), useBytes = FALSE)
+```
+
+```{r show}
+#| results: asis
+body <- c(Purpose = purpose, Methods = methods, Results = results, Conclusions = conclusions)
+cat("## ", title, "\n\n", sep = "")
+for (f in names(body)) cat(sprintf("**%s.** %s\n\n", f, body[[f]]))
+cat(oaireport::figure_group(), sep = "\n")
+cat(figure_file("brief_fig1", width = "55%"), sep = "\n")
+cat(oaireport::table_note(sub("^Figure 1\\. ", "", caption), label = "Figure 1", close_group = TRUE), sep = "\n")
+```
+
+## Character budget
+
+```{r budget}
+names(budget) <- c("Part", "Characters")
+budget$Characters <- count(budget$Characters)
+oaireport::compare_table(budget, widths = c(3, 1.5), multipage = FALSE)
+```
+
+```{r note-budget}
+#| results: asis
+cat(oaireport::table_note(sprintf("Characters counted with spaces; a symbol such as ≥, – or ρ counts as one, though a submission form may count it differently. The figure is charged %s characters, the most an image costs. The render stops if the total passes %s.", count(per_image), count(limit))), sep = "\n")
+```

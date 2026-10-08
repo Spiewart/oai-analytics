@@ -53,6 +53,11 @@ def test_inputs_resolve_against_real_release(name):
         assert catalog.resolve_input(spec), spec
 
 
+def test_walking_validation_abstract_renders_after_the_brief_whose_figure_it_reuses():
+    documents = load_analysis(REPO / "analyses" / "walking_validation").report.documents
+    assert documents.index("abstract.qmd") > documents.index("brief.qmd")
+
+
 def test_walking_validation_clinical_renders_after_the_documents_whose_figures_it_reuses():
     # clinical.qmd shows figures/brief_fig1.png (brief.qmd) and figures/tipping.png (report.qmd)
     documents = load_analysis(REPO / "analyses" / "walking_validation").report.documents

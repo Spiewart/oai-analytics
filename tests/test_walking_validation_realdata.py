@@ -449,7 +449,9 @@ def _report_tools_ready() -> bool:
 
 
 # right edge of the text block, in points: US-letter width less the Typst page's right margin
-RIGHT_EDGE = {"brief.pdf": 550.8, "report.pdf": 547.2, "clinical.pdf": 550.8}
+RIGHT_EDGE = {"brief.pdf": 550.8, "abstract.pdf": 550.8, "report.pdf": 547.2, "clinical.pdf": 550.8}
+# the abstract's submission rules: characters counted with spaces, each image charged in full
+ABSTRACT_LIMIT = 5000
 PLACEHOLDER = "Authors and contact to be added"
 # spec 2026-10-05 §5.2: allowed only after the "Technical notes" heading
 CLINICAL_BANNED = [
@@ -478,6 +480,41 @@ def _top_bookmarks(pdf: Path) -> list[str]:
     return [item.title for item in PdfReader(pdf).outline if not isinstance(item, list)]
 
 
+def _check_abstract(pdf: Path, paste: Path) -> None:
+    """The paste file's counts are right, the total is within the limit, the title follows the
+    submission rules (capitals, no abbreviations) and the framing stays neutral."""
+    text = paste.read_text(encoding="utf-8")
+    fields_part, budget_part = text.split("\nCHARACTER BUDGET\n")
+    fields = {}
+    for block in fields_part.strip().split("\n\n"):
+        head, body = block.split("\n", 1)
+        name, count = re.fullmatch(r"(.+) \(([\d,]+) characters\)", head).groups()
+        assert len(body) == int(count.replace(",", "")), name
+        fields[name] = body
+    assert list(fields) == [
+        "TITLE",
+        "PURPOSE",
+        "METHODS",
+        "RESULTS",
+        "CONCLUSIONS",
+        "FIGURE CAPTION",
+    ]
+    budget = {
+        line[:24].strip(): int(line[24:].strip().replace(",", ""))
+        for line in budget_part.strip().splitlines()
+    }
+    images = sum(v for k, v in budget.items() if k.startswith("Images"))
+    total = sum(len(body) for body in fields.values()) + images
+    assert budget["Total"] == total
+    assert total <= ABSTRACT_LIMIT, total
+    title = fields["TITLE"]
+    assert title == title.upper()
+    assert not re.search(r"\b(OAI|PASE)\b", title)
+    assert find_terms(pdf, ["bias", "correction", "corrected"]) == []
+    pdf_text = " ".join(" ".join(page.extract_text() for page in PdfReader(pdf).pages).split())
+    assert fields["CONCLUSIONS"].split(".")[0] in pdf_text
+
+
 @pytest.mark.realdata
 @pytest.mark.skipif(
     not _report_tools_ready(), reason="Quarto or the r/ report profile is unavailable"
@@ -490,19 +527,29 @@ def test_walking_validation_report_renders(fast_run):
     shutil.copytree(fast_run.out, run_results_dir(analysis, settings, "default"))
     pdfs = render_report(analysis, settings, echo=lambda _: None)
     names = [p.name for p in pdfs]
-    assert names == ["brief.pdf", "report.pdf", "clinical.pdf", "walking_validation_brief.pdf"]
+    assert names == [
+        "brief.pdf",
+        "abstract.pdf",
+        "report.pdf",
+        "clinical.pdf",
+        "walking_validation_brief.pdf",
+    ]
+    by = {p.name: p for p in pdfs}
+    brief, clinical, combined = by["brief.pdf"], by["clinical.pdf"], by[names[-1]]
+    documents = pdfs[:-1]
     pages = {p.name: len(PdfReader(p).pages) for p in pdfs}
     assert pages["brief.pdf"] <= 6, pages
     assert pages["report.pdf"] <= 18, pages
     assert pages["clinical.pdf"] <= 12, pages
+    assert pages["abstract.pdf"] <= 2, pages
     assert pages["walking_validation_brief.pdf"] == pages["brief.pdf"] + pages["clinical.pdf"]
-    for pdf in pdfs[:3]:
+    for pdf in documents:
         text = "\n".join(page.extract_text() for page in PdfReader(pdf).pages)
         for bad in (r"\bNA\b", r"\bNaN\b", r"\bInf\b", r"`r "):
             assert not re.search(bad, text), f"{bad!r} in {pdf.name}"
     # the brief frames the Lo et al. 2022 analysis neutrally (spec 2026-10-05 §1, §3)
-    assert find_terms(pdfs[0], ["bias", "correction", "corrected"], stop_heading="References") == []
-    page_one = PdfReader(pdfs[0]).pages[0].extract_text()
+    assert find_terms(brief, ["bias", "correction", "corrected"], stop_heading="References") == []
+    page_one = PdfReader(brief).pages[0].extract_text()
     # page 1 ends on the appendix pointer
     assert "The appendix summarises the main results" in page_one
     if (analysis.root / "brief.local.yml").exists():
@@ -510,11 +557,10 @@ def test_walking_validation_report_renders(fast_run):
     else:
         assert PLACEHOLDER in page_one
     # wherever page 1 gives the tipping-grid count, it gives the grid's specificity range too
-    for pdf in (pdfs[0], pdfs[2]):
+    for pdf in (brief, clinical):
         first = " ".join(PdfReader(pdf).pages[0].extract_text().split())
         assert re.search(r"specificity \d\.\d\d–1", first), pdf.name
-    assert _top_bookmarks(pdfs[3]) == ["Brief", "Appendix: results"]
-    clinical = pdfs[2]
+    assert _top_bookmarks(combined) == ["Brief", "Appendix: results"]
     assert find_terms(clinical, CLINICAL_BANNED, stop_heading="Technical notes") == []
     assert (
         find_terms(clinical, ["bias", "correction", "corrected"], stop_heading="Technical notes")
@@ -524,11 +570,12 @@ def test_walking_validation_report_renders(fast_run):
     for leftover in ("#super", "{=typst}", "<tn-"):
         assert leftover not in clinical_text, leftover
     assert "Technical notes" in clinical_text
-    for pdf in pdfs[:3]:
+    for pdf in documents:
         edge = max_right_edge(pdf)
         if edge is not None:  # only the margin check needs poppler
             assert edge <= RIGHT_EDGE[pdf.name] + 0.01, pdf.name
-    figures = {p.name for p in (pdfs[0].parent / "figures").iterdir()}
+    _check_abstract(by["abstract.pdf"], brief.parent / "text" / "abstract.txt")
+    figures = {p.name for p in (brief.parent / "figures").iterdir()}
     for name in ("known_groups", "strata", "tipping", "forest_bias", "brief_fig1", "brief_fig4"):
         assert {f"{name}.pdf", f"{name}.png"} <= figures, name
     egress = settings.project["egress"]

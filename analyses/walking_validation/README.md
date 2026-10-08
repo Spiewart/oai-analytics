@@ -26,9 +26,10 @@ Needs the replication's frame for the matching exposure coding:
 
 ## Sending the brief
 
-`uv run oai report walking_validation` writes four PDFs to `<results>/walking_validation/report/`, where `<results>` is the results folder (`$OAI_RESULTS_DIR`). It needs a finished run: add `--run` to run it first. The PDFs are:
+`uv run oai report walking_validation` writes five PDFs to `<results>/walking_validation/report/`, where `<results>` is the results folder (`$OAI_RESULTS_DIR`). It needs a finished run: add `--run` to run it first. The PDFs are:
 
 - `brief.pdf`: the 4–6 page brief to the accelerometry group;
+- `abstract.pdf`: a draft conference abstract (validation only) with its character budget; `text/abstract.txt` holds the same fields, ready to paste, each with its character count;
 - `report.pdf`: the technical report, kept as the full record and available on request;
 - `clinical.pdf`: the main results for clinical readers, in plain language, with technical terms in linked notes;
 - `walking_validation_brief.pdf`: the brief and the clinical version joined, the clinical version as the brief's appendix, with a bookmark for each part. **This is the file to send.**

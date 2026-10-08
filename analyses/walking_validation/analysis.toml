@@ -59,7 +59,7 @@ aggregate = [
 ]
 
 [report]
-documents = ["brief.qmd", "report.qmd", "clinical.qmd"]
+documents = ["brief.qmd", "abstract.qmd", "report.qmd", "clinical.qmd"]
 combined = "walking_validation_brief.pdf"
 combined_documents = ["brief.qmd", "clinical.qmd"]
 part_titles = ["Brief", "Appendix: results"]

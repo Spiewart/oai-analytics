@@ -56,6 +56,7 @@ FAKE_QUARTO = textwrap.dedent(
     echo fig > figures/f.png
     echo scratch > .quarto/x
     echo typ > "$stem.typ"
+    if [ -n "$FAKE_QUARTO_TEXT" ]; then mkdir -p text; echo paste > "text/$stem.txt"; fi
     if [ "$FAKE_QUARTO_FAIL" = "1" ] || [ "$FAKE_QUARTO_FAIL" = "$2" ]; then echo "boom: render failed" >&2; exit 1; fi
     if [ -n "$FAKE_QUARTO_PDF_DIR" ]; then cp "$FAKE_QUARTO_PDF_DIR/$stem.pdf" "$stem.pdf"; exit 0; fi
     if [ -n "$FAKE_QUARTO_PDF" ]; then cp "$FAKE_QUARTO_PDF" "$stem.pdf"; exit 0; fi
@@ -155,6 +156,14 @@ def test_render_copies_inputs_sets_env_and_keeps_only_pdf_and_figures(toy, tmp_p
     assert {"report.qmd", "notes.md"} <= set(lines)  # copied before rendering
     assert sorted(p.name for p in out.iterdir()) == ["figures", "report.pdf"]
     assert (out / "figures" / "f.png").is_file()
+
+
+def test_render_keeps_a_text_folder_a_document_writes(toy, tmp_path, quarto_env):
+    # a document may leave plain text beside its PDF, e.g. an abstract ready to paste
+    env = {**quarto_env, "FAKE_QUARTO_TEXT": "1"}
+    [pdf] = render_report(toy, make_settings(tmp_path), run_missing=True, base_env=env, echo=quiet)
+    assert sorted(p.name for p in pdf.parent.iterdir()) == ["figures", "report.pdf", "text"]
+    assert (pdf.parent / "text" / "report.txt").read_text() == "paste\n"
 
 
 def test_render_replaces_a_previous_report(toy, tmp_path, quarto_env):

@@ -4,8 +4,9 @@ The documents and their assets are copied into <results_dir>/<analysis>/report/ 
 rendered there with `quarto render <document> --to typst`, so nothing is written into the
 repository. R chunks start through r/step-profile.R under the `report` renv profile, which
 loads oaimodels and oaireport. A [report] `combined` PDF joins the documents' PDFs. After a
-successful render only the PDFs and figures/ remain, so `oai check-egress` sees nothing but
-reviewable outputs; a failed render is left in place.
+successful render only the PDFs, figures/ and text/ (plain text a document leaves, such as an
+abstract ready to paste) remain, so `oai check-egress` sees nothing but reviewable outputs; a
+failed render is left in place.
 """
 
 from __future__ import annotations
@@ -25,6 +26,7 @@ from oai.runner import RUN_INFO_FILE, is_finished, r_profile_env, run_analysis, 
 
 REPORT_DIR = "report"
 FIGURES_DIR = "figures"
+TEXT_DIR = "text"
 RENV_PROFILE = "report"
 QUARTO_BUNDLES = (Path("/Applications/RStudio.app/Contents/Resources/app/quarto/bin/quarto"),)
 STDERR_TAIL_LINES = 40
@@ -162,7 +164,7 @@ def render_report(
             path.unlink(missing_ok=True)
     keep = set(pdfs)
     for child in out.iterdir():
-        if child in keep or child.name == FIGURES_DIR:
+        if child in keep or child.name in (FIGURES_DIR, TEXT_DIR):
             continue
         if child.is_dir():
             shutil.rmtree(child)

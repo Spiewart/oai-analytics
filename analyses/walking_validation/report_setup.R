@@ -1,6 +1,7 @@
-# Shared by the walking-validation documents (report.qmd, clinical.qmd): the run's results, the
-# assumption accessor, number formatters, name maps, result lookups and the plain definitions of
-# the walker, the device walker and the PASE walker. Source it first; nothing here prints.
+# Shared by the walking-validation documents (report.qmd, clinical.qmd, abstract.qmd): the run's
+# results, the assumption accessor, number formatters, name maps, result lookups and the plain
+# definitions of the walker, the device walker and the PASE walker. Source it first; nothing here
+# prints.
 
 run <- oaireport::load_results()$default
 # A true minus sign for negatives, as oaireport::fmt_ci prints them
@@ -82,6 +83,27 @@ device_detail <- sprintf("A bout starts when %s of %s minutes reach %s counts/mi
 measures_def <- sprintf("Device measures are averages per valid day: purposeful-bout min/day (minutes inside purposeful bouts), counts/day (total activity counts) and light min/day (minutes at %s–%s counts/min).",
                         fmt(assumption("device.light_floor")), fmt(cutpoint - 1))
 
+# Plain-language definitions (clinical.qmd, abstract.qmd)
+# The walker by the question, as the run codes a yes without an amount (as item_def)
+walker_plain <- switch(yes_without,
+  `non-walker` = , exclude = "answered yes to the 96-month question “walked for exercise since age 50” (at least 20 minutes a day, at least 10 times) and said how much they walk (years, months a year or times a month).",
+  walker = "answered yes to the 96-month question “walked for exercise since age 50” (at least 20 minutes a day, at least 10 times), whether or not they said how much they walk.",
+  stop("unknown exposure.yes_without_amount_as: ", yes_without, call. = FALSE))
+nonwalker_plain <- switch(yes_without,
+  `non-walker` = "said no, or said yes without saying how much they walk",
+  walker = "said no",
+  exclude = "said no (a yes without saying how much they walk is left out)",
+  stop("unknown exposure.yes_without_amount_as: ", yes_without, call. = FALSE))
+# The device rule and the valid-day rule in plain words, built from the assumptions
+bout_plain <- sprintf("%s+ minutes of moderate-to-vigorous activity", purposeful_minutes)
+rule_plain <- switch(walker_rule,
+  bout_days = sprintf("on average at least %s days a week with a bout of %s", fmt(assumption("reference.min_bout_days_per_week")), bout_plain),
+  any_bout = sprintf("at least one bout of %s", bout_plain),
+  bout_minutes = sprintf("on average at least %s minutes a week in bouts of %s", fmt(assumption("reference.min_bout_minutes_per_week")), bout_plain),
+  stop("unknown reference.walker_rule: ", walker_rule, call. = FALSE))
+valid_day_plain <- sprintf("a valid day has at least %s wear hours and a usable visit at least %s valid days",
+                           fmt(assumption("device.valid_day_hours")), fmt(assumption("device.min_valid_days")))
+
 # PASE
 pase_threshold <- assumption("pase.walker_threshold")
 pase_def <- if (pase_threshold == 0) {
@@ -159,4 +181,13 @@ cut_names <- function(component, ...) {
   oaireport::cut_labels(unlist(assumption(component_cuts[[component]])),
                         answer_labels[[if (pase) "pase_days" else component]],
                         first_level = if (pase) 0 else 1, ...)
+}
+
+# A figure another document saved; [report] documents must render that document first
+figure_file <- function(name, width = "100%") {
+  path <- file.path("figures", paste0(name, ".png"))
+  if (!file.exists(path)) {
+    stop(path, " is missing; the document that saves it must render before this one ([report] documents)", call. = FALSE)
+  }
+  c("", "```{=typst}", sprintf('#image("%s", width: %s)', path, width), "```", "")
 }

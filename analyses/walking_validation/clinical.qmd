@@ -73,14 +73,6 @@ cnum_ci <- function(est, lo, hi, measure) {
 plain_measures <- c(purposeful_min = sprintf("Minutes in bouts of %s+ minutes", purposeful_minutes),
                     counts_per_day = "Activity counts", light_min = "Light-activity minutes")
 bold_rule <- "Bold: the 95% CI excludes no difference, no association or no agreement beyond chance (0; or 1 for odds ratios)."
-# A figure another document saved (the brief and report.qmd render before this document)
-figure_file <- function(name, width = "100%") {
-  path <- file.path("figures", paste0(name, ".png"))
-  if (!file.exists(path)) {
-    stop("clinical.qmd: ", path, " is missing; the document that saves it must render before clinical.qmd ([report] documents)", call. = FALSE)
-  }
-  c("", "```{=typst}", sprintf('#image("%s", width: %s)', path, width), "```", "")
-}
 # "(95% CI)" in a table header, kept on one line
 ci_header <- function(x) gsub("(95% CI)", "(95%\u00a0CI)", x, fixed = TRUE)
 # Sensitivity, specificity, predictive values and Youden's J in one sample (no bold: no null)
@@ -110,25 +102,6 @@ j_strict <- ci_get("validation", "times", "cut3", "j")
 grid_np <- run$bias_tipping[run$bias_tipping$outcome == "new_pain" & !is.na(run$bias_tipping$or), ]
 # A grid axis as "floor–top", the top written "1" at perfect accuracy
 grid_span <- function(floor, x) paste0(num(floor), "–", if (isTRUE(all.equal(max(x), 1))) "1" else num(max(x)))
-# The walker by the question, as the run codes a yes without an amount (report_setup.R's item_def)
-walker_plain <- switch(yes_without,
-  `non-walker` = , exclude = "answered yes to the 96-month question “walked for exercise since age 50” (at least 20 minutes a day, at least 10 times) and said how much they walk (years, months a year or times a month).",
-  walker = "answered yes to the 96-month question “walked for exercise since age 50” (at least 20 minutes a day, at least 10 times), whether or not they said how much they walk.",
-  stop("unknown exposure.yes_without_amount_as: ", yes_without, call. = FALSE))
-nonwalker_plain <- switch(yes_without,
-  `non-walker` = "said no, or said yes without saying how much they walk",
-  walker = "said no",
-  exclude = "said no (a yes without saying how much they walk is left out)",
-  stop("unknown exposure.yes_without_amount_as: ", yes_without, call. = FALSE))
-# The device rule and the valid-day rule in plain words, built from the assumptions
-bout_plain <- sprintf("%s+ minutes of moderate-to-vigorous activity", purposeful_minutes)
-rule_plain <- switch(walker_rule,
-  bout_days = sprintf("on average at least %s days a week with a bout of %s", fmt(assumption("reference.min_bout_days_per_week")), bout_plain),
-  any_bout = sprintf("at least one bout of %s", bout_plain),
-  bout_minutes = sprintf("on average at least %s minutes a week in bouts of %s", fmt(assumption("reference.min_bout_minutes_per_week")), bout_plain),
-  stop("unknown reference.walker_rule: ", walker_rule, call. = FALSE))
-valid_day_plain <- sprintf("a valid day has at least %s wear hours and a usable visit at least %s valid days",
-                           fmt(assumption("device.valid_day_hours")), fmt(assumption("device.min_valid_days")))
 ```
 
 ## Key points

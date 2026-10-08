@@ -26,7 +26,7 @@ local_assets = ["brief.local.yml"]               # optional, untracked: copied w
 - `part_titles` needs `combined`, takes one title per joined document (all documents unless `combined_documents` chooses), and defaults to the file names without `.qmd`.
 - `combined_documents = [...]` chooses which documents `combined` joins, in that order (default: all); `part_titles` then has one title per joined document. It needs `combined`, and lists documents from `documents`, each once.
 - `combined` must be a bare `.pdf` file name that does not collide with a document's PDF or an asset. Joining needs `pypdf`, a dev dependency (`uv sync` installs it).
-- Local assets are never required, and are removed from the report folder after rendering, with everything else but the PDFs and `figures/`.
+- Local assets are never required, and are removed from the report folder after rendering, with everything else but the PDFs, `figures/` and `text/`.
 - `oai report <analysis>` prints one `Report:` line per PDF.
 
 ## What happens
@@ -38,7 +38,7 @@ local_assets = ["brief.local.yml"]               # optional, untracked: copied w
    - `OAI_RESULTS_ROOT`, the analysis's results directory, `<results folder>/<analysis>`, which holds one folder per run label (the steps of `oai run` get `OAI_RESULTS_BASE`, the results folder itself, and `OAI_RESULTS_DIR`, one run's folder; see the README);
    - `OAI_REPORT_DIR`;
    - `OAI_REPORT_RUNS`, the comma-separated run labels.
-5. After a successful render only `<entry>.pdf` (with `documents`, each document's PDF and the combined PDF) and `figures/` remain. Run `oai check-egress` on the folder before sharing it; PDFs and PNGs are listed for manual review. A failed render keeps its intermediates for debugging.
+5. After a successful render only `<entry>.pdf` (with `documents`, each document's PDF and the combined PDF), `figures/` and `text/` (plain text a document writes, such as an abstract ready to paste) remain. Run `oai check-egress` on the folder before sharing it; PDFs and PNGs are listed for manual review. A failed render keeps its intermediates for debugging.
 
 ## Writing a report
 
@@ -87,6 +87,14 @@ A document for readers outside statistics (e.g. `analyses/walking_validation/cli
 - `standard_tech_notes()` gives default texts for common methods (median difference, Wilson and bootstrap CIs, test for trend, rank correlation, sensitivity and specificity, predictive values, Youden's J, kappa, limits of agreement, median regression, tipping-point analysis, misclassification simulation, non-differential misclassification). Entries passed to `tech_notes()` override or extend them; put the run's settings (resamples, iterations) in the text.
 - `ci_excludes(lo, hi, null = 0)` is TRUE when a 95% CI lies strictly on one side of the null (use `null = 1` for odds ratios); a limit at the null or a missing limit is FALSE. Pass the result to `compare_table(bold =)`. With grouped rows, pass `groups` to `compare_table()` instead of calling `group_tt` yourself, so bold lands on the right cells.
 - `oai.pdfcheck.find_terms(pdf, terms, stop_heading=)` lists the terms found before the last `stop_heading` (whole words, any case), and `max_right_edge(pdf)` gives the largest right edge of any word, in points (`None` without `pdftotext`). Tests use them to keep jargon out of a document's text and its text inside the margins.
+
+## Abstracts
+
+A conference abstract (e.g. `analyses/walking_validation/abstract.qmd`) builds each field (title, sections, figure caption) as a plain R string from the run, so the counted text is exactly the text that gets pasted:
+
+- `char_budget(sections, images, per_image = 560, limit = 5000)` counts each named field's characters, spaces included, and a symbol such as ≥ or ρ once. It charges `per_image` for each image, tables included, since a portal charges an image up to that much. It returns a table of each part, Total, Limit and Margin, and stops the render when the total is over the limit. Set `limit` and `per_image` from the meeting's rules.
+- Write the fields to `text/<name>.txt`, one block per field with its count, for pasting into the submission form; `oai report` keeps `text/` beside the PDFs, and `oai check-egress` scans it with the rest of the folder.
+- Reuse a figure another document saved with that analysis's `figure_file()` (list the saving document first in `[report] documents`); `save_figure()` already writes a 300 dpi PNG for upload.
 
 ## The `report` renv profile
 
