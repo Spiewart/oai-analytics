@@ -122,6 +122,11 @@ value = 0.0
 status = "assumed"
 source = "A PASE walker reports any walking outside the home in the past 7 days (subscore > 0)"
 
+[pase.all_visits]
+value = ["00", "01", "03", "05", "06", "08", "10", "13", "14"]
+status = "assumed"
+source = "Every visit with PASE in the release (0, 12, 24, 36, 48, 72, 96, 168 and 192 months; V14 has item 2 but no total score), for the walking question against PASE before, at and after 96 months"
+
 [pase.device_pairing]
 value = "adjacent_wave"
 status = "assumed"

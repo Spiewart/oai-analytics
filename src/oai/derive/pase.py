@@ -80,3 +80,37 @@ def pase_walking_answers(allclinical: pl.DataFrame, visit: str) -> pl.DataFrame:
         days.alias(f"pase_days_{v}"),
         hours.alias(f"pase_hours_{v}"),
     )
+
+
+def _has_col(df: pl.DataFrame, name: str) -> bool:
+    return any(c.upper() == name.upper() for c in df.columns)
+
+
+def pase_visit(
+    allclinical: pl.DataFrame, visit: str, walking: Mapping = DEFAULT_WALKING
+) -> pl.DataFrame:
+    """ID and every PASE measure a visit has, suffixed by visit: pase_total_<v> (when released;
+    V14 asked item 2 but released no total), pase_walking_<v> (the item-2 subscore, as in
+    score_pase), pase_days_<v> and pase_hours_<v> (the item-2 answer codes, as in
+    pase_walking_answers), and visdys_<v> (days since enrollment, when the table has them)."""
+    v = visit.removeprefix("V")
+    col = partial(find_col, allclinical, where=f"allclinical{v}")
+    if _has_col(allclinical, f"V{v}PASE"):
+        scored = score_pase(allclinical, v, walking).select(
+            "ID",
+            pl.col("pase_total").alias(f"pase_total_{v}"),
+            pl.col("pase_walking").alias(f"pase_walking_{v}"),
+        )
+    else:
+        # no total: score item 2 alone, through score_pase on a placeholder total
+        placeholder = allclinical.with_columns(pl.lit(None, dtype=pl.Float64).alias(f"V{v}PASE"))
+        scored = score_pase(placeholder, v, walking).select(
+            "ID", pl.col("pase_walking").alias(f"pase_walking_{v}")
+        )
+    out = scored.join(pase_walking_answers(allclinical, v), on="ID", how="full", coalesce=True)
+    if _has_col(allclinical, f"V{v}VISDYS"):
+        days = allclinical.select(
+            pl.col(col("ID")).alias("ID"), pl.col(col(f"V{v}VISDYS")).alias(f"visdys_{v}")
+        )
+        out = out.join(days, on="ID", how="left")
+    return out

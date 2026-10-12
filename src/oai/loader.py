@@ -26,6 +26,7 @@ CODED = r"^(-?\d+(?:\.\d+)?): (.*)$"
 MISSING = r"^\.[A-Z]?(?:: .*)?$"
 MISSING_CODE = r"^(\.[A-Z]?)"
 MISSING_LABEL = r"^\.[A-Z]?: (.*)$"
+BARE_LETTER = r"^[A-Z]$"  # a missing code written without its dot, as in AllClinical13
 LEADING_ZERO = r"^-?0\d"
 REASON_SUFFIX = "__reason"
 SEPARATORS = ("|", ",")  # OAI tables are pipe-delimited; a few (hxr_sq_summary) are CSV
@@ -186,6 +187,57 @@ def _scan_text(path: Path) -> pl.LazyFrame:
     )
 
 
+def _dot_bare_letter_codes(lf: pl.LazyFrame, columns: list[str], engine: str) -> pl.LazyFrame:
+    """Write a numeric column's bare-letter missing codes ("M") as dotted codes (".M: Missing").
+
+    Later releases (AllClinical13) code a numeric column's missing cells as a bare capital
+    letter where other columns use ".M: Missing". A column qualifies only when every other
+    present cell is a number (or a numeric coded answer), so letters that are a column's values,
+    such as M/F, are left alone. Each letter takes the label the table gives its dotted form
+    (".M" -> "Missing"), or none; the usual missing-code handling then applies unchanged.
+    """
+    stats_exprs: list[pl.Expr] = []
+    for c in columns:
+        col = pl.col(c)
+        is_bare = col.str.contains(BARE_LETTER)
+        number = pl.coalesce(col.str.extract(CODED, 1), col).cast(pl.Float64, strict=False)
+        other = col.is_not_null() & ~is_bare & ~col.str.contains(MISSING) & number.is_null()
+        stats_exprs += [
+            col.filter(is_bare).unique().implode().alias(f"{c}::bare"),
+            other.sum().alias(f"{c}::other"),
+            (col.is_not_null() & ~is_bare & number.is_not_null()).sum().alias(f"{c}::numbers"),
+            pl.struct(
+                code=col.str.extract(MISSING_CODE, 1), label=col.str.extract(MISSING_LABEL, 1)
+            )
+            .filter(col.str.contains(MISSING))
+            .unique()
+            .implode()
+            .alias(f"{c}::dotted"),
+        ]
+    stats = lf.select(stats_exprs).collect(engine=engine).row(0, named=True)
+    # a numeric column: some numbers, and nothing else but bare letters and dotted codes
+    qualifying = {
+        c: stats[f"{c}::bare"]
+        for c in columns
+        if stats[f"{c}::bare"] and stats[f"{c}::numbers"] and not stats[f"{c}::other"]
+    }
+    if not qualifying:
+        return lf
+    labels: dict[str, str] = {}
+    for c in columns:
+        for d in stats[f"{c}::dotted"]:
+            if d["label"]:
+                labels.setdefault(d["code"], d["label"])
+    rewrites = []
+    for c, letters in qualifying.items():
+        mapping = {
+            letter: f".{letter}: {labels[f'.{letter}']}" if f".{letter}" in labels else f".{letter}"
+            for letter in letters
+        }
+        rewrites.append(pl.col(c).replace(mapping).alias(c))
+    return lf.with_columns(rewrites)
+
+
 def parse_table(path: Path, *, table: str | None = None) -> tuple[pl.LazyFrame, Codebook]:
     """Lazy frame with blanks nulled, coded cells split, missing codes resolved, numerics cast."""
     table = table or path.stem.lower()
@@ -205,6 +257,7 @@ def parse_table(path: Path, *, table: str | None = None) -> tuple[pl.LazyFrame, 
     )
     if engine == "in-memory":
         lf = lf.collect().lazy()
+    lf = _dot_bare_letter_codes(lf, columns, engine)
 
     def raw(c: str) -> pl.Expr:
         return pl.col(c)

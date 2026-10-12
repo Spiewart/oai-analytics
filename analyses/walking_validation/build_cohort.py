@@ -26,9 +26,10 @@ from wv import (
 from oai.assumptions import current
 from oai.config import get_settings
 from oai.derive.knee import find_col, frequent_knee_pain, xray_readings
-from oai.derive.pase import pase_walking_answers, score_pase
+from oai.derive.pase import pase_visit, pase_walking_answers, score_pase
 from oai.derive.walking import walker_status, walking_answers, walking_sessions
 from oai.loader import read_table
+from oai.visits import nominal_month
 
 A = current()
 settings = get_settings()
@@ -115,6 +116,61 @@ persons = (
     )
 )
 persons = with_amount_level(persons).sort("ID")
+
+# PASE at every visit that asked it, for everyone with a 96-month walking answer (not only those
+# with device data): the walking question against PASE before, at and after 96 months. The
+# validation frame above keeps its own PASE columns, unchanged.
+pase_all = None
+for visit in A["pase.all_visits"]:
+    measured = pase_visit(read_table("allclinical", visit), visit, A["pase.walking_scoring"])
+    pase_all = (
+        measured
+        if pase_all is None
+        else pase_all.join(measured, on="ID", how="full", coalesce=True)
+    )
+pase_people = (
+    answered.join(people, on="ID", how="left")
+    .join(pase_all, on="ID", how="left")
+    .join(lo_people.select("ID", "in_lo"), on="ID", how="left")
+    .with_columns(
+        pl.col("in_lo").fill_null(False),
+        pl.col("age").cast(pl.Float64),
+        pl.col("bmi").cast(pl.Float64),
+    )
+    .sort("ID")
+)
+
+
+def pase_counts(frame: pl.DataFrame) -> pl.DataFrame:
+    """Per visit and PASE measure: people with a value, by walking answer, and the median month
+    of their visit (from visit days)."""
+    rows = []
+    for visit in A["pase.all_visits"]:
+        for measure, column in (
+            ("total", f"pase_total_{visit}"),
+            ("walking_item", f"pase_days_{visit}"),
+        ):
+            if column not in frame.columns:
+                continue
+            has = frame.filter(pl.col(column).is_not_null())
+            days = has[f"visdys_{visit}"].drop_nulls() if f"visdys_{visit}" in has.columns else None
+            rows.append(
+                {
+                    "visit": visit,
+                    "month": nominal_month(visit),
+                    "measure": measure,
+                    "n": has.height,
+                    "n_walkers": int(has["walker"].sum()),
+                    "n_nonwalkers": int((~has["walker"]).sum()),
+                    "median_month": None
+                    if days is None or days.is_empty()
+                    else float(days.median()) / 30.4375,
+                }
+            )
+    return pl.DataFrame(rows)
+
+
+pase_visits = pase_counts(pase_people)
 lo_subset = persons.filter("in_lo")
 flow = cohort_flow(answered, persons, lo_people)
 metrics = [
@@ -137,11 +193,13 @@ metrics_table = pl.DataFrame(
 
 # Everything above can stop the step; nothing is written until it has all succeeded.
 persons.write_parquet(frames / "frame.parquet")
+pase_people.write_parquet(frames / "pase_frame.parquet")
 lo_knees.write_parquet(frames / "lo_knees.parquet")
 (frames / "lo_model.json").write_text(json.dumps(lo_model_spec, indent=2))
 for name, content in lo_results.items():
     (results / name).write_bytes(content)
 flow.write_csv(results / "flow.csv")
 metrics_table.write_csv(results / "metrics_cohort.csv")
+pase_visits.write_csv(results / "pase_visits.csv")
 print(flow)
 print(f"measures: {', '.join(MEASURES)}; outcomes: {', '.join(OUTCOMES)}")

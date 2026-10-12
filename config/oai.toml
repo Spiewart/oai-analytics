@@ -7,11 +7,13 @@
 # work_dir = "/path/to/oai-work"
 
 # Visit-code map (docs/reference/oai-dataset-table-structure.md). V02/V04/V07/V09 are
-# telephone contacts. V11-V14 exist in this release (extended follow-up) but their
-# nominal months are unconfirmed: check AllClinical13_ReleaseComments_Yr14.pdf and
-# AllClinical14_ReleaseComments_Y16.pdf in OAI_DATA_DIR, then add month/contact and
-# set verified = true. Until then time comes from V##VISDYS (V01-V14; V01 spells it
-# V01visdys, which to_long() normalizes).
+# telephone contacts. V11-V14 are the extended follow-up, confirmed 2026-10-12: the median
+# V##VISDYS is 107.5, 122.5, 168.9 and 192.4 months; the release comments name V13 "Year 14"
+# (AllClinical13_ReleaseComments_Yr14.pdf, whose SAS code reads "Year14 (168m)") and V14
+# "Y16". Contact follows the measures each visit carries: V11 and V14 have questionnaires
+# only ("remote"), V12 a clinic exam, and V13 a questionnaire for all and an exam (BMI,
+# 20-m walk) for about 600 of 2,781 ("mixed"). Prefer V##VISDYS over nominal months (V01 spells it V01visdys,
+# which to_long() normalizes).
 [visits]
 V00 = { month = 0, contact = "clinic", verified = true }
 V01 = { month = 12, contact = "clinic", verified = true }
@@ -24,10 +26,10 @@ V07 = { month = 60, contact = "phone", verified = true }
 V08 = { month = 72, contact = "clinic", verified = true }
 V09 = { month = 84, contact = "phone", verified = true }
 V10 = { month = 96, contact = "clinic", verified = true }
-V11 = { verified = false }
-V12 = { verified = false }
-V13 = { verified = false }
-V14 = { verified = false }
+V11 = { month = 108, contact = "remote", verified = true }
+V12 = { month = 120, contact = "clinic", verified = true }
+V13 = { month = 168, contact = "mixed", verified = true }
+V14 = { month = 192, contact = "remote", verified = true }
 
 # Rules applied by `oai check-egress` before anything leaves the enclave (docs/egress.md).
 # Identifier findings always block. Small cells are advisory by default: OAI/NDA and

@@ -35,12 +35,24 @@ def test_repo_visit_map_matches_docs():
         96,
     ]
     assert vm["V02"].contact == "phone"
-    assert not vm["V13"].verified
+    # the extended follow-up, confirmed from visit days and the release comments
+    assert [vm[c].month for c in ("V11", "V12", "V13", "V14")] == [108, 120, 168, 192]
+    assert all(vm[c].verified for c in ("V11", "V12", "V13", "V14"))
+    assert [vm[c].contact for c in ("V11", "V12", "V13", "V14")] == [
+        "remote",
+        "clinic",
+        "mixed",
+        "remote",
+    ]
+
+
+# A visit whose month is not yet confirmed (every repo visit now is)
+UNVERIFIED = {"visits": {"V00": {"month": 0, "verified": True}, "V13": {"verified": False}}}
 
 
 def test_nominal_month_refuses_unverified_visits():
     with pytest.raises(UnverifiedVisitError, match="V13"):
-        nominal_month("13")
+        nominal_month("13", visit_map=load_visit_map(UNVERIFIED))
 
 
 def test_nominal_month_unknown_visit():
@@ -96,12 +108,13 @@ def test_time_years_without_visdys_column_uses_nominal():
 def test_unverified_visit_needs_visdys():
     long = pl.DataFrame({"ID": [1000001], "visit": ["V13"], "VISDYS": [None]})
     with pytest.raises(UnverifiedVisitError):
-        time_years(long)
+        time_years(long, visit_map=load_visit_map(UNVERIFIED))
 
 
 def test_unverified_visit_with_visdys_is_fine():
     long = pl.DataFrame({"ID": [1000001], "visit": ["V13"], "VISDYS": [4383]})
-    assert time_years(long)["time_years"].to_list() == pytest.approx([4383 / 365.25])
+    out = time_years(long, visit_map=load_visit_map(UNVERIFIED))
+    assert out["time_years"].to_list() == pytest.approx([4383 / 365.25])
 
 
 def test_to_long_unifies_stem_case_across_visits():

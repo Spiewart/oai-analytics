@@ -158,10 +158,20 @@ def test_cohort_step_writes_the_frames_results_and_flow(cohort):
         "frame.parquet",
         "lo_knees.parquet",
         "lo_model.json",
+        "pase_frame.parquet",
     ]
     assert written(cohort.results) == [
-        "flow.csv", "lo2022_t2.csv", "lo2022_table2.csv", "metrics_cohort.csv",
+        "flow.csv", "lo2022_t2.csv", "lo2022_table2.csv", "metrics_cohort.csv", "pase_visits.csv",
     ]  # fmt: skip
+    # PASE at every visit, for everyone with a walking answer (device data or not)
+    visits = LEDGER.items["pase.all_visits"].value
+    pase_frame = pl.read_parquet(cohort.frames / "pase_frame.parquet")
+    assert pase_frame.height == 5
+    assert {f"pase_days_{v}" for v in visits} <= set(pase_frame.columns)
+    counts = pl.read_csv(cohort.results / "pase_visits.csv", schema_overrides={"visit": pl.String})
+    assert counts["visit"].to_list() == visits  # the fake tables have the walking item only
+    assert counts["month"].to_list() == [0, 12, 24, 36, 48, 72, 96, 168, 192]
+    assert counts["n"].to_list() == [2] * len(visits)  # pase_days is answered by IDs 1 and 2
     assert pl.read_csv(cohort.results / "lo2022_t2.csv")["metric"].to_list() == [
         "t2.new_pain.or_adj"
     ]

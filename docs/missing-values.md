@@ -21,23 +21,41 @@ the full picture of missingness, and the records below for the reasons.
 
 ## Codes in the current release
 
-Counted across all 156 tables with `missing_summary` (release on disk as of 2026-09-30):
+Counted across all 156 tables with `missing_summary` (release on disk as of 2026-10-12):
 
 | Code | Label | Cells | Tables |
 |---|---|---:|---:|
 | `.` | Missing Form/Incomplete Workbook | 4,938,524 | 50 |
-| `.M` | Missing | 550,328 | 2 |
-| `.A` | Not Expected | 236,026 | 2 |
-| `.N` | Not Required/Not edited | 56,650 | 1 |
-| `.T` | Technical Problems | 22,418 | 6 |
-| `.F` | Not done, phone contact | 19,476 | 1 |
+| `.M` | Missing | 645,365 | 2 |
+| `.A` | Not Expected | 257,552 | 6 |
+| `.N` | Not Required/Not edited | 83,481 | 1 |
+| `.F` | Not done, phone contact | 34,629 | 1 |
+| `.T` | Technical Problems | 22,422 | 8 |
 | `.X` | Don't Do | 3,978 | 1 |
+| `.R` | Refused | 3,387 | 1 |
 | `.J` | Unassigned | 3,168 | 4 |
 | `.P` | Prosthetic | 3,146 | 4 (hand X-ray readings `hxr_sq*` only) |
-| `.R` | Refused | 3,118 | 1 |
-| `.D` | Don't Know/Unknown/Uncertain | 785 | 2 |
+| `.D` | Don't Know/Unknown/Uncertain | 812 | 2 |
+| `.I` | (no label in the release) | 273 | 2 |
 | `.U` | Unable to examine | 224 | 4 |
-| `.O` | Not done, other reason | 18 | 1 |
+| `.O` | Not done, other reason | 26 | 1 |
+| `.S` | (no label in the release) | 12 | 1 |
+| `.G` | (no label in the release) | 7 | 1 |
+| `.K` | (no label in the release) | 2 | 1 |
+
+### Codes written without their dot
+
+Some later files write a numeric column's missing codes as a bare capital letter: `M` where
+other columns write `.M: Missing`. `AllClinical13` (the 168-month visit) does this in 56 columns,
+among them the PASE total `V13PASE`, `V13BMI`, `V13AGE` and `V13VISDYS`. A handful of other
+cells do too: a few image-reading barcode columns (`T`, `A`) and one COVID-questionnaire day
+count.
+
+The loader reads such a letter as the dotted code (`M` becomes `.M`) and gives it the label the
+same table uses for that code. It does this only in a column whose other cells are all numbers
+or missing codes, so letters that are a column's values (M/F, say) stay as they are. The codes
+`.G`, `.I`, `.K` and `.S` appear only in this bare form, so they carry no label. Without this
+step those columns would load as text, with "M" kept as a value.
 
 Some codes are informative rather than random. `.A` (not expected at that visit),
 `.F` (a phone-only contact) and `.P` (a prosthetic joint) all explain *why* a value

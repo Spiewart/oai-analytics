@@ -3,7 +3,8 @@ description = "Validity of the 96-month walking-for-exercise item (Lo 2022 expos
 
 [inputs]
 tables = [
-    "enrollees", "allclinical:00", "allclinical:06", "allclinical:08", "allclinical:10",
+    "enrollees", "allclinical:00", "allclinical:01", "allclinical:03", "allclinical:05",
+    "allclinical:06", "allclinical:08", "allclinical:10", "allclinical:13", "allclinical:14",
     "kxr_sq_bu:00", "accelerometry:06", "accelerometry:08",
     "acceldatabymin:06", "acceldatabymin:08", "acceldatabyday:06", "acceldatabyday:08",
 ]
@@ -55,7 +56,7 @@ needs = ["validity", "bias"]
 [outputs]
 aggregate = [
     "flow.csv", "device_reproduction.csv", "validity_*.csv", "bias_*.csv", "lo2022_*.csv",
-    "comparison.csv", "metrics_*.csv", "assumptions.resolved.json",
+    "comparison.csv", "metrics_*.csv", "pase_visits.csv", "assumptions.resolved.json",
 ]
 
 [report]

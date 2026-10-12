@@ -4,7 +4,7 @@ from pathlib import Path
 import polars as pl
 import pytest
 
-from oai.derive.pase import DEFAULT_WALKING, pase_walking_answers, score_pase
+from oai.derive.pase import DEFAULT_WALKING, pase_visit, pase_walking_answers, score_pase
 from oai.derive.walking import WALKER_ITEM, walker_status, walking_sessions
 
 REPO = Path(__file__).resolve().parents[1]
@@ -174,3 +174,47 @@ def test_pase_walking_answers_ignores_hours_after_never():
 def test_pase_walking_answers_drops_hours_codes_outside_the_answers():
     ac = pase_frame([1, 2, 3], [88, 5, 0])
     assert pase_walking_answers(ac, "V06")["pase_hours_06"].to_list() == [None, None, None]
+
+
+def test_pase_visit_gives_every_measure_a_visit_has_suffixed_by_visit():
+    ac = pl.DataFrame(
+        {
+            "ID": [1, 2, 3],
+            "V13PASE": [120, None, 40],
+            "V13PASE2": [3, 0, None],
+            "V13PASE2HR": [2, None, None],
+            "V13VISDYS": [5120, 5150, None],
+        },
+        schema_overrides={"V13PASE2HR": pl.Int64},
+    )
+    out = pase_visit(ac, "13")
+    assert out.columns == [
+        "ID",
+        "pase_total_13",
+        "pase_walking_13",
+        "pase_days_13",
+        "pase_hours_13",
+        "visdys_13",
+    ]
+    assert out["pase_total_13"].to_list() == [120.0, None, 40.0]
+    assert out["pase_walking_13"].to_list() == [20.0 * 6.0 / 7 * 1.5, 0.0, None]
+    assert out["pase_days_13"].to_list() == [3, 0, None]
+    assert out["pase_hours_13"].to_list() == [2, None, None]
+    assert out["visdys_13"].to_list() == [5120, 5150, None]
+
+
+def test_pase_visit_without_a_total_gives_the_walking_item_only():
+    # V14 asked PASE item 2 but released no total score
+    ac = pl.DataFrame({"ID": [1], "V14PASE2": [1], "V14PASE2HR": [3], "V14VISDYS": [5860]})
+    out = pase_visit(ac, "V14")
+    assert out.columns == ["ID", "pase_walking_14", "pase_days_14", "pase_hours_14", "visdys_14"]
+    assert out["pase_walking_14"].to_list() == [20.0 * 1.5 / 7 * 3.0]
+
+
+def test_pase_visit_finds_a_lowercase_visit_days_column():
+    # the release spells V01visdys in lowercase
+    ac = pl.DataFrame(
+        {"ID": [1], "V01PASE": [90], "V01PASE2": [0], "V01PASE2HR": [None], "V01visdys": [371]},
+        schema_overrides={"V01PASE2HR": pl.Int64},
+    )
+    assert pase_visit(ac, "01")["visdys_01"].to_list() == [371]

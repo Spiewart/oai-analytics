@@ -292,3 +292,34 @@ def test_table_version_reads_the_first_data_row(tmp_path):
     cat = catalog_for(tmp_path)
     assert loader.table_version(cat.get("allclinical", "00")) == "0.2.3"
     assert loader.table_version(cat.get("enrollees")) is None
+
+
+def test_bare_letter_missing_codes_in_numeric_columns_become_missing(tmp_path):
+    # Later releases (AllClinical13) write a numeric column's missing codes as a bare letter
+    # ("M") where other columns write ".M: Missing"; the letter takes the table's label
+    path = _write(
+        tmp_path,
+        "bare13.txt",
+        "ID|V13PASE|V13PASE2|V13SEX|V13NOTE\n"
+        "1|143|3: Often (5-7 days)|M|ok\n"
+        "2|M|.M: Missing|F|M\n"
+        "3|R|.R: Refused|M|7\n"
+        "4|88|0: Never|F|D\n",
+    )
+    lf, book = parse_table(path, table="allclinical_13")
+    df = lf.collect()
+    assert df.schema["V13PASE"] == pl.Int64
+    assert df["V13PASE"].to_list() == [143, None, None, 88]
+    assert book.missing["V13PASE"] == {".M": "Missing", ".R": "Refused"}
+    assert book.missing_counts["V13PASE"] == {".M": 1, ".R": 1}
+    # letters that are the column's values (sex) or sit among free text stay as they are
+    assert df["V13SEX"].to_list() == ["M", "F", "M", "F"]
+    assert df["V13NOTE"].to_list() == ["ok", "M", "7", "D"]
+    assert "V13SEX" not in book.missing and "V13NOTE" not in book.missing
+
+
+def test_bare_letter_code_without_a_dotted_label_keeps_an_empty_label(tmp_path):
+    path = _write(tmp_path, "bare.txt", "ID|V13AGE\n1|70\n2|G\n")
+    lf, book = parse_table(path, table="allclinical_13")
+    assert lf.collect()["V13AGE"].to_list() == [70, None]
+    assert book.missing["V13AGE"] == {".G": ""}
