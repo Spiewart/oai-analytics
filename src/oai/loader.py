@@ -9,10 +9,14 @@ when every value allows it. Records split by newlines inside a field are rejoine
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import io
 import json
+import os
 import re
+import uuid
+from collections.abc import Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -366,6 +370,23 @@ def _source_meta(path: Path) -> dict[str, object]:
     }
 
 
+@contextlib.contextmanager
+def _replacing(path: Path) -> Iterator[Path]:
+    """Yield a temporary path beside `path`, then move it onto `path` if the block succeeds.
+
+    Every call gets its own name, so concurrent builds of one table never share a file; the
+    move is atomic, so readers see the old file or the new one, and the last writer wins.
+    """
+    tmp = path.with_name(f"{path.name}.{os.getpid()}-{uuid.uuid4().hex}.tmp")
+    try:
+        yield tmp
+        os.replace(tmp, path)
+    finally:
+        # best effort: a cleanup failure must not replace the build error
+        with contextlib.suppress(OSError):
+            tmp.unlink(missing_ok=True)
+
+
 def ensure_cached(tf: TableFile, settings: Settings) -> tuple[Path, Codebook]:
     """Return (parquet path, codebook), rebuilding the cache when it is stale."""
     base = settings.work_dir / "cache" / tf.key
@@ -377,13 +398,14 @@ def ensure_cached(tf: TableFile, settings: Settings) -> tuple[Path, Codebook]:
             return parquet, Codebook.from_json(stored["codebook"])
     parquet.parent.mkdir(parents=True, exist_ok=True)
     lf, book = parse_table(tf.path, table=tf.key)
-    tmp = parquet.parent / f"{parquet.name}.tmp"
-    if len(lf.collect_schema()) <= STREAMING_MAX_COLUMNS:
-        lf.sink_parquet(tmp)
-    else:
-        lf.collect().write_parquet(tmp)
-    tmp.replace(parquet)
-    sidecar.write_text(json.dumps({"meta": meta, "codebook": book.to_json()}, indent=1))
+    # the parquet lands before the sidecar that vouches for it
+    with _replacing(parquet) as tmp:
+        if len(lf.collect_schema()) <= STREAMING_MAX_COLUMNS:
+            lf.sink_parquet(tmp)
+        else:
+            lf.collect().write_parquet(tmp)
+    with _replacing(sidecar) as tmp:
+        tmp.write_text(json.dumps({"meta": meta, "codebook": book.to_json()}, indent=1))
     return parquet, book
 
 

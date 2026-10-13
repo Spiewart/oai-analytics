@@ -1,6 +1,8 @@
 import os
 import subprocess
 import sys
+import threading
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
 import polars as pl
@@ -122,6 +124,43 @@ def test_streaming_and_in_memory_paths_agree(monkeypatch, max_columns):
     df = read_table("allclinical", "01")
     assert df["V01PASE"].to_list() == [170, 100, None]
     assert df.schema["V01BMI"] == pl.Float64
+
+
+def test_concurrent_builds_of_one_table_both_succeed(monkeypatch):
+    # Two runs building one table's cache at once used to share a fixed temporary path, so
+    # the second move found it gone (FileNotFoundError). Each build here waits just before
+    # moving its parquet into place until the other has written too, so they always overlap.
+    settings = get_settings()
+    tf = catalog_for(settings.data_dir).get("enrollees")
+    both_written = threading.Barrier(2, timeout=10)
+    real_replace = os.replace
+
+    def replace_once_both_wrote(src, dst):
+        if str(dst).endswith(".parquet"):
+            both_written.wait()
+        real_replace(src, dst)
+
+    with monkeypatch.context() as m:
+        m.setattr(os, "replace", replace_once_both_wrote)
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            builds = [pool.submit(loader.ensure_cached, tf, settings) for _ in range(2)]
+            (parquet,) = {build.result()[0] for build in builds}
+
+    assert {p.name for p in parquet.parent.iterdir()} == {"enrollees.parquet", "enrollees.json"}
+    monkeypatch.setattr(loader, "parse_table", lambda *a, **kw: pytest.fail("cache was not used"))
+    assert read_table("enrollees")["P02SEX"].to_list() == [2, 1, 2]
+
+
+def test_failed_build_leaves_no_temporary_file(monkeypatch):
+    def write_then_fail(self, path, *args, **kwargs):
+        Path(path).write_bytes(b"half a parquet")
+        raise OSError("disk full")
+
+    monkeypatch.setattr(loader, "STREAMING_MAX_COLUMNS", 1000)
+    monkeypatch.setattr(pl.LazyFrame, "sink_parquet", write_then_fail)
+    with pytest.raises(OSError, match="disk full"):
+        read_table("enrollees")
+    assert list((get_settings().work_dir / "cache").iterdir()) == []
 
 
 def test_unknown_table_is_a_user_error():
