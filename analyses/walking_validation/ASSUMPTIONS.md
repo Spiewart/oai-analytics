@@ -47,13 +47,13 @@
 | `device.purposeful_bout_minutes` | `10` | Spec 5: purposeful walking proxy = minutes in >= 10-minute MV bouts |  |
 | `device.wave_combination` | `mean` (choices: mean, 06, 08) | Spec 4: habitual activity = mean over a person's valid waves |  |
 | `exposure.amount_split` | `median` (choices: median) | Spec 5: lower/upper halves of lifetime sessions among walkers (median split) |  |
-| `pase.all_visits` | `["00", "01", "03", "05", "06", "08", "10", "13", "14"]` | Every visit with PASE in the release (0, 12, 24, 36, 48, 72, 96, 168 and 192 months; V14 has item 2 but no total score), for the walking question against PASE before, at and after 96 months |  |
+| `pase.all_visits` | `["00", "01", "03", "05", "06", "08", "10", "13", "14"]` | Every visit with PASE: 0-96, 168 and 192 months (V14: item 2 only) |  |
 | `pase.device_pairing` | `adjacent_wave` (choices: adjacent_wave, two_wave_mean) | Spec 6.6: PASE at 48 and 72 months is compared with the device wave of the same visit (its measures, device walker and single-wave reliability); PASE at 96 months has no device wave and uses the combined measures |  |
 | `pase.walker_threshold` | `0.0` | A PASE walker reports any walking outside the home in the past 7 days (subscore > 0) |  |
 | `pase.walking_scoring` | `{"days": [0.0, 1.5, 3.5, 6.0], "hours": [0.5, 1.5, 3.0, 5.0], "weight": 20.0}` | Washburn et al. 1993 PASE scoring for item 2 (walking outside the home) |  |
-| `pase_walking.amounts` | `["times", "years"]` | Amount subgroups of the 96-month walking question for the PASE comparison: times a month (1-3, 4-8, 9+; closest to PASE's days a week) and years walked (1-5, 6-10, 11-20, >20; the length of the habit) |  |
-| `pase_walking.covariates` | `["age", "sex", "bmi"]` | Adjusted PASE contrasts: baseline age, sex and baseline BMI, as in the validity step's adjusted differences |  |
-| `pase_walking.p_adjust` | `holm` (choices: holm, bonferroni, none) | PASE contrasts: p-values adjusted within each stratification, visit and outcome, across the groups compared with 'No' |  |
+| `pase_walking.amounts` | `["times", "years"]` | Walking-question amount subgroups for PASE: times a month, years walked |  |
+| `pase_walking.covariates` | `["age", "sex", "bmi"]` | Adjusted PASE contrasts: baseline age, sex and BMI |  |
+| `pase_walking.p_adjust` | `holm` (choices: holm, bonferroni, none) | PASE contrasts: within each grouping, visit and outcome |  |
 | `reference.min_bout_days_per_week` | `2.0` | Spec 5 |  |
 | `reference.min_bout_minutes_per_week` | `150.0` | Spec 5 variant: DHHS 2008 aerobic guideline volume |  |
 | `reference.walker_rule` | `bout_days` (choices: bout_days, any_bout, bout_minutes) | Spec 5: device habitual walker = >= 2 bout-days per valid week |  |

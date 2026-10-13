@@ -25,7 +25,9 @@ group_summaries <- function(y, group) {
 #' (one fit for all levels; `se` as in median_regression(), Wald p from that SE); for a logical
 #' `y` the odds ratio from a logistic regression on the same terms, with its Wald 95% CI and p.
 #' p-values are adjusted across the levels with stats::p.adjust(method = adjust). A level with no
-#' complete case gives NA. Returns one row per non-reference level.
+#' complete case gives NA. Returns one row per non-reference level; `n` and `n_ref` count the
+#' level's and the reference's people with `y`, and `adj_n` the adjusted model's complete cases,
+#' which span every level (one model for all).
 group_contrasts <- function(y, group, covariates = NULL, se = c("boot", "nid"), reps = 1000, seed = 1,
                             adjust = "holm") {
   se <- match.arg(se)

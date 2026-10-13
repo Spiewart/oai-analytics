@@ -182,7 +182,12 @@ def test_e2e_pase_walking_compares_each_answer_group_with_no_at_every_visit(fast
         ].item()
         assert n == expected, (visit, outcome)
     assert (contrasts["p_holm"] >= contrasts["p"] - 1e-12).all()
-    assert (contrasts["adj_n"] <= contrasts["n"] + contrasts["n_ref"]).all()
+    # one adjusted model per grouping, visit and outcome covers all its levels: adj_n is that
+    # model's complete cases, at most everyone with the outcome in the grouping
+    in_cell = contrasts.group_by("grouping", "visit", "outcome").agg(
+        pl.col("adj_n").max(), (pl.col("n").sum() + pl.col("n_ref").first()).alias("people")
+    )
+    assert (in_cell["adj_n"] <= in_cell["people"]).all(), in_cell
     assert set(contrasts.filter(pl.col("outcome") == "walking_any")["adj_effect"]) == {"odds_ratio"}
     assert set(contrasts.filter(pl.col("outcome") != "walking_any")["effect"]) == {
         "median_difference"
@@ -602,7 +607,8 @@ def test_walking_validation_report_renders(fast_run):
     documents = pdfs[:-1]
     pages = {p.name: len(PdfReader(p).pages) for p in pdfs}
     assert pages["brief.pdf"] <= 6, pages
-    assert pages["report.pdf"] <= 18, pages
+    # the technical report prints the whole assumptions ledger, which grows with the PASE work
+    assert pages["report.pdf"] <= 19, pages
     assert pages["clinical.pdf"] <= 12, pages
     assert pages["abstract.pdf"] <= 3, pages
     assert pages["walking_validation_brief.pdf"] == pages["brief.pdf"] + pages["clinical.pdf"]
