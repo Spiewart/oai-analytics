@@ -148,6 +148,48 @@ def test_walking_validation_end_to_end(fast_run):
 
 
 @pytest.mark.realdata
+def test_e2e_pase_walking_compares_each_answer_group_with_no_at_every_visit(fast_run):
+    out = fast_run.out
+    read = functools.partial(pl.read_csv, null_values=["NA"], schema_overrides={"visit": pl.String})
+    groups, contrasts, trend = (
+        read(out / f"pase_walking_{n}.csv") for n in ("groups", "contrasts", "trend")
+    )
+    counts = read(out / "pase_visits.csv")
+    visits = ["00", "01", "03", "05", "06", "08", "10", "13", "14"]
+    # every visit has the walking item; every visit but V14 has the total
+    cells = {(v, o) for v in visits for o in ("walking_any", "walking_hours")} | {
+        (v, "total") for v in visits if v != "14"
+    }
+    assert set(zip(contrasts["visit"], contrasts["outcome"], strict=True)) == cells
+    assert len(cells) == 26
+    # one contrast per non-reference level: any 1, Lo coding 1, times a month 3, years walked 4
+    per_cell = contrasts.group_by("grouping").len().sort("grouping")
+    assert dict(per_cell.iter_rows()) == {"any": 26, "any_lo": 26, "times": 78, "years": 104}
+    assert trend.height == 2 * 26 and set(trend["grouping"]) == {"times", "years"}
+    assert groups["label"].is_not_null().all() and not groups["label"].str.contains("NA").any()
+    # the "any" grouping covers everyone with that visit's measure (No + Yes)
+    for visit, outcome, measure in (
+        ("10", "total", "total"),
+        ("13", "walking_any", "walking_item"),
+    ):
+        n = groups.filter(
+            (pl.col("grouping") == "any")
+            & (pl.col("visit") == visit)
+            & (pl.col("outcome") == outcome)
+        )["n"].sum()
+        expected = counts.filter((pl.col("visit") == visit) & (pl.col("measure") == measure))[
+            "n"
+        ].item()
+        assert n == expected, (visit, outcome)
+    assert (contrasts["p_holm"] >= contrasts["p"] - 1e-12).all()
+    assert (contrasts["adj_n"] <= contrasts["n"] + contrasts["n_ref"]).all()
+    assert set(contrasts.filter(pl.col("outcome") == "walking_any")["adj_effect"]) == {"odds_ratio"}
+    assert set(contrasts.filter(pl.col("outcome") != "walking_any")["effect"]) == {
+        "median_difference"
+    }
+
+
+@pytest.mark.realdata
 def test_e2e_dose_table_has_the_level_counts(fast_run):
     dose = pl.read_csv(fast_run.out / "validity_dose.csv")
     assert {"n_none", "n_lower", "n_upper", "n_walkers_no_level"} <= set(dose.columns)

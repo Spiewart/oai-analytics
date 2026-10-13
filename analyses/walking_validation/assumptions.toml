@@ -253,6 +253,22 @@ value = [0.05, 0.01, 0.001]
 status = "assumed"
 source = "Abstract figure marks: *, ** and *** below each adjusted p"
 
+[pase_walking.amounts]
+value = ["times", "years"]
+status = "assumed"
+source = "Amount subgroups of the 96-month walking question for the PASE comparison: times a month (1-3, 4-8, 9+; closest to PASE's days a week) and years walked (1-5, 6-10, 11-20, >20; the length of the habit)"
+
+[pase_walking.covariates]
+value = ["age", "sex", "bmi"]
+status = "assumed"
+source = "Adjusted PASE contrasts: baseline age, sex and baseline BMI, as in the validity step's adjusted differences"
+
+[pase_walking.p_adjust]
+value = "holm"
+status = "assumed"
+source = "PASE contrasts: p-values adjusted within each stratification, visit and outcome, across the groups compared with 'No'"
+choices = ["holm", "bonferroni", "none"]
+
 [variants.wave48]
 description = "Device = 48-month wave only"
 set = { "device.wave_combination" = "06" }

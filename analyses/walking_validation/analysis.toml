@@ -40,6 +40,13 @@ entry = "components.R"
 needs = ["cohort"]
 
 [[steps]]
+id = "pase_walking"
+lang = "r"
+stage = "local"
+entry = "pase_walking.R"
+needs = ["cohort"]
+
+[[steps]]
 id = "bias"
 lang = "r"
 stage = "local"
@@ -56,7 +63,7 @@ needs = ["validity", "bias"]
 [outputs]
 aggregate = [
     "flow.csv", "device_reproduction.csv", "validity_*.csv", "bias_*.csv", "lo2022_*.csv",
-    "comparison.csv", "metrics_*.csv", "pase_visits.csv", "assumptions.resolved.json",
+    "comparison.csv", "metrics_*.csv", "pase_visits.csv", "pase_walking_*.csv", "assumptions.resolved.json",
 ]
 
 [report]

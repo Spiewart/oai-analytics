@@ -79,6 +79,14 @@ quiet_exact_ties <- function(expr) muffle_warning(expr, "cannot compute exact")
 #' variable are dropped first; `n` is the number of rows fitted.
 median_regression <- function(formula, data, term, se = c("nid", "boot"), reps = 1000, seed = 1) {
   se <- match.arg(se)
+  fit <- median_regression_terms(formula, data, term, se = se, reps = reps, seed = seed)
+  c(estimate = fit$estimate, lo = fit$lo, hi = fit$hi, n = fit$n)
+}
+
+# median_regression() for several terms of one fit (one bootstrap): a data.frame with term,
+# estimate, lo, hi (estimate +/- 1.96 SE), se and n
+median_regression_terms <- function(formula, data, terms, se = c("nid", "boot"), reps = 1000, seed = 1) {
+  se <- match.arg(se)
   if (!requireNamespace("quantreg", quietly = TRUE)) {
     stop("median_regression() needs the quantreg package", call. = FALSE)
   }
@@ -93,13 +101,15 @@ median_regression <- function(formula, data, term, se = c("nid", "boot"), reps =
   } else {
     s <- quiet_nonunique(summary(fit, se = "nid"))$coefficients
   }
-  if (!term %in% rownames(s)) {
-    stop("term ", term, " is not in the model (", paste(rownames(s), collapse = ", "), ")",
-         call. = FALSE)
+  absent <- setdiff(terms, rownames(s))
+  if (length(absent)) {
+    stop("term ", paste(absent, collapse = ", "), " is not in the model (",
+         paste(rownames(s), collapse = ", "), ")", call. = FALSE)
   }
-  est <- s[term, "Value"]
-  err <- s[term, "Std. Error"]
-  c(estimate = est, lo = est - 1.96 * err, hi = est + 1.96 * err, n = nrow(complete))
+  est <- unname(s[terms, "Value"])
+  err <- unname(s[terms, "Std. Error"])
+  data.frame(term = terms, estimate = est, lo = est - 1.96 * err, hi = est + 1.96 * err, se = err,
+             n = nrow(complete))
 }
 
 #' Spearman rho with a Bonett-Wright 95% CI
