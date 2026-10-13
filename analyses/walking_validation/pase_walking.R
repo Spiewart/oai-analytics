@@ -94,6 +94,12 @@ with_month <- function(rows) {
   df$month <- months$month[match(df$visit, months$visit)]
   df[c("grouping", "visit", "month", setdiff(names(df), c("grouping", "visit", "month")))]
 }
+# Who answered how (everyone in the PASE frame has a 96-month answer)
+metrics <- data.frame(
+  metric = c("pase.persons", "pase.no", "pase.yes", "pase.yes_without_amount", "pase.lo_walkers"),
+  value = c(nrow(frame), sum(frame$walk_item == 0), sum(said_yes),
+            sum(said_yes & !frame$walker), sum(frame$walker)))
+utils::write.csv(metrics, file.path(out_dir, "metrics_pase.csv"), row.names = FALSE)
 utils::write.csv(with_month(summaries), file.path(out_dir, "pase_walking_groups.csv"), row.names = FALSE)
 utils::write.csv(with_month(contrasts), file.path(out_dir, "pase_walking_contrasts.csv"), row.names = FALSE)
 utils::write.csv(with_month(trends), file.path(out_dir, "pase_walking_trend.csv"), row.names = FALSE)

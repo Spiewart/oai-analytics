@@ -496,7 +496,13 @@ def _report_tools_ready() -> bool:
 
 
 # right edge of the text block, in points: US-letter width less the Typst page's right margin
-RIGHT_EDGE = {"brief.pdf": 550.8, "abstract.pdf": 550.8, "report.pdf": 547.2, "clinical.pdf": 550.8}
+RIGHT_EDGE = {
+    "brief.pdf": 550.8,
+    "abstract.pdf": 550.8,
+    "abstract_pase.pdf": 550.8,
+    "report.pdf": 547.2,
+    "clinical.pdf": 550.8,
+}
 # the abstract's submission rules: characters counted with spaces, each image charged in full
 ABSTRACT_LIMIT = 5000
 PLACEHOLDER = "Authors and contact to be added"
@@ -598,6 +604,7 @@ def test_walking_validation_report_renders(fast_run):
     assert names == [
         "brief.pdf",
         "abstract.pdf",
+        "abstract_pase.pdf",
         "report.pdf",
         "clinical.pdf",
         "walking_validation_brief.pdf",
@@ -611,6 +618,7 @@ def test_walking_validation_report_renders(fast_run):
     assert pages["report.pdf"] <= 19, pages
     assert pages["clinical.pdf"] <= 12, pages
     assert pages["abstract.pdf"] <= 3, pages
+    assert pages["abstract_pase.pdf"] <= 3, pages
     assert pages["walking_validation_brief.pdf"] == pages["brief.pdf"] + pages["clinical.pdf"]
     for pdf in documents:
         text = "\n".join(page.extract_text() for page in PdfReader(pdf).pages)
@@ -644,6 +652,7 @@ def test_walking_validation_report_renders(fast_run):
         if edge is not None:  # only the margin check needs poppler
             assert edge <= RIGHT_EDGE[pdf.name] + 0.01, pdf.name
     _check_abstract(by["abstract.pdf"], brief.parent / "text" / "abstract.txt")
+    _check_abstract(by["abstract_pase.pdf"], brief.parent / "text" / "abstract_pase.txt")
     figures = {p.name for p in (brief.parent / "figures").iterdir()}
     for name in ("known_groups", "strata", "tipping", "forest_bias", "brief_fig1", "brief_fig4"):
         assert {f"{name}.pdf", f"{name}.png"} <= figures, name

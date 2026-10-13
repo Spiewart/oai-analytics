@@ -1,0 +1,164 @@
+---
+mainfont: Arial
+fontsize: 10pt
+brand:
+  typography:
+    headings:
+      color: "#0b2e59"
+format:
+  typst:
+    papersize: us-letter
+    margin:
+      x: 0.85in
+      y: 0.75in
+    include-in-header:
+      text: |
+        #set text(hyphenate: false, overhang: false)
+        #set page(footer: context align(center, text(size: 8pt, fill: luma(90))[Abstract — page #counter(page).display()]))
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: cairo_pdf
+    fig-width: 7
+---
+
+```{=typst}
+#set par(justify: false)
+```
+
+```{r setup}
+# The conference abstract on the walking question against PASE (the pase_walking step). The
+# wording lives in the `text` chunk below; every number comes from the run.
+source("report_setup.R")
+source("brief_figures.R")  # star helpers (fig_stars, fig_with_stars, fig_star_key)
+source("pase_figures.R")
+limit <- 5000      # the submission's characters: title, body and spaces
+per_image <- 560   # an image is charged up to this many
+
+one <- function(x, what) {
+  if (length(x) != 1 || is.na(x)) stop("abstract_pase.qmd: no single value for ", what, call. = FALSE)
+  x
+}
+metric <- function(key) one(run$metrics[[key]], key)
+contrast <- function(grouping, visit, outcome, level, col) {
+  k <- pw_contrasts[pw_contrasts$grouping == grouping & pw_contrasts$visit == visit &
+                      pw_contrasts$outcome == outcome & pw_contrasts$level == level, col]
+  one(k, paste(grouping, visit, outcome, level, col))
+}
+group_value <- function(grouping, visit, outcome, level, col = "estimate") {
+  g <- pw_groups[pw_groups$grouping == grouping & pw_groups$visit == visit &
+                   pw_groups$outcome == outcome & pw_groups$level == level, col]
+  one(g, paste(grouping, visit, outcome, level, col))
+}
+# "20 [95% CI 10 to 30]": square brackets, as the estimates sit inside parentheses; later
+# intervals drop "95% CI"
+ci <- function(est, lo, hi, digits, label = FALSE) {
+  sprintf("%s [%s%s to %s]", num(est, digits), if (label) "95% CI " else "", num(lo, digits), num(hi, digits))
+}
+adj <- function(grouping, visit, outcome, level, digits = 1, label = FALSE) {
+  ci(contrast(grouping, visit, outcome, level, "adj_estimate"), contrast(grouping, visit, outcome, level, "adj_lo"),
+     contrast(grouping, visit, outcome, level, "adj_hi"), digits, label)
+}
+and2 <- function(x) if (length(x) == 1) x[[1]] else paste(paste(x[-length(x)], collapse = ", "), "and", x[length(x)])
+asked <- "10"  # the visit of the walking question (96 months)
+visits <- unlist(assumption("pase.all_visits"))
+month_of <- function(v) one(unique(pw_groups$month[pw_groups$visit == v]), paste("month of", v))
+total_visits <- sort(unique(pw_groups$visit[pw_groups$outcome == "total"]))
+last_total <- total_visits[length(total_visits)]
+labels <- lapply(assumption("components.answer_labels"), unlist)
+# Follow-up span, from the last PASE visit (192 months = 16 years)
+span_years <- num(max(pw_groups$month) / 12, 0)
+```
+
+```{r text}
+n_all <- metric("pase.persons"); n_yes <- metric("pase.yes")
+times_levels <- c("1", "2", "3"); years_levels <- c("1", "2", "3", "4")
+or_any <- function(v) adj("any", v, "walking_any", "yes", digits = 1)
+# Is every visit's adjusted contrast significant, for an outcome?
+every_visit <- function(outcome) {
+  p <- pw_contrasts$adj_p_holm[pw_contrasts$grouping == "any" & pw_contrasts$outcome == outcome]
+  length(p) > 0 && all(!is.na(p) & p < 0.05)
+}
+# Where the adjusted odds of any walking is highest
+ors <- pw_contrasts[pw_contrasts$grouping == "any" & pw_contrasts$outcome == "walking_any", c("visit", "adj_estimate")]
+peak <- ors$visit[which.max(ors$adj_estimate)]
+trend_p <- function(grouping) {
+  p <- run$pase_walking_trend
+  p <- p[p$grouping == grouping & pw_visit(p$visit) == asked & p$outcome == "walking_any", "p"]
+  p <- one(p, paste("trend", grouping))
+  if (p < 0.001) "p<0.001" else sprintf("p=%s", num(p, 3))
+}
+
+title <- sprintf("SELF-REPORTED WALKING FOR EXERCISE SINCE AGE 50 AND PHYSICAL ACTIVITY OVER %s YEARS IN THE OSTEOARTHRITIS INITIATIVE", span_years)
+
+purpose <- "In the Osteoarthritis Initiative, a question about walking for exercise since age 50, asked once at the 96-month visit, has been linked to fewer people developing frequent knee pain. We examined whether this report reflects physical activity measured repeatedly with the Physical Activity Scale for the Elderly (PASE), before, at and after the visit at which it was asked."
+
+methods <- paste0(
+  "Participants reported whether they had walked for exercise (at least 20 minutes a day, at least 10 times) since age 50 and, if so, how many times a month and for how many years. ",
+  sprintf("PASE was collected at %s months (the walking item also at %s months). ",
+          and2(vapply(total_visits, month_of, numeric(1))), month_of(visits[length(visits)])),
+  "At each visit, people who answered yes, overall and by amount, were compared with those who answered no on the PASE total score (median regression), any walking outside the home (PASE item 2; logistic regression) and estimated walking hours a week, adjusted for age, sex and body-mass index, with Holm-adjusted p-values and tests for trend across amounts.")
+
+results <- paste(
+  sprintf("Of %s participants, %s (%s) reported walking for exercise since age 50.", count(n_all), count(n_yes), pct(n_yes / n_all)),
+  sprintf("At 96 months, walkers had a higher PASE total (median %s vs %s; adjusted difference %s), more often reported any walking (%s vs %s; adjusted odds ratio %s) and walked more hours a week (median %s vs %s).",
+          num(group_value("any", asked, "total", "yes"), 0), num(group_value("any", asked, "total", "no"), 0),
+          adj("any", asked, "total", "yes", digits = 0, label = TRUE),
+          pct(group_value("any", asked, "walking_any", "yes")), pct(group_value("any", asked, "walking_any", "no")),
+          or_any(asked),
+          num(group_value("any", asked, "walking_hours", "yes"), 1), num(group_value("any", asked, "walking_hours", "no"), 1)),
+  sprintf("%s at %s visit, from enrolment (adjusted odds ratio for any walking %s) to %s months (%s)%s.",
+          "The PASE total and any walking differed",
+          if (every_visit("total") && every_visit("walking_any")) "every" else "most",
+          or_any("00"), num(month_of(last_total), 0), or_any(last_total),
+          if (peak == asked) ", largest at the visit of the question (Figure 1)" else " (Figure 1)"),
+  sprintf("The odds of any walking rose with frequency (%s for %s times a month; trend %s) and with years walked (%s for %s years; trend %s; Figure 2).",
+          and2(vapply(times_levels, function(lv) num(contrast("times", asked, "walking_any", lv, "adj_estimate"), 1), "")),
+          and2(sub(" times/month$", "", labels$times)), trend_p("times"),
+          and2(vapply(years_levels, function(lv) num(contrast("years", asked, "walking_any", lv, "adj_estimate"), 1), "")),
+          and2(sub(" years$", "", tolower(labels$years))), trend_p("years")))
+
+conclusions <- sprintf("A single question about walking for exercise since age 50 tracked PASE-measured activity across %s years of follow-up, with a gradient by how often and how long people walked. It appears to capture a long-term walking habit, supporting its use as an exposure in studies of knee osteoarthritis.", span_years)
+
+# Figures: saved for upload, captions keyed to the stars they show
+fig1 <- fig_pase_time(); fig2 <- fig_pase_dose(asked)
+oaireport::save_figure(fig1, "abstract_pase_fig1", "2col", height = 2.9)
+oaireport::save_figure(fig2, "abstract_pase_fig2", "2col", height = 2.4)
+key <- function(fig) {
+  k <- fig_star_key(attr(fig, "stars"))
+  if (nzchar(k)) sprintf(" %s vs no, adjusted for age, sex and body-mass index.", k) else ""
+}
+figures <- c(
+  abstract_pase_fig1 = paste0("PASE total and any PASE walking (95% CI) at each visit, by the answer to walking for exercise since age 50 (asked at 96 months, dashed line).", key(fig1)),
+  abstract_pase_fig2 = paste0(sprintf("Any PASE walking at %s months (95%% CI) by how many times a month and how many years participants walked for exercise.", num(month_of(asked), 0)), key(fig2)))
+captions <- stats::setNames(unname(figures), sprintf("Figure %d caption", seq_along(figures)))
+
+fields <- c(Title = title, Purpose = purpose, Methods = methods, Results = results,
+            Conclusions = conclusions, captions)
+budget <- oaireport::char_budget(fields, images = length(figures), per_image = per_image, limit = limit)
+
+# The paste file: one block per field with its count, the images to upload, then the budget
+dir.create("text", showWarnings = FALSE)
+blocks <- unlist(lapply(names(fields), function(f) c(sprintf("%s (%s characters)", toupper(f), count(nchar(fields[[f]]))), fields[[f]], "")))
+budget_lines <- paste(format(budget$part, width = 24), count(budget$characters))
+uploads <- sprintf("Figure %d: figures/%s.png", seq_along(figures), names(figures))
+paste_file <- file(file.path("text", "abstract_pase.txt"), open = "w", encoding = "UTF-8")
+writeLines(c(blocks, "IMAGES TO UPLOAD", uploads, "", "CHARACTER BUDGET", budget_lines), paste_file)
+close(paste_file)
+```
+
+```{r show}
+#| results: asis
+body <- c(Purpose = purpose, Methods = methods, Results = results, Conclusions = conclusions)
+cat("## ", title, "\n\n", sep = "")
+# Escape * so Markdown prints a star key rather than reading it as emphasis
+for (f in names(body)) cat(sprintf("**%s.** %s\n\n", f, gsub("*", "\\*", body[[f]], fixed = TRUE)))
+for (i in seq_along(figures)) {
+  cat(oaireport::figure_group(), sep = "\n")
+  cat(figure_file(names(figures)[i], width = "100%"), sep = "\n")
+  cat(oaireport::table_note(figures[[i]], label = sprintf("Figure %d", i), close_group = TRUE), sep = "\n")
+}
+```
