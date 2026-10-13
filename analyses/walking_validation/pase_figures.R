@@ -89,3 +89,31 @@ fig_pase_dose <- function(visit = "10") {
     oaireport::theme_oai(base_size = 8)
   fig_with_stars(fig, d$stars)
 }
+
+# Figure 3: the adjusted difference in estimated PASE walking hours a week at 96 months, against
+# "No", by times a month and by years walked
+fig_pase_hours <- function(visit = "10") {
+  titles <- c(times = "Times a month", years = "Years walked")
+  d <- pw_contrasts[pw_contrasts$visit == visit & pw_contrasts$outcome == "walking_hours" &
+                      pw_contrasts$grouping %in% names(titles), ]
+  d$stars <- fig_stars(d$adj_p_holm)
+  d$label <- sub(" times/month$", "", d$label)
+  d$label <- sub(" years$", "", d$label)
+  d$panel <- factor(titles[d$grouping], levels = unname(titles))
+  d$key <- paste(d$grouping, d$level)
+  d$key <- factor(d$key, levels = rev(unique(d$key)))
+  top <- max(d$adj_hi, na.rm = TRUE)
+  fig <- ggplot2::ggplot(d, ggplot2::aes(adj_estimate, key)) +
+    ggplot2::geom_vline(xintercept = 0, colour = "grey60", linewidth = 0.4) +
+    ggplot2::geom_errorbar(ggplot2::aes(xmin = adj_lo, xmax = adj_hi), width = 0.25, linewidth = 0.4,
+                           orientation = "y", colour = oaireport::brief_colours[["item"]]) +
+    ggplot2::geom_point(size = 2, colour = oaireport::brief_colours[["item"]]) +
+    ggplot2::geom_text(ggplot2::aes(x = adj_hi, label = trimws(paste(sprintf("%.1f", adj_estimate), stars))),
+                       hjust = 0, nudge_x = 0.08, size = 2.6, family = oaireport::oai_font()) +
+    ggplot2::scale_y_discrete(labels = stats::setNames(d$label, d$key)) +
+    ggplot2::scale_x_continuous(limits = c(min(0, d$adj_lo, na.rm = TRUE) - 0.1, top * 1.35)) +
+    ggplot2::facet_wrap(~panel, scales = "free_y") +
+    ggplot2::labs(x = sprintf("PASE walking hours a week at %s vs no, adjusted difference (95%% CI)", wave(visit)), y = NULL) +
+    oaireport::theme_oai(base_size = 8)
+  fig_with_stars(fig, d$stars)
+}
