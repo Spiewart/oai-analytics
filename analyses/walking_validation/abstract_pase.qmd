@@ -131,9 +131,13 @@ key <- function(fig) {
   k <- fig_star_key(attr(fig, "stars"))
   if (nzchar(k)) sprintf(" %s vs no, adjusted for age, sex and body-mass index.", k) else ""
 }
+# What "any PASE walking" means, in both legends
+any_walking <- "Any PASE walking: any walking outside the home in the past 7 days (PASE item 2)."
 figures <- c(
-  abstract_pase_fig1 = paste0("PASE total and any PASE walking (95% CI) at each visit, by the answer to walking for exercise since age 50 (asked at 96 months, dashed line).", key(fig1)),
-  abstract_pase_fig2 = paste0(sprintf("Any PASE walking at %s months (95%% CI) by how many times a month and how many years participants walked for exercise.", num(month_of(asked), 0)), key(fig2)))
+  abstract_pase_fig1 = paste0("PASE total and any PASE walking (95% CI) at each visit, by the answer to walking for exercise since age 50 (asked at 96 months, dashed line). ",
+                              any_walking, key(fig1)),
+  abstract_pase_fig2 = paste0(sprintf("Any PASE walking at %s months (95%% CI) by how many times a month and how many years participants walked for exercise. ", num(month_of(asked), 0)),
+                              any_walking, key(fig2)))
 captions <- stats::setNames(unname(figures), sprintf("Figure %d caption", seq_along(figures)))
 
 fields <- c(Title = title, Purpose = purpose, Methods = methods, Results = results,

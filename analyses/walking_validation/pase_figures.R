@@ -32,12 +32,20 @@ fig_pase_time <- function() {
   marks$stars <- fig_stars(marks$p)
   marks$y <- mapply(function(v, o) max(c(d$estimate, d$hi)[c(d$visit, d$visit) == v & c(d$outcome, d$outcome) == o], na.rm = TRUE),
                     marks$visit, marks$outcome)
-  asked <- data.frame(panel = factor(unname(pw_panels)[1], levels = unname(pw_panels)), x = pw_question_month,
+  # the label over the dashed line, in every panel; the line stops below it (at the panel's
+  # highest point and star), so the two never cross
+  asked <- data.frame(panel = factor(unname(pw_panels), levels = unname(pw_panels)), x = pw_question_month,
                       label = "walking question")
+  asked$top <- vapply(names(pw_panels), function(o) {
+    v <- c(d$estimate[d$outcome == o], d$hi[d$outcome == o])
+    lo <- min(c(d$estimate[d$outcome == o], d$lo[d$outcome == o]), na.rm = TRUE)
+    max(v, na.rm = TRUE) + 0.1 * (max(v, na.rm = TRUE) - lo)
+  }, numeric(1))
   fig <- ggplot2::ggplot(d, ggplot2::aes(month, estimate, colour = answer)) +
-    ggplot2::geom_vline(xintercept = pw_question_month, linetype = "dashed", colour = "grey65", linewidth = 0.4) +
+    ggplot2::geom_segment(data = asked, ggplot2::aes(x = x, xend = x, y = -Inf, yend = top), inherit.aes = FALSE,
+                          linetype = "dashed", colour = "grey65", linewidth = 0.4) +
     ggplot2::geom_text(data = asked, ggplot2::aes(x = x, y = Inf, label = label), inherit.aes = FALSE,
-                       hjust = 1.05, vjust = 1.4, size = 2.4, colour = "grey45", family = oaireport::oai_font()) +
+                       hjust = 0.5, vjust = 1.3, size = 2.4, colour = "grey45", family = oaireport::oai_font()) +
     ggplot2::geom_errorbar(data = d[!is.na(d$lo), ], ggplot2::aes(ymin = lo, ymax = hi), width = 3, linewidth = 0.3) +
     ggplot2::geom_line(linewidth = 0.6) +
     ggplot2::geom_point(size = 1.6) +
@@ -45,7 +53,7 @@ fig_pase_time <- function() {
                        vjust = -0.6, size = 2.8, family = oaireport::oai_font()) +
     ggplot2::scale_colour_manual(values = pw_colours, name = "Walked for exercise since age 50 (asked at 96 months)") +
     ggplot2::scale_x_continuous(breaks = seq(0, 192, 24), limits = c(-4, 196)) +
-    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.08, 0.16))) +
+    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.08, 0.26))) +
     ggplot2::facet_wrap(~panel, scales = "free_y") +
     ggplot2::labs(x = "Months since enrolment", y = NULL) +
     oaireport::theme_oai(base_size = 8) +
