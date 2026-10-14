@@ -30,7 +30,7 @@ Needs the replication's frame for the matching exposure coding:
 
 - `brief.pdf`: the 4–6 page brief to the accelerometry group;
 - `abstract.pdf`: a draft conference abstract (validation only) as it will read, ready to share, with the brief's Figures 1–3 marked for between-group differences (`brief_figures.R` draws them for both documents; the marks come from the components step); `text/abstract.txt` holds the same fields, ready to paste, each with its character count, the figure PNGs to upload and the character budget (the render stops if it is over);
-- `abstract_pase.pdf`: a draft conference abstract on the walking question against PASE at every visit (the `pase_walking` step), with two figures drawn by `pase_figures.R`; `text/abstract_pase.txt` is its paste file. The wording lives in the document's `text` chunk, ready to revise;
+- `abstract_pase.pdf`: a draft conference abstract on the walking question against PASE at every visit (the `pase_walking` step), with two figures drawn by `pase_figures.R`; `text/abstract_pase.txt` is its paste file. The wording lives in the document's `text` chunk, ready to revise. [REVIEW_PASE.md](REVIEW_PASE.md) guides co-authors through the code behind it;
 - `report.pdf`: the technical report, kept as the full record and available on request;
 - `clinical.pdf`: the main results for clinical readers, in plain language, with technical terms in linked notes;
 - `walking_validation_brief.pdf`: the brief and the clinical version joined, the clinical version as the brief's appendix, with a bookmark for each part. **This is the file to send.**

@@ -77,3 +77,31 @@ test_that("group_contrasts gives NA for an empty level and rejects bad input", {
   expect_error(group_contrasts(as.character(d$y), d$group), "numeric or logical")
   expect_error(group_contrasts(d$y, d$group, covariates = d$covariates[1:5, ]), "rows")
 })
+
+test_that("group_summaries also gives each level's mean with a t-based 95% CI", {
+  d <- make_groups()
+  s <- group_summaries(d$y, d$group)
+  no <- d$y[d$group == "no" & !is.na(d$y)]
+  ci <- stats::t.test(no)$conf.int
+  expect_equal(c(s$mean[1], s$mean_lo[1], s$mean_hi[1]), c(mean(no), ci[1], ci[2]))
+  b <- group_summaries(d$y > 100, d$group)
+  expect_true(all(is.na(b$mean)))  # a share already is a mean; its CI is Wilson's
+})
+
+test_that("group_contrasts with estimator = 'mean' gives Welch differences and adjusted linear-model differences", {
+  d <- make_groups()
+  out <- group_contrasts(d$y, d$group, covariates = d$covariates, estimator = "mean")
+  expect_equal(out$effect, rep("mean_difference", 2))
+  expect_equal(out$adj_effect, rep("mean_difference", 2))
+  a <- d$y[d$group == "a" & !is.na(d$y)]; r <- d$y[d$group == "no" & !is.na(d$y)]
+  w <- stats::t.test(a, r)
+  expect_equal(c(out$estimate[1], out$lo[1], out$hi[1], out$p[1]),
+               c(mean(a) - mean(r), w$conf.int[1], w$conf.int[2], w$p.value))
+  fit <- stats::lm(y ~ group + age + sex, data = data.frame(y = d$y, group = d$group, d$covariates))
+  ci <- stats::confint(fit)[c("groupa", "groupb"), ]
+  expect_equal(out$adj_estimate, unname(stats::coef(fit)[c("groupa", "groupb")]))
+  expect_equal(cbind(out$adj_lo, out$adj_hi), unname(ci))
+  expect_equal(out$adj_p, unname(summary(fit)$coefficients[c("groupa", "groupb"), 4]))
+  expect_equal(out$p_holm, stats::p.adjust(out$p, "holm"))
+  expect_error(group_contrasts(d$y > 100, d$group, estimator = "mean"), "numeric")
+})

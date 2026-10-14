@@ -1,119 +1,170 @@
 # Figures for the walking question against PASE (abstract_pase.qmd), from the pase_walking step:
-# PASE at every visit by the 96-month answer, and any PASE walking at 96 months by amount. Each
-# star marks a group against "No", adjusted for age, sex and BMI (Holm, adj_p_holm). Source
-# after report_setup.R and brief_figures.R (fig_stars, fig_with_stars, fig_colours).
+# the PASE total (Figure 1) and any PASE walking (Figure 2, with bars of weekly walking hours)
+# at every visit, non-walkers (who answered no to the 96-month question) against walkers (any
+# yes). Visits are not continuous time, so each sits at its own position with no line between
+# them. Each star marks walkers against non-walkers, adjusted for age, sex and BMI (Holm,
+# adj_p_holm). Source after report_setup.R and brief_figures.R (fig_stars, fig_with_stars).
 
 pw_visit <- function(x) sprintf("%02d", as.integer(x))
 pw_groups <- run$pase_walking_groups
 pw_groups$visit <- pw_visit(pw_groups$visit)
 pw_contrasts <- run$pase_walking_contrasts
 pw_contrasts$visit <- pw_visit(pw_contrasts$visit)
-pw_question_month <- 96  # the visit that asked the walking question (V10)
-pw_colours <- c(No = "grey45", Yes = oaireport::brief_colours[["item"]])
-pw_panels <- c(total = "PASE total score, median", walking_any = "Any PASE walking, % (95% CI)")
+pw_bands <- run$pase_walking_bands
+pw_bands$visit <- pw_visit(pw_bands$visit)
+pw_question_visit <- "10"  # the visit that asked the walking question (96 months)
+# Each answer's name in the figures, in legend order, and its colour (points, intervals and n)
+pw_labels <- c(no = "Non-walker", yes = "Walker")
+pw_colours <- stats::setNames(c("grey45", oaireport::brief_colours[["item"]]), pw_labels)
+# Weekly walking-hours bands of those who walk, light to dark, in each group's hue (each ramp's
+# neighbouring shades are at least 15 OKLab units apart)
+pw_band_order <- c("<2", "2–5", "5–10", "10+")
+pw_band_colours <- list(no = c("#b0b0b0", "#828282", "#565656", "#2c2c2c"),
+                        yes = c("#9ec2e3", "#5394cb", "#1f5f9f", "#0b2f5a"))
 
-# The adjusted p of each group against "No", at each visit and outcome
-pw_adjusted_p <- function(grouping, visit, outcome, level) {
+# The adjusted p of walkers against non-walkers at a visit, for an outcome and estimator
+pw_adjusted_p <- function(visit, outcome, estimator, grouping = "any", level = "yes") {
   k <- pw_contrasts[pw_contrasts$grouping == grouping & pw_contrasts$visit == visit &
-                      pw_contrasts$outcome == outcome & pw_contrasts$level == level, "adj_p_holm"]
+                      pw_contrasts$outcome == outcome & pw_contrasts$estimator == estimator &
+                      pw_contrasts$level == level, "adj_p_holm"]
   if (length(k) == 1) k else NA_real_
 }
 
-# Figure 1: PASE total and any PASE walking at each visit, No against any Yes
-fig_pase_time <- function() {
-  d <- pw_groups[pw_groups$grouping == "any" & pw_groups$outcome %in% names(pw_panels), ]
-  d$answer <- factor(ifelse(d$level == "yes", "Yes", "No"), levels = c("No", "Yes"))
-  share <- d$outcome == "walking_any"
-  d[share, c("estimate", "lo", "hi")] <- 100 * d[share, c("estimate", "lo", "hi")]
-  d[!share, c("lo", "hi")] <- NA  # a total's interquartile range is too wide to read
-  d$panel <- factor(pw_panels[d$outcome], levels = unname(pw_panels))
-  marks <- unique(d[c("visit", "month", "outcome", "panel")])
-  marks$p <- mapply(pw_adjusted_p, "any", marks$visit, marks$outcome, "yes")
-  marks$stars <- fig_stars(marks$p)
-  marks$y <- mapply(function(v, o) max(c(d$estimate, d$hi)[c(d$visit, d$visit) == v & c(d$outcome, d$outcome) == o], na.rm = TRUE),
-                    marks$visit, marks$outcome)
-  # the label over the dashed line, in every panel; the line stops below it (at the panel's
-  # highest point and star), so the two never cross
-  asked <- data.frame(panel = factor(unname(pw_panels), levels = unname(pw_panels)), x = pw_question_month,
-                      label = "walking question")
-  asked$top <- vapply(names(pw_panels), function(o) {
-    v <- c(d$estimate[d$outcome == o], d$hi[d$outcome == o])
-    lo <- min(c(d$estimate[d$outcome == o], d$lo[d$outcome == o]), na.rm = TRUE)
-    max(v, na.rm = TRUE) + 0.1 * (max(v, na.rm = TRUE) - lo)
-  }, numeric(1))
-  fig <- ggplot2::ggplot(d, ggplot2::aes(month, estimate, colour = answer)) +
-    ggplot2::geom_segment(data = asked, ggplot2::aes(x = x, xend = x, y = -Inf, yend = top), inherit.aes = FALSE,
-                          linetype = "dashed", colour = "grey65", linewidth = 0.4) +
-    ggplot2::geom_text(data = asked, ggplot2::aes(x = x, y = Inf, label = label), inherit.aes = FALSE,
-                       hjust = 0.5, vjust = 1.3, size = 2.4, colour = "grey45", family = oaireport::oai_font()) +
-    ggplot2::geom_errorbar(data = d[!is.na(d$lo), ], ggplot2::aes(ymin = lo, ymax = hi), width = 3, linewidth = 0.3) +
-    ggplot2::geom_line(linewidth = 0.6) +
-    ggplot2::geom_point(size = 1.6) +
-    ggplot2::geom_text(data = marks, ggplot2::aes(x = month, y = y, label = stars), inherit.aes = FALSE,
+# Visits as evenly spaced positions labelled by month, from the groups table
+pw_positions <- function(visits) {
+  months <- vapply(visits, function(v) unique(pw_groups$month[pw_groups$visit == v])[1], numeric(1))
+  data.frame(visit = visits, month = months, x = seq_along(visits))
+}
+
+# Rows of n at the foot of the panel, one per group in its colour, labelled at the right end (the
+# left is the y axis's); and the "walking question" label over its visit, with a dashed line that
+# stops below it
+pw_n_rows <- function(n_frame, y_rows, last_x) {
+  list(
+    ggplot2::geom_text(data = n_frame, ggplot2::aes(x = x, y = y_rows[answer], label = count(n)),
+                       inherit.aes = FALSE, size = 2.3, colour = pw_colours[n_frame$answer],
+                       family = oaireport::oai_font()),
+    ggplot2::geom_text(data = data.frame(answer = names(y_rows), y = unname(y_rows)),
+                       ggplot2::aes(x = last_x + 0.42, y = y, label = paste("n,", tolower(answer))),
+                       inherit.aes = FALSE, hjust = 0, size = 2.3, colour = pw_colours[names(y_rows)],
+                       family = oaireport::oai_font()))
+}
+pw_question <- function(x, from, to, label_y, resume = NULL, label_bottom = NULL) {
+  # a second dash from above the star (`resume`) to just below the label, so the line reads as
+  # one marker passing behind the star
+  second <- if (!is.null(resume)) ggplot2::annotate("segment", x = x, xend = x, y = resume, yend = label_bottom,
+                                                    linetype = "dashed", colour = "grey65", linewidth = 0.4)
+  list(
+    ggplot2::annotate("segment", x = x, xend = x, y = from, yend = to, linetype = "dashed",
+                      colour = "grey65", linewidth = 0.4),
+    second,
+    ggplot2::annotate("text", x = x, y = label_y, label = "walking question", size = 2.4,
+                      colour = "grey45", family = oaireport::oai_font()))
+}
+
+# An outcome's estimate (95% CI) at each visit, non-walkers and walkers side by side (`dodge`
+# either side of the visit), the star of the adjusted contrast over each visit and each group's n
+# beneath. `cols` names the estimate and interval columns of the groups table; `scale` multiplies
+# them (100 for a share as a percentage). `beside`, given the points, returns more layers and the
+# frame of what they draw (visit, ymin, ymax), which the axis and stars make room for.
+pw_point_figure <- function(outcome, estimator, cols, ylab, scale = 1, y_labels = ggplot2::waiver(),
+                            dodge = 0.15, beside = NULL) {
+  d <- pw_groups[pw_groups$grouping == "any" & pw_groups$outcome == outcome, ]
+  d$y <- scale * d[[cols[["y"]]]]
+  d$y_lo <- scale * d[[cols[["lo"]]]]
+  d$y_hi <- scale * d[[cols[["hi"]]]]
+  pos <- pw_positions(sort(unique(d$visit)))
+  d$answer <- factor(pw_labels[d$level], levels = pw_labels)
+  d$x <- pos$x[match(d$visit, pos$visit)] + ifelse(d$level == "yes", dodge, -dodge)
+  extra <- if (is.null(beside)) NULL else beside(d)
+  stars <- data.frame(visit = pos$visit, x = pos$x)
+  stars$p <- vapply(stars$visit, pw_adjusted_p, numeric(1), outcome = outcome, estimator = estimator)
+  stars$stars <- fig_stars(stars$p)
+  stars$y <- vapply(stars$visit, function(v) max(d$y_hi[d$visit == v], extra$frame$ymax[extra$frame$visit == v]),
+                    numeric(1))
+  bottom <- min(d$y_lo, extra$frame$ymin)
+  span <- max(d$y_hi, extra$frame$ymax) - bottom
+  y_rows <- stats::setNames(c(bottom - 0.16 * span, bottom - 0.27 * span), pw_labels)
+  n_frame <- data.frame(x = pos$x[match(d$visit, pos$visit)], answer = as.character(d$answer), n = d$n)
+  top <- max(stars$y) + 0.14 * span
+  q <- pos$x[pos$visit == pw_question_visit]
+  # the dashed line runs from above the rows of n to just below the visit's star
+  star_y <- stars$y[stars$visit == pw_question_visit]
+  fig <- ggplot2::ggplot(d, ggplot2::aes(x, y, colour = answer)) +
+    pw_question(q, y_rows[[1]] + 0.07 * span, star_y + 0.01 * span, top + 0.07 * span,
+                resume = star_y + 0.11 * span, label_bottom = top + 0.035 * span) +
+    extra$layers +
+    ggplot2::geom_errorbar(ggplot2::aes(ymin = y_lo, ymax = y_hi), width = 0.1, linewidth = 0.4) +
+    ggplot2::geom_point(size = 2) +
+    ggplot2::geom_text(data = stars, ggplot2::aes(x = x, y = y, label = stars), inherit.aes = FALSE,
                        vjust = -0.6, size = 2.8, family = oaireport::oai_font()) +
-    ggplot2::scale_colour_manual(values = pw_colours, name = "Walked for exercise since age 50 (asked at 96 months)") +
-    ggplot2::scale_x_continuous(breaks = seq(0, 192, 24), limits = c(-4, 196)) +
-    ggplot2::scale_y_continuous(expand = ggplot2::expansion(mult = c(0.08, 0.26))) +
-    ggplot2::facet_wrap(~panel, scales = "free_y") +
-    ggplot2::labs(x = "Months since enrolment", y = NULL) +
+    pw_n_rows(n_frame, y_rows, max(pos$x)) +
+    ggplot2::scale_colour_manual(values = pw_colours, name = NULL) +
+    ggplot2::scale_x_continuous(breaks = pos$x, labels = pos$month, expand = ggplot2::expansion(add = 0.5)) +
+    # ticks only over the data, not the rows of n beneath it
+    ggplot2::scale_y_continuous(breaks = function(l) { b <- pretty(c(bottom, top), 5); b[b >= bottom - 1e-9 & b <= top] },
+                                labels = y_labels) +
+    ggplot2::coord_cartesian(clip = "off") +
+    ggplot2::labs(x = "Months since enrollment", y = ylab) +
     oaireport::theme_oai(base_size = 8) +
-    ggplot2::theme(legend.position = "bottom")
-  fig_with_stars(fig, marks$stars)
+    ggplot2::theme(legend.position = "top", plot.margin = ggplot2::margin(4, 46, 4, 4))
+  fig_with_stars(fig, c(stars$stars, extra$stars))
 }
 
-# Figure 2: any PASE walking at 96 months by times a month and by years walked
-fig_pase_dose <- function(visit = "10") {
-  titles <- c(times = "Times a month", years = "Years walked")
-  d <- pw_groups[pw_groups$visit == visit & pw_groups$outcome == "walking_any" & pw_groups$grouping %in% names(titles), ]
-  d[c("estimate", "lo", "hi")] <- 100 * d[c("estimate", "lo", "hi")]
-  d$p <- mapply(function(g, lv) if (lv == "no") NA_real_ else pw_adjusted_p(g, visit, "walking_any", lv), d$grouping, d$level)
-  d$stars <- fig_stars(d$p)
-  d$text <- trimws(paste(sprintf("%.0f%%", d$estimate), d$stars))
-  d$label <- sub(" times/month$", "", d$label)  # the panel title gives the unit
-  d$label <- sub(" years$", "", d$label)
-  d$panel <- factor(titles[d$grouping], levels = unname(titles))
-  d$key <- paste(d$grouping, d$level)
-  d$key <- factor(d$key, levels = rev(unique(d$key)))
-  d$fill <- ifelse(d$level == "no", "no", "yes")
-  fig <- ggplot2::ggplot(d, ggplot2::aes(estimate, key, fill = fill)) +
-    ggplot2::geom_col(width = 0.65) +
-    ggplot2::geom_errorbar(ggplot2::aes(xmin = lo, xmax = hi), width = 0.25, linewidth = 0.3, orientation = "y") +
-    ggplot2::geom_text(ggplot2::aes(x = hi, label = text), hjust = 0, nudge_x = 1.5, size = 2.6,
-                       family = oaireport::oai_font()) +
-    ggplot2::scale_fill_manual(values = c(no = "grey70", yes = oaireport::brief_colours[["item"]]), guide = "none") +
-    ggplot2::scale_y_discrete(labels = stats::setNames(d$label, d$key)) +
-    ggplot2::scale_x_continuous(labels = function(x) paste0(x, "%"), limits = c(0, 118), breaks = seq(0, 100, 25),
-                                expand = c(0, 0)) +
-    ggplot2::facet_wrap(~panel, scales = "free_y") +
-    ggplot2::labs(x = sprintf("Any PASE walking at %s, %% (95%% CI)", wave(visit)), y = NULL) +
-    oaireport::theme_oai(base_size = 8)
-  fig_with_stars(fig, d$stars)
+# Beside each Figure 2 point, on its outer side and centred on its height, a bar dividing that
+# group by estimated weekly walking hours (item 2 days x hours a day): each band is labelled with
+# its share of the group, so the labels add up to the point (the bands leave out the few who
+# walked but gave no hours), and a walker's band is starred where walkers differ from non-walkers
+# in it (outcome "band <2" and so on, adjusted as the points). Segment heights are shares of those
+# who walk; the bar's height (`half_h` of the points' span, either side) is not on the y axis.
+pw_hour_bars <- function(d, half_h = 0.32, gap = 0.07, width = 0.3) {
+  b <- pw_bands[pw_bands$grouping == "any" & pw_bands$band %in% pw_band_order, ]
+  b$band <- factor(b$band, levels = pw_band_order)
+  b <- b[order(b$visit, b$level, -as.integer(b$band)), ]  # the most walking at the bottom
+  walk <- stats::ave(b$share, b$visit, b$level, FUN = sum)
+  i <- match(paste(b$visit, b$level), paste(d$visit, d$level))
+  h <- half_h * (max(d$y_hi) - min(d$y_lo))
+  b$ymax <- d$y[i] - h + 2 * h * stats::ave(b$share, b$visit, b$level, FUN = cumsum) / walk
+  b$ymin <- b$ymax - 2 * h * b$share / walk
+  side <- ifelse(b$level == "yes", 1, -1)
+  b$xmin <- pmin(d$x[i] + side * gap, d$x[i] + side * (gap + width))
+  b$xmax <- b$xmin + width
+  p <- mapply(pw_adjusted_p, b$visit, paste("band", b$band), MoreArgs = list(estimator = "share"))
+  b$stars <- ifelse(b$level == "yes", fig_stars(p), "")
+  b$label <- sprintf("%.0f%%", 100 * b$share)
+  # a starred band's % moves up to make room for its stars beneath
+  starred <- nzchar(b$stars)
+  b$label_y <- (b$ymin + b$ymax) / 2 + ifelse(starred, 0.12 * h, 0)
+  b$stars_y <- (b$ymin + b$ymax) / 2 - 0.17 * h
+  b$fill <- paste(b$level, b$band)
+  fills <- c(stats::setNames(pw_band_colours$no, paste("no", pw_band_order)),
+             stats::setNames(pw_band_colours$yes, paste("yes", pw_band_order)))
+  ink <- ifelse(as.integer(b$band) > 2, "white", "grey15")  # light text on the two darker bands
+  list(
+    layers = list(
+      ggplot2::geom_rect(data = b, ggplot2::aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax, fill = fill),
+                         inherit.aes = FALSE, colour = "white", linewidth = 0.3),
+      ggplot2::geom_text(data = b, ggplot2::aes(x = (xmin + xmax) / 2, y = label_y, label = label),
+                         inherit.aes = FALSE, colour = ink, size = 1.8, family = oaireport::oai_font()),
+      ggplot2::geom_text(data = b[starred, ], ggplot2::aes(x = (xmin + xmax) / 2, y = stars_y, label = stars),
+                         inherit.aes = FALSE, colour = ink[starred], size = 2.6, family = oaireport::oai_font()),
+      ggplot2::scale_fill_manual(values = fills, breaks = paste("yes", pw_band_order),
+                                 labels = c(utils::head(pw_band_order, -1), paste(utils::tail(pw_band_order, 1), "hours a week")),
+                                 name = NULL)),
+    frame = b[c("visit", "ymin", "ymax")],
+    stars = b$stars)
 }
 
-# Figure 3: the adjusted difference in estimated PASE walking hours a week at 96 months, against
-# "No", by times a month and by years walked
-fig_pase_hours <- function(visit = "10") {
-  titles <- c(times = "Times a month", years = "Years walked")
-  d <- pw_contrasts[pw_contrasts$visit == visit & pw_contrasts$outcome == "walking_hours" &
-                      pw_contrasts$grouping %in% names(titles), ]
-  d$stars <- fig_stars(d$adj_p_holm)
-  d$label <- sub(" times/month$", "", d$label)
-  d$label <- sub(" years$", "", d$label)
-  d$panel <- factor(titles[d$grouping], levels = unname(titles))
-  d$key <- paste(d$grouping, d$level)
-  d$key <- factor(d$key, levels = rev(unique(d$key)))
-  top <- max(d$adj_hi, na.rm = TRUE)
-  fig <- ggplot2::ggplot(d, ggplot2::aes(adj_estimate, key)) +
-    ggplot2::geom_vline(xintercept = 0, colour = "grey60", linewidth = 0.4) +
-    ggplot2::geom_errorbar(ggplot2::aes(xmin = adj_lo, xmax = adj_hi), width = 0.25, linewidth = 0.4,
-                           orientation = "y", colour = oaireport::brief_colours[["item"]]) +
-    ggplot2::geom_point(size = 2, colour = oaireport::brief_colours[["item"]]) +
-    ggplot2::geom_text(ggplot2::aes(x = adj_hi, label = trimws(paste(sprintf("%.1f", adj_estimate), stars))),
-                       hjust = 0, nudge_x = 0.08, size = 2.6, family = oaireport::oai_font()) +
-    ggplot2::scale_y_discrete(labels = stats::setNames(d$label, d$key)) +
-    ggplot2::scale_x_continuous(limits = c(min(0, d$adj_lo, na.rm = TRUE) - 0.1, top * 1.35)) +
-    ggplot2::facet_wrap(~panel, scales = "free_y") +
-    ggplot2::labs(x = sprintf("PASE walking hours a week at %s vs no, adjusted difference (95%% CI)", wave(visit)), y = NULL) +
-    oaireport::theme_oai(base_size = 8)
-  fig_with_stars(fig, d$stars)
+# Figure 1: the PASE total, mean (95% CI)
+fig_pase_total <- function() {
+  pw_point_figure("total", "mean", c(y = "mean", lo = "mean_lo", hi = "mean_hi"),
+                  "PASE total score, mean (95% CI)")
+}
+
+# Figure 2: any PASE walking (item 2, past 7 days), % (Wilson 95% CI), each group's weekly
+# walking hours beside it
+fig_pase_walking <- function() {
+  pw_point_figure("walking_any", "share", c(y = "estimate", lo = "lo", hi = "hi"),
+                  "Any PASE walking, % (95% CI)", scale = 100, y_labels = function(v) paste0(v, "%"),
+                  dodge = 0.05, beside = pw_hour_bars)
 }

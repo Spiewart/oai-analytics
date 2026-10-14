@@ -4,8 +4,13 @@
 # grouping uses Lo et al. 2022's walker (a yes with at least one amount). At each PASE visit
 # three outcomes are compared with "No": the PASE total, any walking outside the home (item 2,
 # days > 0) and estimated walking hours a week (item 2 days x hours a day at the scoring
-# midpoints). Crude and adjusted contrasts come from oaimodels::group_contrasts(); trends across
-# ordered amount levels from Jonckheere-Terpstra (numbers) and Cochran-Armitage (yes/no).
+# midpoints). Crude and adjusted contrasts come from oaimodels::group_contrasts(), for numbers by
+# medians and by means; trends across ordered amount levels from Jonckheere-Terpstra (numbers)
+# and Cochran-Armitage (yes/no); and each group's share in each band of weekly walking hours
+# (components.pase_weekly_hours_bins), with each band but none compared as a yes/no outcome
+# ("band <2" and so on: in that band or not). p-values are adjusted (pase_walking.p_adjust) within each
+# family of pase_walking.p_adjust_family: every visit and level of a grouping, outcome and
+# estimator ("across_visits"), or a grouping's levels at one visit ("within_visit").
 A <- oaimodels::assumptions()
 visits <- unlist(A[["pase.all_visits"]])
 amounts <- unlist(A[["pase_walking.amounts"]])
@@ -16,6 +21,8 @@ se_method <- A[["validity.median_regression_se"]]
 perms <- A[["validity.jt_permutations"]]
 seed <- A[["bias.seed"]]
 p_adjust <- A[["pase_walking.p_adjust"]]
+across_visits <- A[["pase_walking.p_adjust_family"]] == "across_visits"
+hour_edges <- unlist(A[["components.pase_weekly_hours_bins"]])
 labels <- lapply(A[["components.answer_labels"]], unlist)
 amount_columns <- c(times = "amount_times", months = "amount_months", years = "amount_years")
 if (length(bad <- setdiff(amounts, names(amount_columns)))) {
@@ -58,7 +65,7 @@ outcomes_at <- function(v) {
   out
 }
 
-summaries <- list(); contrasts <- list(); trends <- list()
+summaries <- list(); contrasts <- list(); trends <- list(); bands <- list()
 cov_frame <- frame[covariates]
 for (v in visits) {
   for (outcome in names(ys <- outcomes_at(v))) {
@@ -68,9 +75,35 @@ for (v in visits) {
       base <- data.frame(grouping = grouping, visit = v, outcome = outcome)
       s <- oaimodels::group_summaries(y, g)
       summaries[[length(summaries) + 1]] <- cbind(base, s, label = level_label(grouping, s$level))
-      k <- oaimodels::group_contrasts(y, g, covariates = cov_frame, se = se_method, reps = reps,
-                                      seed = seed, adjust = p_adjust)
-      contrasts[[length(contrasts) + 1]] <- cbind(base, k, label = level_label(grouping, k$level))
+      # numbers: medians (Hodges-Lehmann, median regression) and means (Welch, linear regression)
+      for (estimator in if (is.logical(y)) "share" else c("median", "mean")) {
+        k <- oaimodels::group_contrasts(y, g, covariates = cov_frame, se = se_method, reps = reps,
+                                        seed = seed, adjust = if (across_visits) "none" else p_adjust,
+                                        estimator = if (estimator == "mean") "mean" else "median")
+        contrasts[[length(contrasts) + 1]] <- cbind(base, estimator = estimator, k,
+                                                    label = level_label(grouping, k$level))
+      }
+      if (outcome == "walking_hours") {
+        # each group's share in each band of weekly walking hours
+        band <- oaimodels::weekly_bins(y, hour_edges)
+        for (lv in levels(g)) {
+          in_level <- !is.na(g) & g == lv & !is.na(band)
+          tab <- table(band[in_level])
+          bands[[length(bands) + 1]] <- data.frame(
+            grouping = grouping, visit = v, level = lv, label = level_label(grouping, lv),
+            band = names(tab), k = as.integer(tab), n = sum(in_level),
+            share = if (sum(in_level)) as.numeric(tab) / sum(in_level) else NA_real_)
+        }
+        # each band but "0" (whose complement is any walking) against the reference: in it or not
+        for (b in levels(band)[-1]) {
+          in_band <- ifelse(is.na(band), NA, band == b)
+          k <- oaimodels::group_contrasts(in_band, g, covariates = cov_frame, se = se_method, reps = reps,
+                                          seed = seed, adjust = if (across_visits) "none" else p_adjust)
+          contrasts[[length(contrasts) + 1]] <- cbind(
+            data.frame(grouping = grouping, visit = v, outcome = paste("band", b)), estimator = "share", k,
+            label = level_label(grouping, k$level))
+        }
+      }
       if (grouping %in% amounts) {
         ok <- !is.na(y) & !is.na(g)
         p <- if (is.logical(y)) {
@@ -84,6 +117,15 @@ for (v in visits) {
       }
     }
   }
+}
+
+# Across visits: adjust each grouping, outcome and estimator's p-values together, after every visit
+contrasts <- do.call(rbind, contrasts)
+if (across_visits) {
+  family <- interaction(contrasts$grouping, contrasts$outcome, contrasts$estimator, drop = TRUE)
+  adjust_family <- function(p) stats::ave(p, family, FUN = function(x) stats::p.adjust(x, method = p_adjust))
+  contrasts$p_holm <- adjust_family(contrasts$p)
+  contrasts$adj_p_holm <- adjust_family(contrasts$adj_p)
 }
 
 # The month of each visit, as the cohort step's PASE counts give it
@@ -101,8 +143,9 @@ metrics <- data.frame(
             sum(said_yes & !frame$walker), sum(frame$walker)))
 utils::write.csv(metrics, file.path(out_dir, "metrics_pase.csv"), row.names = FALSE)
 utils::write.csv(with_month(summaries), file.path(out_dir, "pase_walking_groups.csv"), row.names = FALSE)
-utils::write.csv(with_month(contrasts), file.path(out_dir, "pase_walking_contrasts.csv"), row.names = FALSE)
+utils::write.csv(with_month(list(contrasts)), file.path(out_dir, "pase_walking_contrasts.csv"), row.names = FALSE)
 utils::write.csv(with_month(trends), file.path(out_dir, "pase_walking_trend.csv"), row.names = FALSE)
+utils::write.csv(with_month(bands), file.path(out_dir, "pase_walking_bands.csv"), row.names = FALSE)
 cat(sprintf("pase_walking: %d group summaries, %d contrasts, %d trend tests over %d visits\n",
-            sum(vapply(summaries, nrow, integer(1))), sum(vapply(contrasts, nrow, integer(1))),
+            sum(vapply(summaries, nrow, integer(1))), nrow(contrasts),
             length(trends), length(visits)))

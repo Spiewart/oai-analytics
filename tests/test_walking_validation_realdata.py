@@ -57,6 +57,18 @@ def _ready() -> bool:
     return probe.returncode == 0
 
 
+def _holm(p: list[float | None]) -> list[float | None]:
+    """Holm-adjusted p-values, as R's p.adjust(p, "holm"): missing values stay missing and do not
+    count towards the number of tests."""
+    present = sorted((v, i) for i, v in enumerate(p) if v is not None)
+    out: list[float | None] = [None] * len(p)
+    running = 0.0
+    for rank, (v, i) in enumerate(present):
+        running = max(running, min(1.0, (len(present) - rank) * v))
+        out[i] = running
+    return out
+
+
 @dataclasses.dataclass(frozen=True)
 class FastRun:
     settings: Settings  # work and results folders of this module's run
@@ -151,20 +163,37 @@ def test_walking_validation_end_to_end(fast_run):
 def test_e2e_pase_walking_compares_each_answer_group_with_no_at_every_visit(fast_run):
     out = fast_run.out
     read = functools.partial(pl.read_csv, null_values=["NA"], schema_overrides={"visit": pl.String})
-    groups, contrasts, trend = (
-        read(out / f"pase_walking_{n}.csv") for n in ("groups", "contrasts", "trend")
+    groups, all_contrasts, trend, bands = (
+        read(out / f"pase_walking_{n}.csv") for n in ("groups", "contrasts", "trend", "bands")
     )
+    # numbers are compared by medians and by means; yes/no outcomes by shares
+    contrasts = all_contrasts.filter(pl.col("estimator") != "mean")
+    means = all_contrasts.filter(pl.col("estimator") == "mean")
+    assert set(means["outcome"]) == {"total", "walking_hours"}
+    assert set(means["effect"]) == set(means["adj_effect"]) == {"mean_difference"}
+    # each band of weekly walking hours is also a yes/no outcome: in that band or not
+    band_outcomes = [f"band {b}" for b in ("<2", "2–5", "5–10", "10+")]
+    shares = ["walking_any", *band_outcomes]
+    assert means.height == contrasts.filter(~pl.col("outcome").is_in(shares)).height
+    # weekly walking-hours bands: each group's shares add to 1 at every visit
+    sums = bands.group_by("grouping", "visit", "level").agg(
+        pl.col("share").sum(), pl.col("k").sum(), pl.col("n").first()
+    )
+    assert ((sums["share"] - 1).abs() < 1e-9).all() and (sums["k"] == sums["n"]).all()
+    assert set(bands["band"]) == {"0", "<2", "2–5", "5–10", "10+"}
     counts = read(out / "pase_visits.csv")
     visits = ["00", "01", "03", "05", "06", "08", "10", "13", "14"]
     # every visit has the walking item; every visit but V14 has the total
     cells = {(v, o) for v in visits for o in ("walking_any", "walking_hours")} | {
         (v, "total") for v in visits if v != "14"
     }
-    assert set(zip(contrasts["visit"], contrasts["outcome"], strict=True)) == cells
     assert len(cells) == 26
+    cells |= {(v, b) for v in visits for b in band_outcomes}
+    assert set(zip(contrasts["visit"], contrasts["outcome"], strict=True)) == cells
+    assert len(cells) == 26 + 36
     # one contrast per non-reference level: any 1, Lo coding 1, times a month 3, years walked 4
     per_cell = contrasts.group_by("grouping").len().sort("grouping")
-    assert dict(per_cell.iter_rows()) == {"any": 26, "any_lo": 26, "times": 78, "years": 104}
+    assert dict(per_cell.iter_rows()) == {"any": 62, "any_lo": 62, "times": 186, "years": 248}
     assert trend.height == 2 * 26 and set(trend["grouping"]) == {"times", "years"}
     assert groups["label"].is_not_null().all() and not groups["label"].str.contains("NA").any()
     # the "any" grouping covers everyone with that visit's measure (No + Yes)
@@ -182,14 +211,26 @@ def test_e2e_pase_walking_compares_each_answer_group_with_no_at_every_visit(fast
         ].item()
         assert n == expected, (visit, outcome)
     assert (contrasts["p_holm"] >= contrasts["p"] - 1e-12).all()
+    # one Holm family per grouping, outcome and estimator, across every visit and level
+    # (pase_walking.p_adjust_family = across_visits): walkers against non-walkers is one test a
+    # visit, so a family of 8 (total) or 9 (any walking) visits
+    families = all_contrasts.group_by("grouping", "outcome", "estimator", maintain_order=True)
+    for key, family in families:
+        for raw, adjusted in (("p", "p_holm"), ("adj_p", "adj_p_holm")):
+            want, got = _holm(family[raw].to_list()), family[adjusted].to_list()
+            assert all(
+                (w is None and g is None) or (w is not None and g is not None and abs(w - g) < 1e-9)
+                for w, g in zip(want, got, strict=True)
+            ), (key, adjusted)
     # one adjusted model per grouping, visit and outcome covers all its levels: adj_n is that
     # model's complete cases, at most everyone with the outcome in the grouping
     in_cell = contrasts.group_by("grouping", "visit", "outcome").agg(
         pl.col("adj_n").max(), (pl.col("n").sum() + pl.col("n_ref").first()).alias("people")
     )
     assert (in_cell["adj_n"] <= in_cell["people"]).all(), in_cell
-    assert set(contrasts.filter(pl.col("outcome") == "walking_any")["adj_effect"]) == {"odds_ratio"}
-    assert set(contrasts.filter(pl.col("outcome") != "walking_any")["effect"]) == {
+    by_share = contrasts.filter(pl.col("outcome").is_in(shares))
+    assert set(by_share["adj_effect"]) == {"odds_ratio"} and set(by_share["estimator"]) == {"share"}
+    assert set(contrasts.filter(~pl.col("outcome").is_in(shares))["effect"]) == {
         "median_difference"
     }
 

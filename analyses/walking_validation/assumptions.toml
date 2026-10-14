@@ -266,8 +266,14 @@ source = "Adjusted PASE contrasts: baseline age, sex and BMI"
 [pase_walking.p_adjust]
 value = "holm"
 status = "assumed"
-source = "PASE contrasts: within each grouping, visit and outcome"
+source = "PASE contrasts: the adjustment method; pase_walking.p_adjust_family sets which p-values are adjusted together"
 choices = ["holm", "bonferroni", "none"]
+
+[pase_walking.p_adjust_family]
+value = "across_visits"
+status = "assumed"
+source = "PASE contrasts: one family per grouping, outcome and estimator, across every visit and level, so walkers vs non-walkers (one test a visit) is adjusted across visits; within_visit adjusts only across a grouping's levels at one visit"
+choices = ["across_visits", "within_visit"]
 
 [variants.wave48]
 description = "Device = 48-month wave only"
@@ -288,6 +294,10 @@ set = { "reference.walker_rule" = "bout_minutes" }
 [variants.nonwear60]
 description = "NHANES 60-minute non-wear rule"
 set = { "device.nonwear_minutes" = 60 }
+
+[variants.pase_p_within_visit]
+description = "PASE contrasts adjusted only across a grouping's levels at each visit, not across visits"
+set = { "pase_walking.p_adjust_family" = "within_visit" }
 
 [variants.exposure_replication_coding]
 description = "'Yes' with no amount answers coded as a walker (the replication's default coding)"
