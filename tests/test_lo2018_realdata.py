@@ -30,9 +30,15 @@ def _r_ready() -> bool:
 def test_replication_is_graded_end_to_end():
     settings = get_settings()
     analysis = find_analysis("lo2018_crepitus", settings.analyses_dir)
-    for step in ("cohort", "models", "compare"):
-        run_analysis(analysis, settings, step_id=step, echo=lambda _: None)
+    run_analysis(analysis, settings, echo=lambda _: None)
     out = settings.results_dir / "lo2018_crepitus" / "default"
+    for name in (
+        "dual_counts.csv",
+        "dual_concordance.csv",
+        "dual_prediction.csv",
+        "dual_classification.csv",
+    ):
+        assert (out / name).is_file(), name
     comparison = pl.read_csv(out / "comparison.csv")
     assert comparison.filter(pl.col("verdict") == "missing").height == 0
     baseline_soa = comparison.filter(pl.col("metric") == "flow.baseline_soa.excluded")
