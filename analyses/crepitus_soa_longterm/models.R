@@ -59,7 +59,8 @@ fit_table <- function(table, measure, kind, d, group, fit, with_period) {
       put(key, est[["or"]]); put(paste0(key, ".lo"), est[["lo"]]); put(paste0(key, ".hi"), est[["hi"]])
       rows[[length(rows) + 1]] <- data.frame(measure = measure, group = group, model = model,
                                              term = term, n = nrow(dd), events = sum(dd$event),
-                                             or = est[["or"]], lo = est[["lo"]], hi = est[["hi"]])
+                                             or = est[["or"]], lo = est[["lo"]], hi = est[["hi"]],
+                                             p = NA_real_)
     }
   }
   do.call(rbind, rows)
@@ -90,7 +91,7 @@ wald_interaction <- function(d, e) {
                           family = stats::binomial, corstr = A[["model.corstr"]])
   fit1 <- geepack::geeglm(stats::as.formula(paste("event ~", base, "+", e$rhs, ": subgroup")),
                           id = ID, data = d, family = stats::binomial, corstr = A[["model.corstr"]])
-  stats::anova(fit1, fit0)[["P(>|Chi|)"]][1]
+  list(p = stats::anova(fit1, fit0)[["P(>|Chi|)"]][1], n = nrow(d), events = sum(d$event))
 }
 l4 <- list()
 for (m in measures) {
@@ -99,26 +100,36 @@ for (m in measures) {
   for (s in subgroups) {
     l4[[length(l4) + 1]] <- fit_table("l4", m, "hazard", d[d$subgroup == s, , drop = FALSE], s, gee, TRUE)
   }
-  p <- wald_interaction(d, e)
-  put(sprintf("l4.%s.interaction_p", m), p)
+  w <- wald_interaction(d, e)
+  put(sprintf("l4.%s.interaction_p", m), w$p)
   l4[[length(l4) + 1]] <- data.frame(measure = m, group = "all", model = "x_subgroup",
-                                     term = "wald_p", n = nrow(d), events = sum(d$event),
-                                     or = NA, lo = NA, hi = p)
+                                     term = "wald", n = w$n, events = w$events,
+                                     or = NA_real_, lo = NA_real_, hi = NA_real_, p = w$p)
 }
-# Both measures in one hazard model (exam frame), with their interaction (exam x any S2)
+# Both measures in one hazard model (exam frame) with exam x any-S2: the exam OR among knees
+# with S2 never (exam0), and among S2 >= 1 (exam0 + the interaction, a linear combination)
 joint <- local({
   d <- frames$exam$hazard
   d <- d[stats::complete.cases(d[, c("event", "exam0", "crep0", covariates)]), ]
   d <- d[order(d$ID, d$period), ]
   rhs <- paste(c("exam0", "factor(crep0)", "exam0:I(crep0 >= 1)", period_term, covariates),
                collapse = " + ")
-  rows <- lapply(c(exam = "exam0", interaction = "exam0:I(crep0 >= 1)TRUE"), function(term) {
-    est <- gee(d, rhs, term)
-    data.frame(measure = "both", group = "all", model = "joint_adj", term = term, n = nrow(d),
-               events = sum(d$event), or = est[["or"]], lo = est[["lo"]], hi = est[["hi"]])
-  })
-  out <- do.call(rbind, rows)
-  out$term <- c("exam", "exam_x_any_s2")
+  fit <- geepack::geeglm(stats::as.formula(paste("event ~", rhs)), id = ID, data = d,
+                         family = stats::binomial, corstr = A[["model.corstr"]])
+  b <- stats::coef(fit)
+  V <- fit$geese$vbeta
+  dimnames(V) <- list(names(b), names(b))
+  combos <- list(exam_if_s2_never = c(exam0 = 1),
+                 exam_if_s2_any = c(exam0 = 1, "exam0:I(crep0 >= 1)TRUE" = 1),
+                 exam_x_any_s2 = c("exam0:I(crep0 >= 1)TRUE" = 1))
+  out <- do.call(rbind, lapply(names(combos), function(name) {
+    w <- combos[[name]]
+    est <- sum(w * b[names(w)])
+    se <- sqrt(as.numeric(t(w) %*% V[names(w), names(w), drop = FALSE] %*% w))
+    data.frame(measure = "both", group = "all", model = "joint_adj", term = name, n = nrow(d),
+               events = sum(d$event), or = exp(est), lo = exp(est - 1.96 * se),
+               hi = exp(est + 1.96 * se), p = NA_real_)
+  }))
   for (i in seq_len(nrow(out))) {
     key <- sprintf("l4.both.joint.%s", out$term[i])
     put(key, out$or[i]); put(paste0(key, ".lo"), out$lo[i]); put(paste0(key, ".hi"), out$hi[i])

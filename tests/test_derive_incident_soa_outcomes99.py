@@ -66,3 +66,13 @@ def test_followup_soa_at_96_months():
         (pl.col("ID") == P[11]) & (pl.col("visit") <= "06") & (pl.col("visit") != "00")
     )
     assert not early["soa"].fill_null(False).any()
+
+
+def test_roa_unknown_after_the_last_reading_without_roa():
+    """Code 2 says no incidence while read; after the last no-ROA visit (XNOA) ROA is unknown."""
+    frame = incident_soa.roa_from_outcomes99(resolved(**LONG))
+    assert [roa(frame, 8, v) for v in ("06", "08", "10")] == [False, None, None]  # XNOA 48 mo
+    assert [roa(frame, 13, v) for v in ("06", "08", "10")] == [False, False, None]  # read at 72 mo
+    assert [roa(frame, 6, v) for v in ("06", "08")] == [False, True]  # incident at 72, XNOA 48
+    as_none = incident_soa.roa_from_outcomes99(resolved(**LONG, outcomes__roa_unread="no_roa"))
+    assert roa(as_none, 8, "10") is False

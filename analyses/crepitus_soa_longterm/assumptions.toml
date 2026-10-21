@@ -122,6 +122,20 @@ status = "open"
 source = "OUTCOMES99 offers incident KL >= 2 (V99E?XIOA) and incident KL >= 2 with JSN (V99E?XIOAN); Lo 2018 used KL >= 2"
 choices = ["kl2", "kl2_jsn"]
 
+[outcomes.roa_unread]
+value = "unknown"
+status = "assumed"
+source = "OUTCOMES99 'no incidence' (V99E?XIOA = 2) holds only while the knee was read; V99E?XNOA gives the last visit with no ROA"
+rationale = "unknown: after that visit (and between it and an incident visit) ROA is missing; no_roa: taken as absent (the first version of this analysis)"
+choices = ["unknown", "no_roa"]
+
+[horizon.selection]
+value = "known_or_case"
+status = "open"
+source = "Spec decision 5: L3 keeps people whose outcome at the horizon is known or who became cases earlier"
+rationale = "known_or_case keeps cases who left and drops non-cases who left (favours cases); complete keeps only people with a known outcome at the horizon. Lo 2018's four-year table counted missing outcomes as non-events. L2 is the censoring-robust estimate."
+choices = ["known_or_case", "complete"]
+
 [exposure.exam_after_48m]
 value = "carry_v06"
 status = "open"
@@ -151,6 +165,14 @@ set = { "exposure.exam_after_48m" = "none" }
 [variants.period_term_none]
 description = "No period term (Lo 2018's model)"
 set = { "model.period_term" = "none" }
+
+[variants.roa_unread_as_none]
+description = "OUTCOMES99 'no incidence' also counts at visits after the knee's last reading"
+set = { "outcomes.roa_unread" = "no_roa" }
+
+[variants.horizon_complete]
+description = "L3: only people whose outcome at the horizon is known"
+set = { "horizon.selection" = "complete" }
 
 [variants.lo2018_48m]
 description = "The 48-month design of lo2018_crepitus and exam_crepitus_soa (regression anchor)"

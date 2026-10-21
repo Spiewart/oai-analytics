@@ -14,6 +14,8 @@ NEW = {
     "outcomes.roa_definition": "kl2",
     "exposure.exam_after_48m": "carry_v06",
     "model.period_term": "factor",
+    "outcomes.roa_unread": "unknown",
+    "horizon.selection": "known_or_case",
 }
 
 
@@ -30,6 +32,8 @@ def test_manifest_and_assumptions_load():
         "roa_kl2_jsn",
         "exam_no_carry",
         "period_term_none",
+        "roa_unread_as_none",
+        "horizon_complete",
         "lo2018_48m",
     }
     assert len(shared_keys()) >= 15
@@ -58,6 +62,8 @@ def test_lo2018_48m_variant_restores_the_48_month_design():
         ("outcomes.roa_definition", "kl2jsn"),
         ("exposure.exam_after_48m", "carry"),
         ("model.period_term", "linear"),
+        ("outcomes.roa_unread", "none"),
+        ("horizon.selection", "all"),
     ],
 )
 def test_enumerated_assumptions_reject_typos(key, typo):
