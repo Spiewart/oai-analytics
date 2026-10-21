@@ -75,6 +75,7 @@ Coded cells (`1: Right`) load as their code, with labels in the codebook. Missin
 | `activity_agreement` | local | [analysis plan §1–9](docs/reference/oai-activity-agreement-analysis-plan.md) |
 | `progression_definitions` | local | [crosswalk](docs/reference/oai-progression-definition-crosswalk.md) |
 | `crepitus` | local | Crepitus measures in the OAI: sample sizes and events by visit and cohort ([README](analyses/crepitus/README.md) · [literature ledger](analyses/crepitus/LITERATURE.md)) |
+| `exam_crepitus_soa` | local | Palpable crepitus and incident symptomatic OA (Lo 2018 design), anchored by a Mahmoudian 2023 replication ([README](analyses/exam_crepitus_soa/README.md)) |
 | `genetics_progression` | local → enclave | [analysis plan §10–12](docs/reference/oai-activity-agreement-analysis-plan.md) |
 | `lo2018_crepitus` | local | Replication of Lo et al. 2018 (crepitus and incident symptomatic OA), with a KOOS S2 × exam crepitus extension ([README](analyses/lo2018_crepitus/README.md)) |
 | `lo2022_walking` | local | Replication of Lo et al. 2022 ([README](analyses/lo2022_walking/README.md)) |
