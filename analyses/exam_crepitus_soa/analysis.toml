@@ -1,0 +1,38 @@
+name = "exam_crepitus_soa"
+description = "Palpable (examiner) crepitus and incident symptomatic knee OA with the Lo 2018 design, anchored by a Mahmoudian 2023 replication."
+
+[inputs]
+tables = [
+    "enrollees", "allclinical:00", "allclinical:01", "allclinical:03", "allclinical:05",
+    "allclinical:06", "kxr_sq_bu:00", "kxr_sq_bu:01", "kxr_sq_bu:03", "kxr_sq_bu:05",
+    "kxr_sq_bu:06", "outcomes:99",
+]
+
+[[steps]]
+id = "cohort"
+lang = "python"
+stage = "local"
+entry = "build_frame.py"
+
+[[steps]]
+id = "anchor"
+lang = "python"
+stage = "local"
+entry = "anchor.py"
+
+[[steps]]
+id = "models"
+lang = "r"
+stage = "local"
+entry = "models.R"
+needs = ["cohort", "anchor"]
+
+[[steps]]
+id = "compare"
+lang = "python"
+stage = "local"
+entry = "compare.py"
+needs = ["models"]
+
+[outputs]
+aggregate = ["flow.csv", "table_*.csv", "comparison.csv", "metrics_*.csv", "assumptions.resolved.json"]

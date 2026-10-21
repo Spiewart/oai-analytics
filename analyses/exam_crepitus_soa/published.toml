@@ -1,0 +1,35 @@
+# Anchors for analyses/exam_crepitus_soa. Graded by oai.replication.
+# flow.*: Lo 2018 (Arthritis Care Res 70:53-60) flow, identical to analyses/lo2018_crepitus/published.toml;
+#   the exam analysis shares that cohort, so these guard the shared code.
+# m.*: Mahmoudian A et al., OARSI 2023 abstract 179, Osteoarthritis Cartilage 31(S1):S214-5
+#   (doi:10.1016/j.joca.2023.01.194), text and Table 1 as supplied by the user on 2026-10-21.
+#   m.women is 60% of 576 rounded, so it carries its own tolerance. ORs: sig = the rounded 95% CI
+#   excludes 1; no sig when a bound is exactly 1.0.
+
+[related]
+"flow" = ["cohort.side", "cohort.reading_project", "cohort.arthroplasty_scope", "cohort.missing_baseline_pain", "outcomes.pain_baseline_item"]
+"flow.no_outcome" = ["outcomes.soa_missing", "outcomes.roa_rule", "outcomes.arthroplasty_scope", "outcomes.pain_followup_item", "cohort.reading_project"]
+"m" = ["mahmoudian.knee_pick", "mahmoudian.seed", "mahmoudian.reading_project"]
+"m.structural" = ["mahmoudian.jsn_rule", "mahmoudian.osteophyte_rule", "mahmoudian.knee_pick", "mahmoudian.reading_project"]
+"m.structural_sx" = ["mahmoudian.jsn_rule", "mahmoudian.osteophyte_rule", "mahmoudian.missing_followup_pain", "mahmoudian.knee_pick"]
+
+[default]
+"flow.all.persons" = 4796
+"flow.arthroplasty.excluded" = 35
+"flow.no_baseline_kl.excluded" = 305
+"flow.baseline_soa.excluded" = 877
+"flow.no_outcome.excluded" = 84
+"flow.persons" = 3495
+"m.subjects" = 576
+"m.crepitus" = 264
+"m.women" = { count = 346, tol = 4 }
+"m.age_mean" = 58.9
+"m.bmi_mean" = 29.6
+"m.structural.events" = 310
+"m.structural_sx.events" = 153
+"m.structural.or_crude" = { or = 1.3, lo = 1.0, hi = 1.8 }
+"m.structural.or_adj" = { or = 1.2, lo = 0.8, hi = 1.7, sig = false }
+"m.structural.or_adj_kl" = { or = 1.2, lo = 0.9, hi = 1.7, sig = false }
+"m.structural_sx.or_crude" = { or = 1.1, lo = 0.8, hi = 1.7, sig = false }
+"m.structural_sx.or_adj" = { or = 1.1, lo = 0.7, hi = 1.6, sig = false }
+"m.structural_sx.or_adj_kl" = { or = 1.0, lo = 0.7, hi = 1.5, sig = false }
