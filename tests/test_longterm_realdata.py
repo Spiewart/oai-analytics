@@ -50,6 +50,10 @@ def test_longterm_runs_and_egress_is_clean():
     for table in ("l1", "l2", "l3", "l4"):
         assert (out / f"table_{table}.csv").is_file(), table
     assert (out / "coverage.csv").is_file()
+    l4 = pl.read_csv(out / "table_l4.csv", null_values=["NA"])
+    assert "p" in l4.columns and l4.filter(pl.col("model") == "x_subgroup")["p"].null_count() == 0
+    joint = set(l4.filter(pl.col("model") == "joint_adj")["term"])
+    assert joint == {"exam_if_s2_never", "exam_if_s2_any", "exam_x_any_s2"}
     egress = get_settings().project["egress"]
     report = check_egress(
         out,

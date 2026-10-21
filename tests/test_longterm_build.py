@@ -51,7 +51,22 @@ def test_by_horizon_frame_needs_outcome_at_horizon():
 
 def test_coverage_report():
     values = dict(longterm.coverage(resolved(), longterm.build(resolved())).iter_rows())
-    # 14 in the cohort: 2000014 has a blank 48-month pain answer, 2000008 nothing after 48 months
-    assert (values["cov.outcome_at.06"], values["cov.outcome_at.10"]) == (13, 13)
+    # 14 in the cohort; 2000014 has a blank 48-month pain answer. At 96 months only knees with
+    # ROA already (2000007 replaced, 2000011, 2000017) or a reading past 48 months are known.
+    assert values["cov.outcome_at.06"] == 13
+    assert values["cov.outcome_at.10"] == 5
     assert values["cov.p37.noroa_nosx"] + values["cov.p37.noroa_sx"] >= 2  # 2000006, 2000013 (42)
     assert {"cov.roa48.disagree", "cov.p37.roa_nosx", "cov.p43.roa_nosx"} <= set(values)
+
+
+def test_complete_horizon_selection_needs_every_outcome_at_horizon():
+    """2000005 became a case at 24 months and has no 96-month outcome."""
+    A = resolved()
+    _, _, default, _ = longterm.frames_for(A, "koos_s2", longterm.build(A))
+    assert P[5] in default["ID"].to_list()
+    B = load_assumptions(ANALYSIS).resolve(
+        "crepitus_soa_longterm", None, {"horizon.selection": "complete"}
+    )
+    _, _, complete, _ = longterm.frames_for(B, "koos_s2", longterm.build(B))
+    assert P[5] not in complete["ID"].to_list()
+    assert P[11] in complete["ID"].to_list()

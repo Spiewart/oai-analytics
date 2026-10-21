@@ -5,7 +5,10 @@ the schedule to `periods.horizon` and ROA by visit from OUTCOMES99):
   periods     the measure at each period's start visit (time-varying), for one-period GEE (L1)
   hazard      the baseline measure on every at-risk period, a discrete-time hazard (L2)
   by_horizon  one row per person whose outcome at the horizon is known or who became a case
-              earlier (L3, like Lo 2018's four-year table)
+              earlier (`horizon.selection = "known_or_case"`; this keeps cases who left and drops
+              non-cases who left, so it favours cases) or only people whose outcome at the
+              horizon is known (`"complete"`). Lo 2018's four-year table instead counted every
+              missing outcome as a non-event. L2 is the censoring-robust estimate.
 """
 
 from __future__ import annotations
@@ -47,7 +50,11 @@ def frames_for(
     )
     horizon = isoa.outcome_visits(A)[-1]
     known = base.soa.filter((pl.col("visit") == horizon) & pl.col("soa").is_not_null()).select("ID")
-    by_horizon = persons.filter(pl.col("event") | pl.col("ID").is_in(known["ID"].implode()))
+    at_horizon = pl.col("ID").is_in(known["ID"].implode())
+    if isoa.setting(A, "horizon.selection", "known_or_case") == "complete":
+        by_horizon = persons.filter(at_horizon)
+    else:
+        by_horizon = persons.filter(pl.col("event") | at_horizon)
     assert baseline_col in hazard.columns
     return periods, hazard, by_horizon, counts
 

@@ -40,6 +40,7 @@ READINGS_LAST_VISIT = "06"  # Project 15 reads baseline to 48 months
 INCIDENT_CODE_VISIT = {3: "01", 4: "03", 5: "05", 6: "06", 7: "08", 8: "10", 9: "12"}
 ROA_AT_BASELINE, NO_INCIDENCE = 1, 2
 ROA_COLUMN = {"kl2": "IOA", "kl2_jsn": "IOAN"}
+LAST_NO_ROA_COLUMN = {"kl2": "NOA", "kl2_jsn": "NOAN"}  # coded by visit number (0, 1, 3, ... 12)
 EXAM_CARRIED_FROM = "06"  # no exam at V08 or V10
 SUBGROUPS = ("roa_nosx", "noroa_sx", "noroa_nosx")
 ROA_KL = 2
@@ -124,22 +125,32 @@ def _replaced_by_visit(A: Resolved) -> pl.DataFrame:
 
 def roa_from_outcomes99(A: Resolved) -> pl.DataFrame:
     """ID, visit, roa for the cohort side at V00 and every outcome visit of the schedule, from
-    OUTCOMES99's earliest-incidence variables (carried forward once a knee has ROA)."""
+    OUTCOMES99's earliest-incidence variables (carried forward once a knee has ROA).
+
+    "No incidence" is only known up to the knee's last reading without ROA (`V99E?XNOA`).
+    After it, and between that reading and an incident visit, ROA is unknown (null) under
+    `outcomes.roa_unread = "unknown"`, or taken as absent under `"no_roa"`.
+    """
     side = A["cohort.side"]
-    column = f"V99E{side}X{ROA_COLUMN[setting(A, 'outcomes.roa_definition', 'kl2')]}"
+    definition = setting(A, "outcomes.roa_definition", "kl2")
+    unread_as_none = setting(A, "outcomes.roa_unread", "unknown") == "no_roa"
     df = read_table("outcomes", "99")
+    col = lambda name: find_col(df, name, where="outcomes99")  # noqa: E731
     codes = df.select(
         pl.col(find_col(df, "ID")).cast(pl.Int64).alias("ID"),
-        pl.col(find_col(df, column, where="outcomes99")).cast(pl.Int64).alias("code"),
+        pl.col(col(f"V99E{side}X{ROA_COLUMN[definition]}")).cast(pl.Int64).alias("code"),
+        pl.col(col(f"V99E{side}X{LAST_NO_ROA_COLUMN[definition]}")).cast(pl.Int64).alias("last_no"),
     )
     frames = []
     for visit in ("00", *outcome_visits(A)):
         incident_by = [c for c, v in INCIDENT_CODE_VISIT.items() if v <= visit]
         known = pl.col("code").is_in([ROA_AT_BASELINE, NO_INCIDENCE, *INCIDENT_CODE_VISIT])
         roa = (pl.col("code") == ROA_AT_BASELINE) | pl.col("code").is_in(incident_by)
-        frames.append(
-            codes.select("ID", pl.lit(visit).alias("visit"), pl.when(known).then(roa).alias("roa"))
-        )
+        unread = (~roa) & pl.col("last_no").is_not_null() & (pl.col("last_no") < int(visit))
+        value = pl.when(known).then(roa)
+        if not unread_as_none:
+            value = pl.when(known & unread).then(None).otherwise(value)
+        frames.append(codes.select("ID", pl.lit(visit).alias("visit"), value.alias("roa")))
     return pl.concat(frames)
 
 
