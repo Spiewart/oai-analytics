@@ -87,3 +87,122 @@ def test_subgroups_and_covariates():
     assert by_id[P[7]]["subgroup"] == "roa_nosx"
     assert by_id[P[6]]["subgroup"] == "noroa_nosx"
     assert by_id[P[5]]["sex"] == 1 and by_id[P[6]]["sex"] == 2
+
+
+# ---------------------------------------------------------------- periods and four-year frame
+
+
+def person(id_=1, **extra):
+    row = dict(ID=id_, age=60.0, sex=1, bmi=28.0, kl0=1.0, sx0=False, womac0=2.0)
+    row["subgroup"] = "noroa_nosx"
+    return {**row, **extra}
+
+
+def inline_cohort(*people):
+    return lo2018.Cohort(people=pl.DataFrame(list(people)), flow=pl.DataFrame())
+
+
+def inline_soa(id_, outcomes):
+    """outcomes: soa at V01, V03, V05, V06 (None = missing)."""
+    visits = ["00", *lo2018.OUTCOME_VISITS]
+    return pl.DataFrame(
+        {"ID": [id_] * 5, "visit": visits, "soa": [False, *outcomes]},
+        schema={"ID": pl.Int64, "visit": pl.String, "soa": pl.Boolean},
+    )
+
+
+def inline_crepitus(id_, s2, exam=(0, 0, 0, 0)):
+    """s2, exam: values at V00, V01, V03, V05 (None = missing)."""
+    return pl.DataFrame(
+        {
+            "ID": [id_] * 4,
+            "SIDE": ["R"] * 4,
+            "visit": list(lo2018.EXPOSURE_VISITS),
+            "koos_s2": list(s2),
+            "exam_crepitus": list(exam),
+        },
+        schema={
+            "ID": pl.Int64,
+            "SIDE": pl.String,
+            "visit": pl.String,
+            "koos_s2": pl.Int64,
+            "exam_crepitus": pl.Int64,
+        },
+    )
+
+
+def test_censored_after_incident_soa():
+    frame, counts = lo2018.periods(
+        resolved(),
+        inline_cohort(person()),
+        inline_soa(1, [False, True, True, True]),
+        inline_crepitus(1, [0, 2, 3, 3]),
+    )
+    assert frame["period"].to_list() == [1, 2]
+    assert frame["event"].to_list() == [False, True]
+    assert frame["crep"].to_list() == [0, 2]
+    assert counts == {"potential": 2, "missing_outcome": 0, "missing_crepitus": 0}
+
+
+def test_missing_middle_outcome_continues():
+    args = (
+        inline_cohort(person()),
+        inline_soa(1, [None, False, False, False]),
+        inline_crepitus(1, [1, 1, 1, 1]),
+    )
+    frame, counts = lo2018.periods(resolved(), *args)
+    assert frame["period"].to_list() == [2, 3, 4]
+    assert counts == {"potential": 4, "missing_outcome": 1, "missing_crepitus": 0}
+    frame, counts = lo2018.periods(resolved("stop_after_missing_outcome"), *args)
+    assert frame.height == 0
+    assert counts == {"potential": 1, "missing_outcome": 1, "missing_crepitus": 0}
+
+
+def test_missing_crepitus_is_counted_separately():
+    frame, counts = lo2018.periods(
+        resolved(),
+        inline_cohort(person()),
+        inline_soa(1, [False, False, False, False]),
+        inline_crepitus(1, [0, None, 0, 0], exam=(1, None, 0, 0)),
+    )
+    assert frame["period"].to_list() == [1, 3, 4]
+    assert counts == {"potential": 4, "missing_outcome": 0, "missing_crepitus": 1}
+    assert frame["exam"].to_list() == [1, 0, 0]
+
+
+def test_blank_baseline_s2_only_drops_four_year_row():
+    cohort = inline_cohort(person(1), person(2))
+    soa = pl.concat([inline_soa(1, [False, True, True, True]), inline_soa(2, [False] * 4)])
+    crep = pl.concat(
+        [inline_crepitus(1, [None, 2, 3, 3]), inline_crepitus(2, [4, 4, 4, 4], (1, 1, 1, 1))]
+    )
+    four = lo2018.four_year(cohort, soa, crep)
+    assert four["ID"].to_list() == [2]
+    assert four.select("crep0", "exam0", "event").row(0) == (4, 1, False)
+    frame, _ = lo2018.periods(resolved(), cohort, soa, crep)
+    assert frame.filter(pl.col("ID") == 1)["period"].to_list() == [2]
+
+
+def test_four_year_event_is_any_followup_soa():
+    cohort = inline_cohort(person(1))
+    four = lo2018.four_year(
+        cohort, inline_soa(1, [False, None, True, True]), inline_crepitus(1, [1, 1, 1, 1])
+    )
+    assert four["event"].to_list() == [True]
+
+
+def test_cohort_metrics_has_every_published_key():
+    import tomllib
+
+    A = resolved()
+    soa = lo2018.soa_status(A)
+    cohort = lo2018.build_cohort(A, soa)
+    crep = lo2018.crepitus_frame(A)
+    frame, counts = lo2018.periods(A, cohort, soa, crep)
+    persons = lo2018.four_year(cohort, soa, crep)
+    metrics = lo2018.cohort_metrics(cohort, frame, counts, persons)
+    published = tomllib.loads((ANALYSIS / "published.toml").read_text())["default"]
+    wanted = {k for k in published if k.split(".")[0] in {"flow", "obs", "d", "r"}}
+    assert set(metrics["metric"]) == wanted
+    values = dict(metrics.iter_rows())
+    assert values["flow.persons"] == 7 and values["obs.n"] == frame.height

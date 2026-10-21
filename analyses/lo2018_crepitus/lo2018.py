@@ -12,6 +12,7 @@ from dataclasses import dataclass
 import polars as pl
 
 from oai.assumptions import Resolved
+from oai.derive.crepitus import crepitus_values
 from oai.derive.knee import (
     find_col,
     frequent_knee_pain,
@@ -181,4 +182,123 @@ def build_cohort(A: Resolved, soa: pl.DataFrame) -> Cohort:
     return Cohort(
         people=kept.with_columns(subgroup.alias("subgroup")).sort("ID"),
         flow=pl.DataFrame(rows),
+    )
+
+
+# ---------------------------------------------------------------- observation periods
+
+PERIODS = pl.DataFrame(
+    {
+        "period": [1, 2, 3, 4],
+        "start_visit": list(EXPOSURE_VISITS),
+        "end_visit": list(OUTCOME_VISITS),
+    },
+    schema={"period": pl.Int64, "start_visit": pl.String, "end_visit": pl.String},
+)
+COVARIATES = ("age", "sex", "bmi", "subgroup")
+
+
+def crepitus_frame(A: Resolved) -> pl.DataFrame:
+    """ID, SIDE, visit, koos_s2, exam_crepitus for the cohort side at every exposure visit."""
+    side = A["cohort.side"]
+    return pl.concat(
+        [crepitus_values(v, ["koos_s2", "exam_crepitus"], sides=(side,)) for v in EXPOSURE_VISITS]
+    )
+
+
+def periods(
+    A: Resolved, cohort: Cohort, soa: pl.DataFrame, crepitus: pl.DataFrame
+) -> tuple[pl.DataFrame, dict[str, int]]:
+    """Person-period observations: S2 at a period's exposure visit, SOA at its outcome visit.
+
+    A person is at risk until an outcome visit shows SOA (then censored). Each at-risk period
+    is potential; it is dropped when its outcome is missing (`missing_outcome`) or its S2 is
+    (`missing_crepitus`). With `periods.after_missing_outcome = "stop"`, a missing outcome
+    also ends the person's follow-up.
+    """
+    crep = crepitus.select(
+        "ID",
+        pl.col("visit").alias("start_visit"),
+        pl.col("koos_s2").alias("crep"),
+        pl.col("exam_crepitus").alias("exam"),
+    )
+    outcome = soa.select("ID", pl.col("visit").alias("end_visit"), pl.col("soa").alias("event"))
+    df = (
+        cohort.people.select("ID", *COVARIATES)
+        .join(PERIODS, how="cross")
+        .join(crep, on=["ID", "start_visit"], how="left")
+        .join(outcome, on=["ID", "end_visit"], how="left")
+        .sort("ID", "period")
+    )
+    earlier = lambda e: e.cast(pl.Int64).cum_sum().shift(1, fill_value=0).over("ID") > 0  # noqa: E731
+    at_risk = ~earlier(pl.col("event").fill_null(False))
+    if A["periods.after_missing_outcome"] == "stop":
+        at_risk = at_risk & ~earlier(pl.col("event").is_null())
+    potential = df.filter(at_risk)
+    has_outcome = pl.col("event").is_not_null()
+    counts = {
+        "potential": potential.height,
+        "missing_outcome": potential.filter(~has_outcome).height,
+        "missing_crepitus": potential.filter(has_outcome & pl.col("crep").is_null()).height,
+    }
+    frame = potential.filter(has_outcome & pl.col("crep").is_not_null()).select(
+        "ID", "period", "crep", "exam", "event", *COVARIATES
+    )
+    return frame, counts
+
+
+def four_year(cohort: Cohort, soa: pl.DataFrame, crepitus: pl.DataFrame) -> pl.DataFrame:
+    """One row per person with baseline S2: incident SOA at any outcome visit to 48 months."""
+    event = (
+        soa.filter(pl.col("visit").is_in(OUTCOME_VISITS))
+        .group_by("ID")
+        .agg(pl.col("soa").fill_null(False).any().alias("event"))
+    )
+    baseline = crepitus.filter(pl.col("visit") == "00").select(
+        "ID", pl.col("koos_s2").alias("crep0"), pl.col("exam_crepitus").alias("exam0")
+    )
+    return (
+        cohort.people.join(baseline, on="ID", how="inner")
+        .filter(pl.col("crep0").is_not_null())
+        .join(event, on="ID", how="left")
+        .with_columns(pl.col("event").fill_null(False))
+        .select("ID", "crep0", "exam0", "event", *COVARIATES, "kl0", "womac0")
+        .sort("ID")
+    )
+
+
+def _spearman(df: pl.DataFrame, x: str, y: str) -> float | None:
+    d = df.drop_nulls([x, y])
+    return d.select(pl.corr(x, y, method="spearman")).item() if d.height > 2 else None
+
+
+def cohort_metrics(
+    cohort: Cohort, frame: pl.DataFrame, counts: dict[str, int], persons: pl.DataFrame
+) -> pl.DataFrame:
+    """metric, value for every flow.*, obs.*, d.* and r.* key in published.toml."""
+    flow = dict(zip(cohort.flow["step"], cohort.flow["excluded"], strict=True))
+    m: dict[str, float | None] = {"flow.all.persons": cohort.flow["persons"][0]}
+    for step in ("arthroplasty", "no_baseline_kl", "baseline_soa", "no_outcome"):
+        m[f"flow.{step}.excluded"] = flow[step]
+    m["flow.persons"] = cohort.people.height
+    m |= {f"obs.{k}": v for k, v in counts.items()}
+    m["obs.n"] = frame.height
+    m["obs.cases"] = int(frame["event"].sum())
+    for p in range(1, 5):
+        m[f"obs.cases.p{p}"] = int(frame.filter(pl.col("period") == p)["event"].sum())
+    m["d.age_mean"] = cohort.people["age"].mean()
+    m["d.bmi_mean"] = cohort.people["bmi"].mean()
+    m["d.male"] = cohort.people.filter(pl.col("sex") == 1).height
+    for code, level in enumerate(LEVELS):
+        m[f"d.obs.{level}"] = frame.filter(pl.col("crep") == code).height
+        m[f"d.base.{level}"] = persons.filter(pl.col("crep0") == code).height
+    m["r.womac"] = _spearman(persons, "crep0", "womac0")
+    m["r.kl"] = _spearman(persons, "crep0", "kl0")
+    for sub in SUBGROUPS:
+        m[f"r.womac.{sub}"] = _spearman(
+            persons.filter(pl.col("subgroup") == sub), "crep0", "womac0"
+        )
+    return pl.DataFrame(
+        {"metric": list(m), "value": [None if v is None else float(v) for v in m.values()]},
+        schema={"metric": pl.String, "value": pl.Float64},
     )
