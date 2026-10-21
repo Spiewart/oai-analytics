@@ -1,0 +1,7 @@
+ID|V01VISDYS|V01KPR12CV|V01KPL12CV|V01KSXRKN2|V01KSXLKN2|V01RKPFCRE|V01LKPFCRE
+2000005|365|0: No|0: No|2: Sometimes|0: Never|1: Yes|0: No
+2000006|365|0: No|0: No|0: Never|0: Never|0: No|0: No
+2000007|365|0: No|0: No|4: Always|0: Never|1: Yes|0: No
+2000009|365|0: No|0: No|0: Never|0: Never|0: No|0: No
+2000010|365|0: No|0: No|0: Never|0: Never|0: No|0: No
+2000011|365|0: No|0: No|0: Never|0: Never|0: No|0: No

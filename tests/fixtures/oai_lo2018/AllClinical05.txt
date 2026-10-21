@@ -1,0 +1,8 @@
+ID|V05VISDYS|V05KPR12CV|V05KPL12CV|V05KSXRKN2|V05KSXLKN2|V05RKPFCRE|V05LKPFCRE
+2000005|1100|1: Yes|0: No|3: Often|0: Never|1: Yes|0: No
+2000006|1100|0: No|0: No|0: Never|0: Never|0: No|0: No
+2000007|1100| |0: No| |0: Never| |0: No
+2000008|1100|0: No|0: No|1: Rarely|0: Never|0: No|0: No
+2000009|1100|0: No|0: No|0: Never|0: Never|0: No|0: No
+2000010|1100|0: No|0: No|0: Never|0: Never|0: No|0: No
+2000011|1100|0: No|0: No|0: Never|0: Never|0: No|0: No

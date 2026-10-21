@@ -55,6 +55,13 @@ status = "assumed"
 source = "A replacement counts from the first outcome visit whose V##VISDYS is on or after the replacement day"
 choices = ["by_visit_days"]
 
+[outcomes.soa_missing]
+value = "both_required"
+status = "open"
+source = "Lo 2018 does not say whether SOA is missing or known absent when one component (pain or KL) is missing"
+rationale = "known_false: no frequent pain (or KL < 2) rules SOA out even if the other component is missing"
+choices = ["both_required", "known_false"]
+
 [periods.after_missing_outcome]
 value = "continue"
 status = "open"
@@ -103,6 +110,10 @@ set = { "outcomes.roa_rule" = "ever" }
 [variants.stop_after_missing_outcome]
 description = "A missing outcome ends the person's follow-up"
 set = { "periods.after_missing_outcome" = "stop" }
+
+[variants.soa_known_false]
+description = "A known absence of pain or ROA makes SOA False even if the other component is missing"
+set = { "outcomes.soa_missing" = "known_false" }
 
 [variants.corstr_independence]
 description = "Independence working correlation"

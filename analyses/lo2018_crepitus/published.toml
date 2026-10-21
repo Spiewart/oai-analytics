@@ -7,8 +7,8 @@
 
 [related]  # metric prefix -> assumptions that bear on it (longest prefix wins)
 "flow" = ["cohort.side", "cohort.reading_project", "cohort.arthroplasty_scope", "cohort.missing_baseline_pain", "outcomes.pain_baseline_item"]
-"flow.no_outcome" = ["outcomes.roa_rule", "outcomes.arthroplasty_scope", "outcomes.pain_followup_item", "cohort.reading_project"]
-"obs" = ["periods.after_missing_outcome", "outcomes.roa_rule", "outcomes.arthroplasty_scope", "outcomes.arthroplasty_timing", "outcomes.pain_followup_item"]
+"flow.no_outcome" = ["outcomes.soa_missing", "outcomes.roa_rule", "outcomes.arthroplasty_scope", "outcomes.pain_followup_item", "cohort.reading_project"]
+"obs" = ["periods.after_missing_outcome", "outcomes.soa_missing", "outcomes.roa_rule", "outcomes.arthroplasty_scope", "outcomes.arthroplasty_timing", "outcomes.pain_followup_item"]
 "d" = ["cohort.missing_baseline_pain", "cohort.arthroplasty_scope"]
 "r" = ["cohort.reading_project"]
 "t1" = ["model.corstr", "periods.after_missing_outcome", "outcomes.roa_rule", "outcomes.arthroplasty_scope"]

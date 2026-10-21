@@ -1,0 +1,12 @@
+ID|V00AGE|P01BMI|P01KPR12CV|P01KPL12CV|V00WOMKPR|V00KSXRKN2|V00KSXLKN2|V00RKPFCRE|V00LKPFCRE
+2000001|51|25.5|0: No|0: No|1|0: Never|0: Never|0: No|0: No
+2000002|52|26.0|0: No|0: No|2|1: Rarely|0: Never|0: No|0: No
+2000003|53|26.5|1: Yes|0: No|3|2: Sometimes|0: Never|1: Yes|0: No
+2000004|54|27.0|0: No|0: No|4|0: Never|0: Never|0: No|0: No
+2000005|55|27.5|0: No|0: No|0|1: Rarely|0: Never|0: No|0: No
+2000006|56|28.0|0: No|0: No|1|0: Never|0: Never|0: No|0: No
+2000007|57|28.5|0: No|0: No|2|4: Always|0: Never|1: Yes|0: No
+2000008|58|29.0|0: No|0: No|3|1: Rarely|0: Never|0: No|0: No
+2000009|59|29.5|0: No|0: No|4|0: Never|0: Never|0: No|0: No
+2000010|60|30.0|0: No|0: No|0|0: Never|0: Never|0: No|0: No
+2000011|61|30.5| |0: No|1|0: Never|0: Never|0: No|0: No
