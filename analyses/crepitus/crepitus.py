@@ -1,11 +1,6 @@
 """Crepitus measures in the OAI: availability by visit, retention, and at-risk knees and events.
 
-Three measures carry crepitus in AllClinical (`oai-variable-lookup`: the Contents PDFs are
-authoritative; the column templates below were checked against every visit's header):
-
-- `exam_crepitus`: examiner-rated patello-femoral crepitus, yes/no (`V##RKPFCRE`, `V##LKPFCRE`)
-- `exam_grind_pain`: examiner-rated painful or tender patellar grind, yes/no (`V##RKPGDPN`)
-- `koos_s2`: KOOS S2 self-report, 0 Never .. 4 Always, last 7 days (`V##KSXRKN2`, `V##KSXLKN2`)
+The measures and their column templates live in `oai.derive.crepitus`.
 
 Everything is knee-level (ID, SIDE) and cohort-labelled from Enrollees `V00COHORT`
 (1 Progression, 2 Incidence, 3 Non-exposed control). Counts only: no row-level output.
@@ -14,11 +9,11 @@ Everything is knee-level (ID, SIDE) and cohort-labelled from Enrollees `V00COHOR
 from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from functools import partial
 
 import polars as pl
 
+from oai.derive.crepitus import MEASURES, Measure  # noqa: F401  (Measure re-exported)
 from oai.derive.knee import (
     KNEE_KEYS,
     find_col,
@@ -34,25 +29,6 @@ XRAY_FOLLOWUP = ("01", "03", "05", "06")
 COHORTS = {1: "Progression", 2: "Incidence", 3: "Non-exposed control"}
 ALL = "All"
 ROA_KL = 2  # radiographic OA = tibiofemoral KL >= 2 (Lo 2018 abstract)
-
-
-@dataclass(frozen=True)
-class Measure:
-    name: str
-    template: str
-    kind: str  # "binary" (1 = present) or "ordinal" (0..4)
-    label: str
-
-
-MEASURES = (
-    Measure("exam_crepitus", "V{visit}{side}KPFCRE", "binary", "Exam: patello-femoral crepitus"),
-    Measure(
-        "exam_grind_pain", "V{visit}{side}KPGDPN", "binary", "Exam: patellar grind, painful/tender"
-    ),
-    Measure(
-        "koos_s2", "V{visit}KSX{side}KN2", "ordinal", "KOOS S2: grinding/clicking/noise, 7 days"
-    ),
-)
 
 
 def participants() -> pl.DataFrame:
