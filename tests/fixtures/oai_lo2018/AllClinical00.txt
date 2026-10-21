@@ -11,3 +11,9 @@ ID|V00AGE|P01BMI|P01KPR12CV|P01KPL12CV|V00WOMKPR|V00KSXRKN2|V00KSXLKN2|V00RKPFCR
 2000010|60|30.0|0: No|0: No|0|0: Never|0: Never|0: No|0: No|20
 2000011|61|30.5| |0: No|1|0: Never|0: Never|0: No|0: No|21
 2000012|62|27.0|0: No|0: No|1|0: Never|0: Never|0: No|0: No|22
+2000013|68|29.25|1: Yes|1: Yes|2|2: Sometimes|0: Never|1: Yes|0: No|3
+2000014|69|29.5|1: Yes|0: No|2|1: Rarely|0: Never|1: Yes|0: No|3
+2000015|70|29.75|1: Yes|0: No|2|0: Never|0: Never|0: No|0: No|3
+2000016|71|30.0|1: Yes|0: No|2|1: Rarely|0: Never|1: Yes|0: No|3
+2000017|72|30.25|0: No|0: No|2|0: Never|0: Never|1: Yes|0: No|3
+2000018|73|30.5|1: Yes|0: No|2|1: Rarely|0: Never|1: Yes|0: No|3

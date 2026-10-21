@@ -6,3 +6,9 @@ ID|V01VISDYS|V01KPR12CV|V01KPL12CV|V01KSXRKN2|V01KSXLKN2|V01RKPFCRE|V01LKPFCRE
 2000010|365|0: No|0: No|0: Never|0: Never|0: No|0: No
 2000011|365|0: No|0: No|0: Never|0: Never|0: No|0: No
 2000012|365|0: No|0: No|0: Never|0: Never|0: No|0: No
+2000013|365|1: Yes|1: Yes|2: Sometimes|0: Never|1: Yes|0: No
+2000014|365|0: No|0: No|1: Rarely|0: Never|1: Yes|0: No
+2000015|365|1: Yes|0: No|0: Never|0: Never|0: No|0: No
+2000016|365|1: Yes|0: No|1: Rarely|0: Never|1: Yes|0: No
+2000017|365|0: No|0: No|0: Never|0: Never|1: Yes|0: No
+2000018|365|1: Yes|0: No|1: Rarely|0: Never|1: Yes|0: No

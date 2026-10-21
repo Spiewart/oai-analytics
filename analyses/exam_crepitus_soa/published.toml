@@ -9,8 +9,8 @@
 [related]
 "flow" = ["cohort.side", "cohort.reading_project", "cohort.arthroplasty_scope", "cohort.missing_baseline_pain", "outcomes.pain_baseline_item"]
 "flow.no_outcome" = ["outcomes.soa_missing", "outcomes.roa_rule", "outcomes.arthroplasty_scope", "outcomes.pain_followup_item", "cohort.reading_project"]
-"m" = ["mahmoudian.knee_pick", "mahmoudian.seed", "mahmoudian.reading_project"]
-"m.structural" = ["mahmoudian.jsn_rule", "mahmoudian.osteophyte_rule", "mahmoudian.knee_pick", "mahmoudian.reading_project"]
+"m" = ["mahmoudian.missing_osteophytes", "mahmoudian.knee_pick", "mahmoudian.seed", "mahmoudian.reading_project"]
+"m.structural" = ["mahmoudian.missing_osteophytes", "mahmoudian.jsn_rule", "mahmoudian.osteophyte_rule", "mahmoudian.knee_pick", "mahmoudian.reading_project"]
 "m.structural_sx" = ["mahmoudian.jsn_rule", "mahmoudian.osteophyte_rule", "mahmoudian.missing_followup_pain", "mahmoudian.knee_pick"]
 
 [default]

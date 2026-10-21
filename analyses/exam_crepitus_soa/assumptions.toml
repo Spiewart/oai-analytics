@@ -132,6 +132,13 @@ source = "Mahmoudian 2023: 'increase (yes/no) in the number of osteophytes in ei
 rationale = "sites: more of the four OARSI sites (medial/lateral femur and tibia) graded >= 1; grade_sum: the sum of the four grades rises"
 choices = ["sites", "grade_sum"]
 
+[mahmoudian.missing_osteophytes]
+value = "absent"
+status = "assumed"
+source = "Release check 2026-10-21: Project 15 osteophyte grades are blank in 78% of KL 0 and 47% of KL 1 baseline readings and never in KL >= 2; 99% of the KL 0-1 knees it graded are 0"
+rationale = "absent: a blank grade in a KL 0-1 reading is no osteophyte; exclude: the knee has no structural outcome (keeps 309 of about 1,060 eligible subjects)"
+choices = ["absent", "exclude"]
+
 [mahmoudian.reading_project]
 value = 15
 status = "assumed"
@@ -163,6 +170,10 @@ set = { "mahmoudian.knee_pick" = "left" }
 [variants.mahmoudian_any_jsn_increase]
 description = "Mahmoudian anchor: any rise in JSN grade counts"
 set = { "mahmoudian.jsn_rule" = "any_increase" }
+
+[variants.mahmoudian_exclude_blank_osteophytes]
+description = "Mahmoudian anchor: a knee with blank osteophyte grades has no structural outcome"
+set = { "mahmoudian.missing_osteophytes" = "exclude" }
 
 [variants.mahmoudian_osteophyte_grade_sum]
 description = "Mahmoudian anchor: a rise in the summed osteophyte grades counts"

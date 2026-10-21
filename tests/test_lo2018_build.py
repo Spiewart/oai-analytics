@@ -18,7 +18,9 @@ import lo2018  # noqa: E402
 from soa_helpers import inline_cohort, inline_crepitus, inline_soa, person  # noqa: E402
 
 FIXTURE = Path(__file__).parent / "fixtures" / "oai_lo2018"
-P = {k: 2000000 + k for k in range(1, 13)}  # fixture participants, one rule each
+P = {
+    k: 2000000 + k for k in range(1, 19)
+}  # fixture participants, one rule each (13-18: Mahmoudian)
 
 
 @pytest.fixture(autouse=True)
@@ -45,9 +47,9 @@ def test_flow_counts_each_exclusion():
     cohort = lo2018.build_cohort(A, lo2018.soa_status(A))
     for step in ("arthroplasty", "no_baseline_kl", "baseline_soa", "no_outcome"):
         assert excluded(cohort.flow, step) == 1, step
-    assert cohort.flow.filter(pl.col("step") == "all")["persons"].item() == 12
-    assert cohort.people.height == 8
-    assert set(cohort.people["ID"]) == {P[k] for k in (5, 6, 7, 8, 9, 10, 11, 12)}
+    assert cohort.flow.filter(pl.col("step") == "all")["persons"].item() == 18
+    assert cohort.people.height == 14
+    assert set(cohort.people["ID"]) == {P[k] for k in (5, 6, 7, 8, 9, 10, 11, 12, *range(13, 19))}
 
 
 def test_followup_replacement_is_soa_without_readings():
@@ -183,4 +185,4 @@ def test_cohort_metrics_has_every_published_key():
     wanted = {k for k in published if k.split(".")[0] in {"flow", "obs", "d", "r"}}
     assert set(metrics["metric"]) == wanted
     values = dict(metrics.iter_rows())
-    assert values["flow.persons"] == 8 and values["obs.n"] == frame.height
+    assert values["flow.persons"] == 14 and values["obs.n"] == frame.height

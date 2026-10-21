@@ -35,6 +35,7 @@ NEW = (
     "mahmoudian.osteophyte_rule",
     "mahmoudian.reading_project",
     "mahmoudian.missing_followup_pain",
+    "mahmoudian.missing_osteophytes",
 )
 
 
@@ -54,6 +55,7 @@ def test_manifest_and_assumptions_load():
         "mahmoudian_left",
         "mahmoudian_any_jsn_increase",
         "mahmoudian_osteophyte_grade_sum",
+        "mahmoudian_exclude_blank_osteophytes",
     }
 
 
@@ -96,6 +98,7 @@ def test_published_sig_follows_the_rule():
         ("mahmoudian.jsn_rule", "new"),
         ("mahmoudian.osteophyte_rule", "count"),
         ("mahmoudian.missing_followup_pain", "drop"),
+        ("mahmoudian.missing_osteophytes", "zero"),
     ],
 )
 def test_enumerated_assumptions_reject_typos(key, typo):
