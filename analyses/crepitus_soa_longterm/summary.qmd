@@ -1,0 +1,260 @@
+---
+mainfont: Arial
+fontsize: 10pt
+brand:
+  typography:
+    headings:
+      color: "#0b2e59"
+format:
+  typst:
+    papersize: us-letter
+    margin:
+      x: 0.85in
+      y: 0.75in
+    include-in-header:
+      text: |
+        #set text(hyphenate: false, overhang: false)
+        #set page(footer: context align(center, text(size: 8pt, fill: luma(90))[Crepitus summary — page #counter(page).display()]))
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: cairo_pdf
+    fig-width: 7
+---
+
+```{=typst}
+#set par(justify: false)
+```
+
+```{r setup}
+# A short abstract-style summary for review: palpable (exam) and self-reported (KOOS S2) crepitus
+# and incident symptomatic knee OA, from lo2018_crepitus, exam_crepitus_soa and this analysis.
+# Every number comes from those runs; the wording is in the `text` chunk.
+library(ggplot2)
+
+runs <- oaireport::load_results()
+sibling <- function(name, label = "default") {
+  oaireport::load_results(root = file.path(dirname(Sys.getenv("OAI_RESULTS_ROOT")), name), labels = label)[[label]]
+}
+lo <- sibling("lo2018_crepitus")
+ex <- sibling("exam_crepitus_soa")
+lt <- runs[["default"]]
+lt120 <- runs[["horizon_120"]]
+lt48 <- runs[["lo2018_48m"]]
+
+one <- function(x, what) {
+  if (length(x) != 1 || is.na(x)) stop("summary.qmd: no single value for ", what, call. = FALSE)
+  x
+}
+num <- function(x, digits = 2) sub("^-", "−", formatC(x, format = "f", digits = digits, big.mark = ","))
+count <- function(x) formatC(x, format = "d", big.mark = ",")
+pct <- function(x, digits = 0) paste0(num(100 * x, digits), "%")
+or_ci <- function(or, lo, hi) sprintf("%s [95%% CI %s–%s]", num(or), num(lo), num(hi))
+pval <- function(p) if (p < 0.001) "p<0.001" else sprintf("p=%s", num(p, if (p < 0.01) 3 else 2))
+m_of <- function(run, key) one(run$metrics[[key]], key)
+
+# Rows of a table: exam_crepitus_soa (table_e*: group, model, n, events, exposed_*, or, lo, hi) and
+# crepitus_soa_longterm (table_l*: measure, group, model, term, n, events, or, lo, hi, p)
+row_of <- function(df, ...) {
+  keep <- Reduce(`&`, Map(function(col, val) df[[col]] == val, names(list(...)), list(...)))
+  r <- df[!is.na(keep) & keep, , drop = FALSE]
+  if (nrow(r) != 1) stop("summary.qmd: ", nrow(r), " rows for ", paste(names(list(...)), list(...), collapse = ", "), call. = FALSE)
+  r
+}
+exam_or <- function(table, model, group = "all") row_of(table, group = group, model = model)
+long_or <- function(run, table, model, group = "all", measure = "exam") {
+  row_of(run[[table]], measure = measure, group = group, model = model, term = if (measure == "exam") "exam" else "always")
+}
+or_text <- function(r) or_ci(r$or, r$lo, r$hi)
+
+subgroup_labels <- c(roa_nosx = "Radiographic OA, no frequent pain",
+                     noroa_sx = "Frequent pain, no radiographic OA",
+                     noroa_nosx = "Neither")
+combo_labels <- c(neither = "Neither", s2_only = "Self-report only",
+                  exam_only = "Exam only", both = "Both")
+```
+
+```{r text}
+# Cohort and measures
+flow <- lo$flow
+n_cohort <- m_of(lo, "flow.persons")
+persons <- lo$dual_counts[lo$dual_counts$frame == "persons" & lo$dual_counts$cut == 1, ]
+cells <- persons[persons$grouping == "all", ]
+n_both_measures <- sum(cells$n)
+cell <- function(combo, col = "n") one(cells[cells$combo == combo, col], paste("cell", combo))
+n_exam <- cell("exam_only") + cell("both")
+n_s2 <- cell("s2_only") + cell("both")
+kappa0 <- one(lo$dual_concordance$kappa[lo$dual_concordance$visit == 0 & lo$dual_concordance$cut == 1], "kappa at baseline")
+risk <- function(combo) cell(combo, "events") / cell(combo, "n")
+
+# Lo 2018 replication
+verdicts <- table(lo$comparison$verdict)
+replicated <- one(verdicts[["replicated"]], "replicated")
+graded <- sum(verdicts)
+t1 <- lo$comparison[startsWith(lo$comparison$metric, "t1.") & grepl("\\.or_", lo$comparison$metric), ]
+t1_all <- all(t1$verdict == "replicated")
+
+# Models
+e1 <- ex$table_e1; e3 <- ex$table_e3; e4 <- ex$table_e4
+one_year <- exam_or(e1, "or_adj"); one_year_s2 <- exam_or(e1, "or_adj_s2")
+four <- exam_or(e3, "or_adj"); four_s2 <- exam_or(e3, "or_adj_s2")
+haz8 <- long_or(lt, "table_l2", "or_adj"); haz8_s2 <- long_or(lt, "table_l2", "or_adj_s2")
+haz10 <- long_or(lt120, "table_l2", "or_adj")
+cases4 <- four$events; cases8 <- m_of(lt, "exam.hazard.cases")
+p_sub4 <- one(ex$table_e5$subgroup[ex$table_e5$group == "all"], "4-year subgroup p")
+p_sub8 <- m_of(lt, "l4.exam.interaction_p")
+roa_nosx4 <- exam_or(e4, "or_adj", "roa_nosx")
+combo_or <- function(combo) {
+  r <- lo$dual_prediction
+  row_of(r, frame = "persons", cut = 1, analysis = "combo adjusted", term = combo)
+}
+both_or <- combo_or("both")
+m1 <- ex$table_m1
+anchor <- row_of(m1, outcome = "structural", model = "or_adj")
+
+title <- "Palpable crepitus on examination and incident symptomatic knee osteoarthritis over 8 years, alone and with self-reported crepitus: data from the Osteoarthritis Initiative"
+
+purpose <- paste(
+  "In the Osteoarthritis Initiative (OAI), self-reported (subjective) crepitus predicts incident symptomatic knee osteoarthritis (SOA) (Lo et al. 2018).",
+  "Whether crepitus palpated on examination does the same, and whether it adds to self-report, is not known; the one study of the OAI examination finding (an OARSI 2023 abstract) found no association with structural change in symptomatic knees without radiographic OA.")
+
+methods <- paste(
+  sprintf("We studied the right knees of OAI participants without SOA at enrollment (n=%s), the cohort of Lo et al. 2018, whose published results we first replicated (%s of %s published numbers, %s).",
+          count(n_cohort), count(replicated), count(graded),
+          if (t1_all) "including every odds ratio in its Table 1" else "with some Table 1 odds ratios differing"),
+  "Crepitus was assessed on examination (palm over the patella during passive flexion and extension; present or absent) and by self-report (KOOS symptoms item 2, never to always) at enrollment and 12, 24 and 36 months.",
+  "SOA was frequent knee pain with tibiofemoral Kellgren–Lawrence grade 2 or more, or a knee replacement.",
+  "We related crepitus at each visit to SOA at the next annual visit (repeated-measures GEE), crepitus at enrollment to SOA by 4 years (logistic regression) and to SOA over 8 years (discrete-time hazard model; radiographic OA after 48 months from the OAI central readings), adjusting for age, sex and body-mass index, and in addition for self-reported crepitus.")
+
+results <- paste(
+  sprintf("Of %s participants with both measures at enrollment, %s (%s) had crepitus on examination and %s (%s) reported it at least rarely; agreement between the two was poor (kappa %s).",
+          count(n_both_measures), count(n_exam), pct(n_exam / n_both_measures),
+          count(n_s2), pct(n_s2 / n_both_measures), num(kappa0)),
+  sprintf("By 4 years, %s developed SOA: %s of those with neither sign, %s with self-report only, %s with examination only and %s with both (adjusted OR for both vs neither %s; Figure 1).",
+          count(sum(cells$events)), pct(risk("neither")), pct(risk("s2_only")), pct(risk("exam_only")), pct(risk("both")),
+          or_text(data.frame(or = both_or$estimate, lo = both_or$lo, hi = both_or$hi))),
+  sprintf("Crepitus on examination predicted SOA one year later (OR %s) and by 4 years (OR %s), also after adjustment for self-reported crepitus (%s and %s).",
+          or_text(one_year), or_text(four), num(one_year_s2$or), num(four_s2$or)),
+  sprintf("Over 8 years (%s cases), the hazard OR was %s (%s with self-reported crepitus; Figure 2).",
+          count(cases8), or_text(haz8), num(haz8_s2$or)),
+  sprintf("At 4 years the association differed by baseline subgroup (interaction %s). It was concentrated in knees with radiographic OA but no frequent pain (OR %s); in knees without radiographic OA the estimates were close to 1, with wide CIs.",
+          pval(p_sub4), or_text(roa_nosx4)),
+  sprintf("As in the earlier abstract, crepitus on examination was not associated with structural change in symptomatic knees without radiographic OA (OR %s). Over 8 years the subgroup difference was no longer evident (interaction %s; Figure 3).",
+          or_text(anchor), pval(p_sub8)))
+
+conclusions <- paste(
+  "Crepitus palpated on examination predicts incident symptomatic knee OA, largely independently of self-reported crepitus, with the highest risk when both are present, and the association persists over 8 years.",
+  "Examination and self-report agree poorly and carry separate information, so both may help identify knees at risk.")
+```
+
+```{r figures}
+# Figure 1: 4-year incident SOA by crepitus combination, overall and by baseline subgroup
+f1 <- persons
+f1$panel <- ifelse(f1$grouping == "all", "All participants", subgroup_labels[f1$group])
+f1 <- f1[f1$grouping %in% c("all", "subgroup"), ]
+f1$panel <- factor(f1$panel, levels = c("All participants", subgroup_labels))
+f1$combo <- factor(combo_labels[f1$combo], levels = combo_labels)
+w <- t(mapply(function(k, n) oaimodels::wilson(k, n)[c("estimate", "lo", "hi")], f1$events, f1$n))
+f1$risk <- w[, 1]; f1$lo <- w[, 2]; f1$hi <- w[, 3]
+f1$label <- sprintf("%s/%s", count(f1$events), count(f1$n))
+fig1 <- ggplot(f1, aes(combo, risk, fill = combo)) +
+  geom_col(width = 0.7) +
+  geom_errorbar(aes(ymin = lo, ymax = hi), width = 0.2, linewidth = 0.3) +
+  geom_text(aes(y = hi, label = label), vjust = -0.5, size = 2.2) +
+  facet_wrap(~panel, nrow = 1, labeller = label_wrap_gen(22)) +
+  scale_fill_manual(values = c("grey70", oaireport::oai_palette[c(1, 3, 2)]), guide = "none") +
+  scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), expand = expansion(mult = c(0, 0.12))) +
+  labs(x = NULL, y = "Incident SOA by 4 years") +
+  oaireport::theme_oai() +
+  theme(axis.text.x = element_text(angle = 35, hjust = 1))
+
+# Figure 2: exam crepitus ORs across follow-up, adjusted for age, sex, BMI, and also for S2
+f2_rows <- list(
+  list(label = "Next annual visit, to 4 years", unit = "person-periods", base = one_year, s2 = one_year_s2),
+  list(label = "By 4 years", unit = "people", base = four, s2 = four_s2),
+  list(label = "Over 8 years (hazard)", unit = "person-periods", base = haz8, s2 = haz8_s2),
+  list(label = "Over 10 years (hazard, provisional)", unit = "person-periods", base = haz10,
+       s2 = long_or(lt120, "table_l2", "or_adj_s2")))
+# One label per row, from the age-, sex- and BMI-adjusted model's observations and cases
+row_labels <- vapply(f2_rows, function(r) {
+  sprintf("%s\n(%s %s, %s cases)", r$label, count(r$base$n), r$unit, count(r$base$events))
+}, character(1))
+f2 <- do.call(rbind, Map(function(r, label) {
+  rbind(data.frame(row = label, model = "Age, sex, BMI", or = r$base$or, lo = r$base$lo, hi = r$base$hi),
+        data.frame(row = label, model = "+ self-reported crepitus", or = r$s2$or, lo = r$s2$lo, hi = r$s2$hi))
+}, f2_rows, row_labels))
+f2$row <- factor(f2$row, levels = rev(row_labels))
+f2$model <- factor(f2$model, levels = c("+ self-reported crepitus", "Age, sex, BMI"))  # dodge: base on top
+fig2 <- ggplot(f2, aes(or, row, colour = model)) +
+  geom_vline(xintercept = 1, linewidth = 0.3, colour = "grey50") +
+  geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0.2, linewidth = 0.4,
+                 position = position_dodge(width = 0.5)) +
+  geom_point(size = 1.6, position = position_dodge(width = 0.5)) +
+  scale_x_log10(breaks = c(1, 1.5, 2, 2.5)) +
+  scale_colour_manual(values = c("Age, sex, BMI" = oaireport::oai_palette[[1]], "+ self-reported crepitus" = oaireport::oai_palette[[2]]),
+                      breaks = c("Age, sex, BMI", "+ self-reported crepitus"), name = "Adjusted for") +
+  labs(x = "Odds ratio for crepitus on examination (log scale)", y = NULL) +
+  oaireport::theme_oai() +
+  theme(legend.position = "top")
+
+# Figure 3: exam crepitus OR by baseline subgroup, at 4 years (logistic) and over 8 years (hazard)
+f3 <- do.call(rbind, lapply(names(subgroup_labels), function(s) {
+  a <- exam_or(e4, "or_adj", s); b <- long_or(lt, "table_l4", "or_adj", group = s)
+  rbind(data.frame(group = subgroup_labels[[s]], when = "By 4 years", or = a$or, lo = a$lo, hi = a$hi,
+                   n = a$n, events = a$events),
+        data.frame(group = subgroup_labels[[s]], when = "Over 8 years (hazard)", or = b$or, lo = b$lo, hi = b$hi,
+                   n = b$n, events = b$events))
+}))
+f3$group <- factor(f3$group, levels = rev(subgroup_labels))
+f3$when <- factor(f3$when, levels = c("Over 8 years (hazard)", "By 4 years"))  # dodge: 4 years on top
+f3$label <- sprintf("%s cases", count(f3$events))
+fig3 <- ggplot(f3, aes(or, group, colour = when)) +
+  geom_vline(xintercept = 1, linewidth = 0.3, colour = "grey50") +
+  geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0.2, linewidth = 0.4,
+                 position = position_dodge(width = 0.55)) +
+  geom_point(size = 1.6, position = position_dodge(width = 0.55)) +
+  geom_text(aes(x = hi, label = label), hjust = -0.15, size = 2.1, show.legend = FALSE,
+            position = position_dodge(width = 0.55)) +
+  scale_x_log10(breaks = c(0.5, 1, 1.5, 2, 3), expand = expansion(mult = c(0.05, 0.25))) +
+  scale_colour_manual(values = c("By 4 years" = oaireport::oai_palette[[1]], "Over 8 years (hazard)" = oaireport::oai_palette[[3]]),
+                      breaks = c("By 4 years", "Over 8 years (hazard)"), name = NULL) +
+  labs(x = "Odds ratio for crepitus on examination (log scale), adjusted for age, sex and BMI", y = "Baseline subgroup") +
+  oaireport::theme_oai() +
+  theme(legend.position = "top")
+
+oaireport::save_figure(fig1, "summary_fig1", "2col", height = 2.9)
+oaireport::save_figure(fig2, "summary_fig2", "2col", height = 2.8)
+oaireport::save_figure(fig3, "summary_fig3", "2col", height = 2.4)
+
+captions <- c(
+  summary_fig1 = sprintf("Share of right knees that developed symptomatic OA by 4 years (95%% CI), by crepitus at enrollment: examination (present/absent) and self-report (KOOS S2, at least rarely). Labels give cases/people. All participants (n=%s with both measures) and the three baseline subgroups.", count(n_both_measures)),
+  summary_fig2 = "Odds ratios (95% CI) for crepitus on examination, adjusted for age, sex and body-mass index (blue) and also for self-reported crepitus (orange). Rows give the model, the number of observations it used and the cases. The 10-year estimate depends on X-ray readings whose selection is not documented in the OAI release and is provisional.",
+  summary_fig3 = sprintf("Odds ratios (95%% CI) for crepitus on examination by baseline subgroup, adjusted for age, sex and body-mass index, by 4 years (logistic) and over 8 years (hazard); labels give cases. Interaction of crepitus with subgroup: %s at 4 years, %s over 8 years (%s for the same hazard model at 4 years).",
+                         pval(p_sub4), pval(p_sub8), pval(m_of(lt48, "l4.exam.interaction_p"))))
+
+fields <- c(Title = title, Purpose = purpose, Methods = methods, Results = results, Conclusions = conclusions,
+            stats::setNames(unname(captions), sprintf("Figure %d caption", seq_along(captions))))
+dir.create("text", showWarnings = FALSE)
+paste_file <- file(file.path("text", "summary.txt"), open = "w", encoding = "UTF-8")
+writeLines(unlist(lapply(names(fields), function(f) c(sprintf("%s (%s characters)", toupper(f), count(nchar(fields[[f]]))), fields[[f]], ""))), paste_file)
+close(paste_file)
+```
+
+```{r show}
+#| results: asis
+body <- c(Purpose = purpose, Methods = methods, Results = results, Conclusions = conclusions)
+cat("## ", title, "\n\n", sep = "")
+today <- Sys.Date()
+cat("*Draft for review. Numbers are from the oai-analytics runs of ",
+    sprintf("%s %d, %s", month.name[as.integer(format(today, "%m"))], as.integer(format(today, "%d")), format(today, "%Y")),
+    "; counts are people (right knee) unless stated.*\n\n", sep = "")
+for (f in names(body)) cat(sprintf("**%s.** %s\n\n", f, body[[f]]))
+for (i in seq_along(captions)) {
+  cat(oaireport::figure_group(), sep = "\n")
+  cat("", "```{=typst}", sprintf('#image("figures/%s.png", width: 100%%)', names(captions)[i]), "```", "", sep = "\n")
+  cat(oaireport::table_note(captions[[i]], label = sprintf("Figure %d", i), close_group = TRUE), sep = "\n")
+}
+```
