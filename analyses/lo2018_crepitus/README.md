@@ -27,7 +27,7 @@ Table 5 (interaction p-values, four-year model) is not graded:
 | `models` | GEE and logistic models for Tables 1–6 | `table1.csv` … `table6.csv`, `metrics_models.csv` |
 | `compare` | Grades the metrics against `published.toml` | `comparison.csv` |
 | `dual_counts` | KOOS S2 × exam crepitus 2 × 2 counts | `dual_counts.csv` |
-| `dual_models` | Concordance and predictive value of each measure and both | `dual_concordance.csv`, `dual_prediction.csv` |
+| `dual_models` | Concordance and predictive value of each measure and both | `dual_concordance.csv` (per exposure visit: 2 × 2, agreement, kappa, prevalence and bias indices, AUC of S2 for exam), `dual_prediction.csv` (ORs of S2 only, exam only and both vs neither; the S2 × exam interaction), `dual_classification.csv` (Se, Sp, PPV, NPV for four-year SOA) |
 
 ```bash
 oai run lo2018_crepitus
