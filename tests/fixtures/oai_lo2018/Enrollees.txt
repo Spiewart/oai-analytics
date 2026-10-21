@@ -10,3 +10,4 @@ ID|VERSION|P02SEX|V00COHORT
 2000009|2.1|1: Male|2: Incidence
 2000010|2.1|2: Female|2: Incidence
 2000011|2.1|1: Male|2: Incidence
+2000012|2.1|2: Female|2: Incidence

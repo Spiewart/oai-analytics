@@ -62,6 +62,19 @@ source = "Lo 2018 does not say whether SOA is missing or known absent when one c
 rationale = "known_false: no frequent pain (or KL < 2) rules SOA out even if the other component is missing"
 choices = ["both_required", "known_false"]
 
+[outcomes.replacement_counts]
+value = "adjudicated_or_self_report"
+status = "open"
+source = "oai.derive.knee.REPLACEMENT_STATUS_COUNTS (from Lo 2022 p.1661): V99E*RPCF of 1 (self-reported) or 3 (adjudicated, confirmed), or RPSN = 1 (seen on a follow-up X-ray). Lo 2018 says only 'any participant with a knee arthroplasty'"
+rationale = "A counted replacement with no day count (V99E*DAYS blank) never becomes SOA at a follow-up visit"
+choices = ["adjudicated_or_self_report"]
+
+[outcomes.missing_visit_days]
+value = "nominal_month"
+status = "assumed"
+source = "When a participant has no V##VISDYS for an outcome visit, the replacement-timing check uses the visit's nominal month (config/oai.toml [visits]) in days"
+choices = ["nominal_month"]
+
 [periods.after_missing_outcome]
 value = "continue"
 status = "open"
@@ -78,6 +91,13 @@ choices = ["exchangeable", "independence"]
 value = ["age", "sex", "bmi"]
 status = "confirmed"
 source = "Lo 2018 Methods: the adjusted model included age, sex, and BMI (BMI at baseline)"
+
+[model.missing_covariates]
+value = "complete_cases"
+status = "assumed"
+source = "Each model drops rows missing a covariate (models.R, dual.R); Lo 2018 does not say how missing age, sex or BMI were handled"
+rationale = "Few rows (Table 1 never: 7,297 fitted of 7,300 observations)"
+choices = ["complete_cases"]
 
 [model.trend]
 value = "cochran_armitage"

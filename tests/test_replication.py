@@ -140,3 +140,8 @@ def test_toleranced_value(ours, verdict):
 def test_value_table_rejects_unknown_keys():
     with pytest.raises(ValueError):
         grade({"r.womac": {"value": 0.33, "tolerance": 0.03}}, {"r.womac": 0.33})
+
+
+def test_or_table_rejects_unknown_keys():
+    with pytest.raises(ValueError):
+        grade({"t1.x": {"or": 1.8, "lo": 1.2, "hi": 2.5, "sgi": True}}, {"t1.x": 1.8})

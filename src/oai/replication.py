@@ -128,6 +128,7 @@ def grade(
             pub_text, verdict, ours_text, diff = _grade_value(pub, ours, metric)
         elif isinstance(pub, Mapping):
             kind = "or"
+            _check_keys(pub, {"or", "lo", "hi", "sig"}, metric)
             pub_text = f"{pub['or']} ({pub['lo']}-{pub['hi']}){' *' if pub.get('sig') else ''}"
             verdict, ours_text, diff = _grade_or(pub, ours, metric)
         else:
