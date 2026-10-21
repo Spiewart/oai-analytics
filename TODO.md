@@ -95,3 +95,13 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 - **Decide the crepitus analysis's outcome definitions** — <!-- skip --> `progression.risk_kl` (KL 2-3 or 1-3) is `open` in `analyses/crepitus/assumptions.toml`, and the horizon is 48 months (Project 15 readings). Pick definitions before the full analysis; cohort-level counts are in `oai run crepitus`.
 
 - **Explain the 3,545 vs 3,495 gap to Lo 2018** — <!-- skip --> Right knees with no baseline symptomatic OA, a baseline S2 value and an outcome visit number 3,545; the paper reports 3,495 participants. Ask the author which exclusions apply.
+
+### Lo 2018 replication (`analyses/lo2018_crepitus`)
+
+- **Proofread `published.toml` against the Lo 2018 PDF** — <!-- skip --> Tables 1-4 and 6 were extracted from the PMC web page on 2026-10-21. Every table sums to its totals (`tests/test_lo2018_definition.py`), but a value wrong in both a cell and its total would still pass.
+  [analyses/lo2018_crepitus/published.toml](analyses/lo2018_crepitus/published.toml)
+
+- **Ask the authors how a blank baseline frequent-pain answer was handled** — <!-- skip --> Excluding the 26 people with a blank `P01KPR12CV` raises the replicated rows from 209 to 220 (`oai run lo2018_crepitus --variant exclude_missing_pain`). The paper lists no such exclusion. If they were excluded: set `cohort.missing_baseline_pain` to `"exclude"`, mark it `confirmed`, and run `oai assumptions lo2018_crepitus --write`.
+  [analyses/lo2018_crepitus/assumptions.toml](analyses/lo2018_crepitus/assumptions.toml)
+
+- **Ask the authors what "no valid outcome" meant (84 people) and how 11,994 potential observations were counted** — <!-- skip --> On this release only 1 cohort member has no SOA at any follow-up visit (paper 84), and we count 13,071 potential observations (paper 11,994) because periods after a participant's last visit are counted as missing. Observations analyzed (11,248 vs 11,237) and cases (641 vs 636) already match, so the answer mostly moves the person-level four-year tables.
