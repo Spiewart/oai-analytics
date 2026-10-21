@@ -17,6 +17,7 @@ def test_expected_analyses_exist():
         "activity_agreement",
         "crepitus",
         "genetics_progression",
+        "lo2018_crepitus",
         "lo2022_walking",
         "progression_definitions",
         "walking_validation",

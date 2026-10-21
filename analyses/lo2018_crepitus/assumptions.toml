@@ -1,0 +1,109 @@
+# Assumptions for the Lo 2018 replication (Arthritis Care Res 70:53-60, PMC5671376).
+# Spec: docs/superpowers/specs/2026-10-21-lo2018-crepitus-replication-design.md
+
+[cohort.side]
+value = "R"
+status = "confirmed"
+source = "Lo 2018 Methods, Study Design: right knee only (GEE adjusts for one clustering level)"
+choices = ["R", "L"]
+
+[cohort.reading_project]
+value = 15
+status = "assumed"
+source = "Lo 2018 Methods: central readers; Project 15 reproduces the 877 baseline right-knee SOA exclusion exactly"
+alternatives = [37, 43]
+
+[cohort.arthroplasty_scope]
+value = "right"
+status = "assumed"
+source = "Lo 2018 Results: 35 excluded with arthroplasty at enrollment; right knee gives 38, either knee 63"
+choices = ["right", "either"]
+
+[cohort.missing_baseline_pain]
+value = "not_sx"
+status = "open"
+source = "Lo 2018 Results list no exclusion for a blank baseline frequent-pain answer (26 people)"
+rationale = "not_sx keeps them, counted as without frequent symptoms at baseline"
+choices = ["not_sx", "exclude"]
+
+[outcomes.pain_baseline_item]
+value = "P01KP{side}12CV"
+status = "assumed"
+source = "Lo 2018 Methods quote the 12-month frequent-pain question; screening-visit item, as in analyses/lo2022_walking"
+
+[outcomes.pain_followup_item]
+value = "V{visit}KP{side}12CV"
+status = "assumed"
+source = "Lo 2018 Methods: symptoms at 12, 24, 36, 48 months; AllClinical follow-up item"
+
+[outcomes.roa_rule]
+value = "same_visit"
+status = "open"
+source = "Lo 2018 Methods: ROA = tibiofemoral KL >= 2; whether ROA is carried forward once seen is not stated"
+choices = ["same_visit", "ever"]
+
+[outcomes.arthroplasty_scope]
+value = "right"
+status = "open"
+source = "Lo 2018 Methods: 'Any participant with a knee arthroplasty was identified as having Sx, ROA, and SOA'"
+rationale = "'Any participant' could mean a replacement in either knee"
+choices = ["right", "either"]
+
+[outcomes.arthroplasty_timing]
+value = "by_visit_days"
+status = "assumed"
+source = "A replacement counts from the first outcome visit whose V##VISDYS is on or after the replacement day"
+choices = ["by_visit_days"]
+
+[periods.after_missing_outcome]
+value = "continue"
+status = "open"
+source = "Lo 2018 Results: 750 of 11,994 potential observations missing the outcome were excluded; follow-up after them is not described"
+choices = ["continue", "stop"]
+
+[model.corstr]
+value = "exchangeable"
+status = "confirmed"
+source = "Lo 2018 Methods, Statistical analysis: GEE with an exchangeable correlation structure"
+choices = ["exchangeable", "independence"]
+
+[model.covariates]
+value = ["age", "sex", "bmi"]
+status = "confirmed"
+source = "Lo 2018 Methods: the adjusted model included age, sex, and BMI (BMI at baseline)"
+
+[model.trend]
+value = "cochran_armitage"
+status = "assumed"
+source = "Lo 2018 Methods: Cochran-Armitage tests for trend; the adjusted p for trend's method is not stated"
+rationale = "Trend p-values are reported, not graded"
+choices = ["cochran_armitage", "ordinal_term"]
+
+[dual.s2_cuts]
+value = [1, 3]
+status = "assumed"
+source = "Spec: S2 dichotomized at any frequency (>= rarely) and at often/always (Couch 2025)"
+
+[variants.left_knee]
+description = "Left knee instead of right (not in the paper)"
+set = { "cohort.side" = "L" }
+
+[variants.arthroplasty_either]
+description = "A replacement in either knee excludes at baseline and counts as SOA at follow-up"
+set = { "cohort.arthroplasty_scope" = "either", "outcomes.arthroplasty_scope" = "either" }
+
+[variants.exclude_missing_pain]
+description = "Blank baseline frequent pain excludes the person"
+set = { "cohort.missing_baseline_pain" = "exclude" }
+
+[variants.roa_ever]
+description = "ROA carried forward once a knee has KL >= 2"
+set = { "outcomes.roa_rule" = "ever" }
+
+[variants.stop_after_missing_outcome]
+description = "A missing outcome ends the person's follow-up"
+set = { "periods.after_missing_outcome" = "stop" }
+
+[variants.corstr_independence]
+description = "Independence working correlation"
+set = { "model.corstr" = "independence" }

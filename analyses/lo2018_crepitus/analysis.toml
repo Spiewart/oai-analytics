@@ -1,0 +1,49 @@
+name = "lo2018_crepitus"
+description = "Replication of Lo et al. 2018: KOOS crepitus and incident symptomatic knee OA (OAI), with a KOOS S2 x exam crepitus dual-measure extension."
+
+[inputs]
+tables = [
+    "enrollees", "allclinical:00", "allclinical:01", "allclinical:03", "allclinical:05",
+    "allclinical:06", "kxr_sq_bu:00", "kxr_sq_bu:01", "kxr_sq_bu:03", "kxr_sq_bu:05",
+    "kxr_sq_bu:06", "outcomes:99",
+]
+
+[[steps]]
+id = "cohort"
+lang = "python"
+stage = "local"
+entry = "build_frame.py"
+
+[[steps]]
+id = "models"
+lang = "r"
+stage = "local"
+entry = "models.R"
+needs = ["cohort"]
+
+[[steps]]
+id = "compare"
+lang = "python"
+stage = "local"
+entry = "compare.py"
+needs = ["models"]
+
+[[steps]]
+id = "dual_counts"
+lang = "python"
+stage = "local"
+entry = "dual.py"
+needs = ["cohort"]
+
+[[steps]]
+id = "dual_models"
+lang = "r"
+stage = "local"
+entry = "dual.R"
+needs = ["dual_counts"]
+
+[outputs]
+aggregate = [
+    "flow.csv", "table*.csv", "dual_*.csv", "comparison.csv", "metrics_*.csv",
+    "assumptions.resolved.json",
+]

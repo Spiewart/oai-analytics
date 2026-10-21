@@ -1,0 +1,295 @@
+# Published values: Lo et al. 2018 (Arthritis Care Res 70:53-60, doi:10.1002/acr.23246),
+# text and Tables 1-4 and 6, as extracted from PMC5671376 on 2026-10-21 (proofread against
+# the PDF before treating results as final: TODO.md). Integers are counts, floats are means,
+# {value, tol} are correlations, {or, lo, hi, sig} are odds ratios (sig = the rounded 95% CI
+# excludes 1; no sig when a bound is exactly 1.0). Graded by oai.replication.
+# Table 5 (interaction p-values) is in README.md and not graded.
+
+[related]  # metric prefix -> assumptions that bear on it (longest prefix wins)
+"flow" = ["cohort.side", "cohort.reading_project", "cohort.arthroplasty_scope", "cohort.missing_baseline_pain", "outcomes.pain_baseline_item"]
+"flow.no_outcome" = ["outcomes.roa_rule", "outcomes.arthroplasty_scope", "outcomes.pain_followup_item", "cohort.reading_project"]
+"obs" = ["periods.after_missing_outcome", "outcomes.roa_rule", "outcomes.arthroplasty_scope", "outcomes.arthroplasty_timing", "outcomes.pain_followup_item"]
+"d" = ["cohort.missing_baseline_pain", "cohort.arthroplasty_scope"]
+"r" = ["cohort.reading_project"]
+"t1" = ["model.corstr", "periods.after_missing_outcome", "outcomes.roa_rule", "outcomes.arthroplasty_scope"]
+"t2" = ["model.corstr", "periods.after_missing_outcome", "outcomes.roa_rule", "outcomes.arthroplasty_scope", "cohort.missing_baseline_pain"]
+"t3" = ["outcomes.roa_rule", "outcomes.arthroplasty_scope"]
+"t4" = ["outcomes.roa_rule", "outcomes.arthroplasty_scope", "cohort.missing_baseline_pain"]
+"t6" = ["outcomes.roa_rule", "outcomes.arthroplasty_scope"]
+
+[default]
+# Flow (Results, paragraph 1)
+"flow.all.persons" = 4796
+"flow.arthroplasty.excluded" = 35
+"flow.no_baseline_kl.excluded" = 305
+"flow.baseline_soa.excluded" = 877
+"flow.no_outcome.excluded" = 84
+"flow.persons" = 3495
+# Observations (Results, paragraphs 1-3)
+"obs.potential" = 11994
+"obs.missing_outcome" = 750
+"obs.missing_crepitus" = 7
+"obs.n" = 11237
+"obs.cases" = 636
+"obs.cases.p1" = 258
+"obs.cases.p2" = 159
+"obs.cases.p3" = 126
+"obs.cases.p4" = 93
+# Descriptives (Results; men from Table 6)
+"d.age_mean" = 61.1
+"d.bmi_mean" = 28.2
+"d.male" = 1476
+"d.obs.never" = 7313
+"d.obs.rarely" = 1213
+"d.obs.sometimes" = 1701
+"d.obs.often" = 626
+"d.obs.always" = 384
+"d.base.never" = 2195
+"d.base.rarely" = 391
+"d.base.sometimes" = 561
+"d.base.often" = 229
+"d.base.always" = 119
+# Spearman correlations at baseline (Results)
+"r.womac" = { value = 0.33, tol = 0.03 }
+"r.kl" = { value = 0.03, tol = 0.03 }
+"r.womac.roa_nosx" = { value = 0.31, tol = 0.03 }
+"r.womac.noroa_sx" = { value = 0.20, tol = 0.03 }
+"r.womac.noroa_nosx" = { value = 0.25, tol = 0.03 }
+# Table 1: one-year incident SOA
+"t1.never.cases" = 332
+"t1.never.n" = 7313
+"t1.rarely.cases" = 79
+"t1.rarely.n" = 1213
+"t1.rarely.or_unadj" = { or = 1.5, lo = 1.1, hi = 1.9, sig = true }
+"t1.rarely.or_adj" = { or = 1.5, lo = 1.2, hi = 2.0, sig = true }
+"t1.sometimes.cases" = 130
+"t1.sometimes.n" = 1701
+"t1.sometimes.or_unadj" = { or = 1.7, lo = 1.4, hi = 2.1, sig = true }
+"t1.sometimes.or_adj" = { or = 1.8, lo = 1.4, hi = 2.2, sig = true }
+"t1.often.cases" = 52
+"t1.often.n" = 626
+"t1.often.or_unadj" = { or = 1.9, lo = 1.4, hi = 2.6, sig = true }
+"t1.often.or_adj" = { or = 2.2, lo = 1.6, hi = 3.0, sig = true }
+"t1.always.cases" = 43
+"t1.always.n" = 384
+"t1.always.or_unadj" = { or = 2.6, lo = 1.9, hi = 3.7, sig = true }
+"t1.always.or_adj" = { or = 3.0, lo = 2.1, hi = 4.3, sig = true }
+# Table 2: one-year, by baseline subgroup
+"t2.roa_nosx.persons" = 1085
+"t2.roa_nosx.obs" = 2973
+"t2.roa_nosx.cases" = 488
+"t2.roa_nosx.never.cases" = 251
+"t2.roa_nosx.never.n" = 1952
+"t2.roa_nosx.rarely.cases" = 63
+"t2.roa_nosx.rarely.n" = 327
+"t2.roa_nosx.rarely.or_unadj" = { or = 1.6, lo = 1.2, hi = 2.2, sig = true }
+"t2.roa_nosx.rarely.or_adj" = { or = 1.6, lo = 1.2, hi = 2.1, sig = true }
+"t2.roa_nosx.sometimes.cases" = 98
+"t2.roa_nosx.sometimes.n" = 428
+"t2.roa_nosx.sometimes.or_unadj" = { or = 2.0, lo = 1.5, hi = 2.6, sig = true }
+"t2.roa_nosx.sometimes.or_adj" = { or = 1.9, lo = 1.4, hi = 2.5, sig = true }
+"t2.roa_nosx.often.cases" = 43
+"t2.roa_nosx.often.n" = 153
+"t2.roa_nosx.often.or_unadj" = { or = 2.6, lo = 1.8, hi = 3.8, sig = true }
+"t2.roa_nosx.often.or_adj" = { or = 2.5, lo = 1.7, hi = 3.6, sig = true }
+"t2.roa_nosx.always.cases" = 33
+"t2.roa_nosx.always.n" = 113
+"t2.roa_nosx.always.or_unadj" = { or = 2.8, lo = 1.8, hi = 4.2, sig = true }
+"t2.roa_nosx.always.or_adj" = { or = 2.8, lo = 1.8, hi = 4.4, sig = true }
+"t2.noroa_sx.persons" = 660
+"t2.noroa_sx.obs" = 2137
+"t2.noroa_sx.cases" = 67
+"t2.noroa_sx.never.cases" = 30
+"t2.noroa_sx.never.n" = 1049
+"t2.noroa_sx.rarely.cases" = 6
+"t2.noroa_sx.rarely.n" = 239
+"t2.noroa_sx.rarely.or_unadj" = { or = 0.9, lo = 0.4, hi = 2.1, sig = false }
+"t2.noroa_sx.rarely.or_adj" = { or = 1.0, lo = 0.4, hi = 2.4, sig = false }
+"t2.noroa_sx.sometimes.cases" = 15
+"t2.noroa_sx.sometimes.n" = 485
+"t2.noroa_sx.sometimes.or_unadj" = { or = 1.1, lo = 0.6, hi = 2.0, sig = false }
+"t2.noroa_sx.sometimes.or_adj" = { or = 1.0, lo = 0.5, hi = 2.1, sig = false }
+"t2.noroa_sx.often.cases" = 7
+"t2.noroa_sx.often.n" = 210
+"t2.noroa_sx.often.or_unadj" = { or = 1.2, lo = 0.5, hi = 2.7, sig = false }
+"t2.noroa_sx.often.or_adj" = { or = 1.2, lo = 0.5, hi = 2.9, sig = false }
+"t2.noroa_sx.always.cases" = 9
+"t2.noroa_sx.always.n" = 154
+"t2.noroa_sx.always.or_unadj" = { or = 2.1, lo = 1.0, hi = 4.6 }
+"t2.noroa_sx.always.or_adj" = { or = 1.8, lo = 0.8, hi = 4.2, sig = false }
+"t2.noroa_nosx.persons" = 1750
+"t2.noroa_nosx.obs" = 6127
+"t2.noroa_nosx.cases" = 81
+"t2.noroa_nosx.never.cases" = 51
+"t2.noroa_nosx.never.n" = 4312
+"t2.noroa_nosx.rarely.cases" = 10
+"t2.noroa_nosx.rarely.n" = 647
+"t2.noroa_nosx.rarely.or_unadj" = { or = 1.3, lo = 0.7, hi = 2.6, sig = false }
+"t2.noroa_nosx.rarely.or_adj" = { or = 1.4, lo = 0.7, hi = 2.7, sig = false }
+"t2.noroa_nosx.sometimes.cases" = 17
+"t2.noroa_nosx.sometimes.n" = 788
+"t2.noroa_nosx.sometimes.or_unadj" = { or = 1.8, lo = 1.1, hi = 3.2, sig = true }
+"t2.noroa_nosx.sometimes.or_adj" = { or = 1.8, lo = 1.0, hi = 3.3 }
+"t2.noroa_nosx.often.cases" = 2
+"t2.noroa_nosx.often.n" = 263
+"t2.noroa_nosx.often.or_unadj" = { or = 0.6, lo = 0.2, hi = 2.6, sig = false }
+"t2.noroa_nosx.often.or_adj" = { or = 0.8, lo = 0.2, hi = 3.2, sig = false }
+"t2.noroa_nosx.always.cases" = 1
+"t2.noroa_nosx.always.n" = 117
+"t2.noroa_nosx.always.or_unadj" = { or = 0.7, lo = 0.1, hi = 5.3, sig = false }
+"t2.noroa_nosx.always.or_adj" = { or = 0.8, lo = 0.1, hi = 6.2, sig = false }
+# Table 3: four-year incident SOA
+"t3.never.cases" = 338
+"t3.never.n" = 2195
+"t3.rarely.cases" = 81
+"t3.rarely.n" = 391
+"t3.rarely.or_unadj" = { or = 1.4, lo = 1.1, hi = 1.9, sig = true }
+"t3.rarely.or_adj" = { or = 1.5, lo = 1.1, hi = 2.0, sig = true }
+"t3.sometimes.cases" = 114
+"t3.sometimes.n" = 561
+"t3.sometimes.or_unadj" = { or = 1.4, lo = 1.1, hi = 1.8, sig = true }
+"t3.sometimes.or_adj" = { or = 1.5, lo = 1.2, hi = 1.9, sig = true }
+"t3.often.cases" = 61
+"t3.often.n" = 229
+"t3.often.or_unadj" = { or = 2.0, lo = 1.5, hi = 2.7, sig = true }
+"t3.often.or_adj" = { or = 2.2, lo = 1.6, hi = 3.0, sig = true }
+"t3.always.cases" = 42
+"t3.always.n" = 119
+"t3.always.or_unadj" = { or = 3.0, lo = 2.0, hi = 4.4, sig = true }
+"t3.always.or_adj" = { or = 3.8, lo = 2.5, hi = 5.7, sig = true }
+# Table 4: four-year, by baseline subgroup
+"t4.roa_nosx.never.cases" = 261
+"t4.roa_nosx.never.n" = 669
+"t4.roa_nosx.rarely.cases" = 63
+"t4.roa_nosx.rarely.n" = 127
+"t4.roa_nosx.rarely.or_unadj" = { or = 1.5, lo = 1.1, hi = 2.3, sig = true }
+"t4.roa_nosx.rarely.or_adj" = { or = 1.5, lo = 1.0, hi = 2.3 }
+"t4.roa_nosx.sometimes.cases" = 84
+"t4.roa_nosx.sometimes.n" = 171
+"t4.roa_nosx.sometimes.or_unadj" = { or = 1.5, lo = 1.1, hi = 2.1, sig = true }
+"t4.roa_nosx.sometimes.or_adj" = { or = 1.5, lo = 1.0, hi = 2.1 }
+"t4.roa_nosx.often.cases" = 48
+"t4.roa_nosx.often.n" = 77
+"t4.roa_nosx.often.or_unadj" = { or = 2.6, lo = 1.6, hi = 4.2, sig = true }
+"t4.roa_nosx.often.or_adj" = { or = 2.4, lo = 1.5, hi = 3.9, sig = true }
+"t4.roa_nosx.always.cases" = 32
+"t4.roa_nosx.always.n" = 41
+"t4.roa_nosx.always.or_unadj" = { or = 5.6, lo = 2.6, hi = 11.8, sig = true }
+"t4.roa_nosx.always.or_adj" = { or = 5.5, lo = 2.5, hi = 11.8, sig = true }
+"t4.noroa_sx.never.cases" = 29
+"t4.noroa_sx.never.n" = 298
+"t4.noroa_sx.rarely.cases" = 7
+"t4.noroa_sx.rarely.n" = 67
+"t4.noroa_sx.rarely.or_unadj" = { or = 1.1, lo = 0.5, hi = 2.6, sig = false }
+"t4.noroa_sx.rarely.or_adj" = { or = 1.2, lo = 0.5, hi = 2.8, sig = false }
+"t4.noroa_sx.sometimes.cases" = 15
+"t4.noroa_sx.sometimes.n" = 169
+"t4.noroa_sx.sometimes.or_unadj" = { or = 0.9, lo = 0.5, hi = 1.7, sig = false }
+"t4.noroa_sx.sometimes.or_adj" = { or = 0.9, lo = 0.5, hi = 1.8, sig = false }
+"t4.noroa_sx.often.cases" = 7
+"t4.noroa_sx.often.n" = 72
+"t4.noroa_sx.often.or_unadj" = { or = 1.0, lo = 0.4, hi = 2.4, sig = false }
+"t4.noroa_sx.often.or_adj" = { or = 1.1, lo = 0.4, hi = 2.7, sig = false }
+"t4.noroa_sx.always.cases" = 9
+"t4.noroa_sx.always.n" = 54
+"t4.noroa_sx.always.or_unadj" = { or = 1.9, lo = 0.8, hi = 4.2, sig = false }
+"t4.noroa_sx.always.or_adj" = { or = 2.0, lo = 0.8, hi = 4.8, sig = false }
+"t4.noroa_nosx.never.cases" = 48
+"t4.noroa_nosx.never.n" = 1228
+"t4.noroa_nosx.rarely.cases" = 11
+"t4.noroa_nosx.rarely.n" = 197
+"t4.noroa_nosx.rarely.or_unadj" = { or = 1.5, lo = 0.7, hi = 2.9, sig = false }
+"t4.noroa_nosx.rarely.or_adj" = { or = 1.5, lo = 0.8, hi = 3.0, sig = false }
+"t4.noroa_nosx.sometimes.cases" = 15
+"t4.noroa_nosx.sometimes.n" = 221
+"t4.noroa_nosx.sometimes.or_unadj" = { or = 1.8, lo = 1.0, hi = 3.3 }
+"t4.noroa_nosx.sometimes.or_adj" = { or = 1.9, lo = 1.0, hi = 3.4 }
+"t4.noroa_nosx.often.cases" = 6
+"t4.noroa_nosx.often.n" = 80
+"t4.noroa_nosx.often.or_unadj" = { or = 2.0, lo = 0.8, hi = 4.8, sig = false }
+"t4.noroa_nosx.often.or_adj" = { or = 2.2, lo = 0.9, hi = 5.4, sig = false }
+"t4.noroa_nosx.always.cases" = 1
+"t4.noroa_nosx.always.n" = 24
+"t4.noroa_nosx.always.or_unadj" = { or = 1.1, lo = 0.1, hi = 8.1, sig = false }
+"t4.noroa_nosx.always.or_adj" = { or = 1.1, lo = 0.1, hi = 8.7, sig = false }
+# Table 6: four-year, by sex and age
+"t6.men.persons" = 1476
+"t6.men.cases" = 226
+"t6.men.never.cases" = 115
+"t6.men.never.n" = 990
+"t6.men.rarely.cases" = 34
+"t6.men.rarely.n" = 161
+"t6.men.rarely.or_unadj" = { or = 2.0, lo = 1.3, hi = 3.1, sig = true }
+"t6.men.rarely.or_adj" = { or = 2.1, lo = 1.4, hi = 3.3, sig = true }
+"t6.men.sometimes.cases" = 47
+"t6.men.sometimes.n" = 220
+"t6.men.sometimes.or_unadj" = { or = 2.1, lo = 1.4, hi = 3.0, sig = true }
+"t6.men.sometimes.or_adj" = { or = 2.3, lo = 1.6, hi = 3.4, sig = true }
+"t6.men.often.cases" = 18
+"t6.men.often.n" = 75
+"t6.men.often.or_unadj" = { or = 2.4, lo = 1.4, hi = 4.2, sig = true }
+"t6.men.often.or_adj" = { or = 2.7, lo = 1.5, hi = 4.8, sig = true }
+"t6.men.always.cases" = 12
+"t6.men.always.n" = 30
+"t6.men.always.or_unadj" = { or = 5.1, lo = 2.4, hi = 10.8, sig = true }
+"t6.men.always.or_adj" = { or = 6.8, lo = 3.1, hi = 14.7, sig = true }
+"t6.women.persons" = 2019
+"t6.women.cases" = 410
+"t6.women.never.cases" = 223
+"t6.women.never.n" = 1205
+"t6.women.rarely.cases" = 47
+"t6.women.rarely.n" = 230
+"t6.women.rarely.or_unadj" = { or = 1.1, lo = 0.8, hi = 1.6, sig = false }
+"t6.women.rarely.or_adj" = { or = 1.2, lo = 0.8, hi = 1.7, sig = false }
+"t6.women.sometimes.cases" = 67
+"t6.women.sometimes.n" = 341
+"t6.women.sometimes.or_unadj" = { or = 1.1, lo = 0.8, hi = 1.5, sig = false }
+"t6.women.sometimes.or_adj" = { or = 1.2, lo = 0.8, hi = 1.6, sig = false }
+"t6.women.often.cases" = 43
+"t6.women.often.n" = 154
+"t6.women.often.or_unadj" = { or = 1.7, lo = 1.1, hi = 2.5, sig = true }
+"t6.women.often.or_adj" = { or = 1.9, lo = 1.3, hi = 2.9, sig = true }
+"t6.women.always.cases" = 30
+"t6.women.always.n" = 89
+"t6.women.always.or_unadj" = { or = 2.2, lo = 1.4, hi = 3.6, sig = true }
+"t6.women.always.or_adj" = { or = 3.0, lo = 1.8, hi = 4.9, sig = true }
+"t6.age_lt65.persons" = 2175
+"t6.age_lt65.cases" = 369
+"t6.age_lt65.never.cases" = 179
+"t6.age_lt65.never.n" = 1236
+"t6.age_lt65.rarely.cases" = 41
+"t6.age_lt65.rarely.n" = 245
+"t6.age_lt65.rarely.or_unadj" = { or = 1.2, lo = 0.8, hi = 1.7, sig = false }
+"t6.age_lt65.rarely.or_adj" = { or = 1.1, lo = 0.8, hi = 1.7, sig = false }
+"t6.age_lt65.sometimes.cases" = 70
+"t6.age_lt65.sometimes.n" = 407
+"t6.age_lt65.sometimes.or_unadj" = { or = 1.2, lo = 0.9, hi = 1.7, sig = false }
+"t6.age_lt65.sometimes.or_adj" = { or = 1.2, lo = 0.9, hi = 1.6, sig = false }
+"t6.age_lt65.often.cases" = 45
+"t6.age_lt65.often.n" = 186
+"t6.age_lt65.often.or_unadj" = { or = 1.9, lo = 1.3, hi = 2.7, sig = true }
+"t6.age_lt65.often.or_adj" = { or = 1.7, lo = 1.2, hi = 2.5, sig = true }
+"t6.age_lt65.always.cases" = 34
+"t6.age_lt65.always.n" = 101
+"t6.age_lt65.always.or_unadj" = { or = 3.0, lo = 1.9, hi = 4.7, sig = true }
+"t6.age_lt65.always.or_adj" = { or = 3.1, lo = 2.0, hi = 4.9, sig = true }
+"t6.age_ge65.persons" = 1320
+"t6.age_ge65.cases" = 267
+"t6.age_ge65.never.cases" = 159
+"t6.age_ge65.never.n" = 959
+"t6.age_ge65.rarely.cases" = 40
+"t6.age_ge65.rarely.n" = 146
+"t6.age_ge65.rarely.or_unadj" = { or = 1.9, lo = 1.3, hi = 2.8, sig = true }
+"t6.age_ge65.rarely.or_adj" = { or = 2.0, lo = 1.3, hi = 3.0, sig = true }
+"t6.age_ge65.sometimes.cases" = 44
+"t6.age_ge65.sometimes.n" = 154
+"t6.age_ge65.sometimes.or_unadj" = { or = 2.0, lo = 1.4, hi = 2.9, sig = true }
+"t6.age_ge65.sometimes.or_adj" = { or = 1.9, lo = 1.3, hi = 2.9, sig = true }
+"t6.age_ge65.often.cases" = 16
+"t6.age_ge65.often.n" = 43
+"t6.age_ge65.often.or_unadj" = { or = 3.0, lo = 1.6, hi = 5.7, sig = true }
+"t6.age_ge65.often.or_adj" = { or = 3.0, lo = 1.5, hi = 5.8, sig = true }
+"t6.age_ge65.always.cases" = 8
+"t6.age_ge65.always.n" = 18
+"t6.age_ge65.always.or_unadj" = { or = 4.0, lo = 1.6, hi = 10.4, sig = true }
+"t6.age_ge65.always.or_adj" = { or = 3.9, lo = 1.5, hi = 10.4, sig = true }
