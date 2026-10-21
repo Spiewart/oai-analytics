@@ -74,6 +74,7 @@ Coded cells (`1: Right`) load as their code, with labels in the codebook. Missin
 |---|---|---|
 | `activity_agreement` | local | [analysis plan §1–9](docs/reference/oai-activity-agreement-analysis-plan.md) |
 | `progression_definitions` | local | [crosswalk](docs/reference/oai-progression-definition-crosswalk.md) |
+| `crepitus` | local | Crepitus measures in the OAI: sample sizes and events by visit and cohort ([README](analyses/crepitus/README.md) · [literature ledger](analyses/crepitus/LITERATURE.md)) |
 | `genetics_progression` | local → enclave | [analysis plan §10–12](docs/reference/oai-activity-agreement-analysis-plan.md) |
 | `lo2022_walking` | local | Replication of Lo et al. 2022 ([README](analyses/lo2022_walking/README.md)) |
 | `walking_validation` | local | Validity of the Lo et al. 2022 walking item against accelerometry ([README](analyses/walking_validation/README.md) · [spec](docs/superpowers/specs/2026-10-01-walking-validation-design.md)) |

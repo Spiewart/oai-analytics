@@ -1,0 +1,89 @@
+# Assumptions for the OAI crepitus sample-size and power survey.
+# Literature behind the choices: analyses/crepitus/LITERATURE.md
+
+[cohort.column]
+value = "V00COHORT"
+status = "confirmed"
+source = "Enrollees codebook: 1 Progression (1,390), 2 Incidence (3,284), 3 Non-exposed control (122)"
+rationale = "The OAI enrollment subcohorts; person-level and fixed at baseline. Not the same as an outcome-based incident or progression definition, which this analysis reports separately by knee."
+
+[measures.s2_positive_threshold]
+value = 3
+status = "assumed"
+source = "Couch 2025 (Osteoarthritis Cartilage 33:764): KOOS S2 'often' or 'always' as self-reported crepitus"
+rationale = "Lo 2018 analyzed all five frequency levels (never, rarely, sometimes, often, always); this setting only decides who counts as exposed in the counts. The full response distribution is always written to s2_distribution.csv."
+alternatives = [1, 2]
+choices = [1, 2, 3]
+
+[readings.project]
+value = 15
+status = "assumed"
+source = "analyses/lo2022_walking/assumptions.toml cohort.reading_project (central BU reading, baseline to 48 months)"
+alternatives = [37, 43]
+
+[readings.horizon_visit]
+value = "06"
+status = "assumed"
+source = "V06 = 48 months, the last annual visit with a Project 15 reading; Lo 2018 followed annual visits to 48 months"
+rationale = "Outcomes use follow-up readings at X-ray visits V01, V03, V05 and V06 up to and including this visit"
+choices = ["03", "05", "06"]
+
+[outcomes.pain_baseline_items]
+value = "P01KP{side}12CV"
+status = "assumed"
+source = "analyses/lo2022_walking/assumptions.toml outcomes.pain_baseline_items (frequent knee pain, screening visit)"
+
+[outcomes.pain_followup_items]
+value = "V{visit}KP{side}12CV"
+status = "assumed"
+source = "analyses/lo2022_walking/assumptions.toml outcomes.pain_followup_items"
+
+[incident_soa.definition]
+value = "KL >= 2 and frequent knee pain at the same visit"
+status = "confirmed"
+source = "Lo 2018 (Arthritis Care Res 70:53) abstract: symptomatic OA = frequent symptoms and tibiofemoral KL >= 2"
+rationale = "At risk = native knees without baseline symptomatic OA and with baseline KL and frequent pain recorded. The paper's cohort was person-level and right-knee-oriented in its ACR abstract; this table is knee-level, so counts are not expected to equal the paper's 3,495 participants."
+
+[incident_roa.risk_kl]
+value = "KL 0-1 at baseline"
+status = "assumed"
+source = "Radiographic OA = KL >= 2 (Lo 2018 abstract); incident = knees below that at baseline"
+
+[progression.risk_kl]
+value = "2-3"
+status = "open"
+source = "No consensus; docs/reference/oai-progression-definition-crosswalk.md section 1"
+rationale = "KL progression needs a baseline grade that can still worsen (KL 4 cannot) and, for most definitions, existing radiographic OA. '1-3' also admits doubtful OA (KL 1)."
+alternatives = ["1-3"]
+choices = ["2-3", "1-3"]
+
+[progression.event]
+value = "follow-up KL at least one grade above baseline, any visit to the horizon"
+status = "assumed"
+source = "kl_progression stub in src/oai/derive/progression.py (>= 1 grade between two visits)"
+
+[tkr.counted]
+value = "adjudicated-confirmed or self-reported, or seen on a follow-up X-ray; any follow-up window"
+status = "assumed"
+source = "Lo 2022 p.1661 via oai.derive.knee.REPLACEMENT_STATUS_COUNTS"
+rationale = "OUTCOMES99 covers follow-up beyond 48 months, so TKR events are not limited to the horizon visit. Pazzinatto 2019 tested 36 months only."
+
+[variants.s2_often_or_more]
+description = "KOOS S2 exposed = 'often' or 'always' is the default; this makes it explicit"
+set = { "measures.s2_positive_threshold" = 3 }
+
+[variants.s2_sometimes_or_more]
+description = "KOOS S2 exposed = 'sometimes' or more"
+set = { "measures.s2_positive_threshold" = 2 }
+
+[variants.s2_any]
+description = "KOOS S2 exposed = any frequency above 'never'"
+set = { "measures.s2_positive_threshold" = 1 }
+
+[variants.progression_kl_1_to_3]
+description = "Progression risk set widened to baseline KL 1-3"
+set = { "progression.risk_kl" = "1-3" }
+
+[variants.horizon_36_months]
+description = "Outcomes ascertained to V05 (36 months)"
+set = { "readings.horizon_visit" = "05" }

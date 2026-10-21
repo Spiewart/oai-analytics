@@ -15,6 +15,7 @@ ANALYSES = sorted(p.parent.name for p in (REPO / "analyses").glob("*/analysis.to
 def test_expected_analyses_exist():
     assert ANALYSES == [
         "activity_agreement",
+        "crepitus",
         "genetics_progression",
         "lo2022_walking",
         "progression_definitions",

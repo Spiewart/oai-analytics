@@ -85,3 +85,13 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 - **Install the TODO worker in this repo** — <!-- skip --> Port `claude-todo-worker` from knee_acoustic_emissions: `.claude/daily-worker/{config.sh,prompt.md,run.sh}`, the `update-todo-patches` hook, and a launchd plist. Deferred by the owner (2026-09-30) until there is enough worker-eligible work here.
 - **One data root with presence checks** — <!-- skip --> Replace the per-source .env variables with OAI_DATA_ROOT holding release/ and external/<source>/, plus an `oai data check` command that reports which declared inputs are present. Needs a short design approved by the owner first. A separate ancillary ASCII folder checked so far is byte-identical to files already in the release.
+
+### Crepitus (`analyses/crepitus`)
+
+- **Read the Mahmoudian 2023 OARSI abstract** — <!-- skip --> "Association of baseline knee crepitus with tibiofemoral osteoarthritis development" (doi 10.1016/j.joca.2023.01.194). The page we could reach gave the title only. It is the one lead on incident radiographic OA; confirm whether it used the OAI, its crepitus measure and its result, then update `analyses/crepitus/LITERATURE.md`.
+
+- **Confirm which crepitus variable Pazzinatto 2019 used** — <!-- skip --> The TKR paper (doi 10.1016/j.bjpt.2018.09.009) says "knee crepitus" without naming the exam item or KOOS S2. Open the full text; it decides whether a KOOS S2 analysis of TKR is new.
+
+- **Decide the crepitus analysis's outcome definitions** — <!-- skip --> `progression.risk_kl` (KL 2-3 or 1-3) is `open` in `analyses/crepitus/assumptions.toml`, and the horizon is 48 months (Project 15 readings). Pick definitions before the full analysis; cohort-level counts are in `oai run crepitus`.
+
+- **Explain the 3,545 vs 3,495 gap to Lo 2018** — <!-- skip --> Right knees with no baseline symptomatic OA, a baseline S2 value and an outcome visit number 3,545; the paper reports 3,495 participants. Ask the author which exclusions apply.
