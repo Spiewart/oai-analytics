@@ -48,3 +48,23 @@ def test_dual_counts_cells_sum_to_frame():
     assert sub.filter(pl.col("group") == "roa_nosx")["n"].sum() == 2
     assert set(out["grouping"]) == {"all", "subgroup", "cohort"}
     assert set(out["frame"]) == {"persons"}
+
+
+def test_periods_frame_is_also_counted_by_period():
+    periods = pl.DataFrame(
+        {
+            "ID": [1, 1, 2],
+            "period": [1, 2, 1],
+            "crep": [3, 0, 0],
+            "exam": [1, 0, 0],
+            "event": [False, True, False],
+            "subgroup": ["roa_nosx"] * 3,
+            "cohort": ["Incidence"] * 3,
+        }
+    )
+    out = dual.dual_counts("periods", periods, "crep", "exam", cuts=[3])
+    by_period = out.filter(pl.col("grouping") == "period")
+    assert set(by_period["group"]) == {"1", "2"}
+    p1 = by_period.filter(pl.col("group") == "1")
+    assert dict(zip(p1["combo"], p1["n"], strict=True))["both"] == 1
+    assert by_period.filter(pl.col("group") == "2")["events"].sum() == 1

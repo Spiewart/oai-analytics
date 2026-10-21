@@ -26,6 +26,9 @@ DECISIONS = {
     "model.covariates",
     "model.trend",
     "dual.s2_cuts",
+    "outcomes.replacement_counts",
+    "outcomes.missing_visit_days",
+    "model.missing_covariates",
 }
 
 

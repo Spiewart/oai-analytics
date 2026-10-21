@@ -17,7 +17,7 @@ sys.path.insert(0, str(ANALYSIS))
 import lo2018  # noqa: E402
 
 FIXTURE = Path(__file__).parent / "fixtures" / "oai_lo2018"
-P = {k: 2000000 + k for k in range(1, 12)}  # fixture participants, one rule each
+P = {k: 2000000 + k for k in range(1, 13)}  # fixture participants, one rule each
 
 
 @pytest.fixture(autouse=True)
@@ -44,9 +44,9 @@ def test_flow_counts_each_exclusion():
     cohort = lo2018.build_cohort(A, lo2018.soa_status(A))
     for step in ("arthroplasty", "no_baseline_kl", "baseline_soa", "no_outcome"):
         assert excluded(cohort.flow, step) == 1, step
-    assert cohort.flow.filter(pl.col("step") == "all")["persons"].item() == 11
-    assert cohort.people.height == 7
-    assert set(cohort.people["ID"]) == {P[k] for k in (5, 6, 7, 8, 9, 10, 11)}
+    assert cohort.flow.filter(pl.col("step") == "all")["persons"].item() == 12
+    assert cohort.people.height == 8
+    assert set(cohort.people["ID"]) == {P[k] for k in (5, 6, 7, 8, 9, 10, 11, 12)}
 
 
 def test_followup_replacement_is_soa_without_readings():
@@ -77,6 +77,22 @@ def test_missing_baseline_pain_is_not_sx_by_default():
     cohort = lo2018.build_cohort(B, lo2018.soa_status(B))
     assert excluded(cohort.flow, "baseline_soa") == 2
     assert P[11] not in cohort.people["ID"].to_list()
+
+
+def test_left_knee_variant_reads_left_womac():
+    right = lo2018._people(resolved()).filter(pl.col("ID") == P[6])["womac0"].item()
+    left = lo2018._people(resolved("left_knee")).filter(pl.col("ID") == P[6])["womac0"].item()
+    assert (right, left) == (1.0, 16.0)
+
+
+def test_prevalent_replacement_never_counts_as_incident():
+    """A left knee replaced at enrollment is SOA at V00 once either-knee replacements count."""
+    A = resolved(**{"outcomes.arthroplasty_scope": "either"})
+    soa = lo2018.soa_status(A)
+    assert status(soa, 12, "00")["soa"] is True
+    cohort = lo2018.build_cohort(A, soa)
+    assert P[12] not in cohort.people["ID"].to_list()
+    assert excluded(cohort.flow, "baseline_soa") == 2
 
 
 def test_subgroups_and_covariates():
@@ -205,4 +221,4 @@ def test_cohort_metrics_has_every_published_key():
     wanted = {k for k in published if k.split(".")[0] in {"flow", "obs", "d", "r"}}
     assert set(metrics["metric"]) == wanted
     values = dict(metrics.iter_rows())
-    assert values["flow.persons"] == 7 and values["obs.n"] == frame.height
+    assert values["flow.persons"] == 8 and values["obs.n"] == frame.height

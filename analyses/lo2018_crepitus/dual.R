@@ -65,10 +65,15 @@ for (frame in names(frames)) {
         est <- f$fit(d, paste(c("combo", adjust), collapse = " + "), paste0("combo", level))
         prediction[[length(prediction) + 1]] <- row_of(frame, cut, paste("combo", model), level, est, d)
       }
-      rhs <- paste(c("s2_pos * exam_pos", adjust), collapse = " + ")
-      for (term in c("s2_pos", "exam_pos", "s2_pos:exam_pos")) {
-        est <- f$fit(d, rhs, term)
-        prediction[[length(prediction) + 1]] <- row_of(frame, cut, paste("interaction", model), term, est, d)
+      # Each measure adjusted for the other, then with their interaction
+      forms <- list(main_effects = c("s2_pos + exam_pos", "s2_pos", "exam_pos"),
+                    interaction = c("s2_pos * exam_pos", "s2_pos", "exam_pos", "s2_pos:exam_pos"))
+      for (name in names(forms)) {
+        rhs <- paste(c(forms[[name]][1], adjust), collapse = " + ")
+        for (term in forms[[name]][-1]) {
+          est <- f$fit(d, rhs, term)
+          prediction[[length(prediction) + 1]] <- row_of(frame, cut, paste(name, model), term, est, d)
+        }
       }
     }
   }

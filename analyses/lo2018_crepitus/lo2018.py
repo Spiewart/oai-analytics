@@ -124,10 +124,15 @@ def soa_status(A: Resolved) -> pl.DataFrame:
     return df.with_columns(pl.when(pl.col("replaced")).then(True).otherwise(both).alias("soa"))
 
 
-def _people() -> pl.DataFrame:
+def _people(A: Resolved) -> pl.DataFrame:
+    """ID, sex, age, bmi, womac0 (baseline WOMAC pain of the cohort side)."""
     enrollees = _select(read_table("enrollees", None), ID="ID", sex="P02SEX")
     baseline = _select(
-        read_table("allclinical", "00"), ID="ID", age="V00AGE", bmi="P01BMI", womac0="V00WOMKPR"
+        read_table("allclinical", "00"),
+        ID="ID",
+        age="V00AGE",
+        bmi="P01BMI",
+        womac0=f"V00WOMKP{A['cohort.side']}",
     )
     return enrollees.join(baseline, on="ID", how="left").with_columns(
         pl.col("ID").cast(pl.Int64), pl.col("age", "bmi", "womac0").cast(pl.Float64)
@@ -140,7 +145,7 @@ def _flow_row(step: str, before: pl.DataFrame, after: pl.DataFrame) -> dict:
 
 def build_cohort(A: Resolved, soa: pl.DataFrame) -> Cohort:
     """The paper's flow: arthroplasty at enrollment, no baseline KL, baseline SOA, no outcome."""
-    people = _people()
+    people = _people(A)
     rows = [{"step": "all", "persons": people.height, "excluded": 0}]
 
     replaced0 = _replacements(A, A["cohort.arthroplasty_scope"]).filter(
@@ -150,7 +155,7 @@ def build_cohort(A: Resolved, soa: pl.DataFrame) -> Cohort:
     rows.append(_flow_row("arthroplasty", people, kept))
 
     base = soa.filter(pl.col("visit") == "00").select(
-        "ID", pl.col("kl").alias("kl0"), pl.col("sx").alias("sx0")
+        "ID", pl.col("kl").alias("kl0"), pl.col("sx").alias("sx0"), pl.col("soa").alias("soa0")
     )
     before, kept = kept, kept.join(base, on="ID", how="left").filter(pl.col("kl0").is_not_null())
     rows.append(_flow_row("no_baseline_kl", before, kept))
@@ -158,8 +163,10 @@ def build_cohort(A: Resolved, soa: pl.DataFrame) -> Cohort:
     before = kept
     if A["cohort.missing_baseline_pain"] == "exclude":
         kept = kept.filter(pl.col("sx0").is_not_null())
-    kept = kept.with_columns(pl.col("sx0").fill_null(False)).filter(
-        ~((pl.col("kl0") >= ROA_KL) & pl.col("sx0"))
+    kept = (
+        kept.with_columns(pl.col("sx0").fill_null(False))
+        .filter(~(((pl.col("kl0") >= ROA_KL) & pl.col("sx0")) | pl.col("soa0").fill_null(False)))
+        .drop("soa0")
     )
     rows.append(_flow_row("baseline_soa", before, kept))
 

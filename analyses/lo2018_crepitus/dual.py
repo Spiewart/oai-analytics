@@ -45,16 +45,21 @@ def with_combos(df: pl.DataFrame, s2: str, exam: str, cuts: Sequence[int]) -> pl
 def dual_counts(
     name: str, df: pl.DataFrame, s2: str, exam: str, cuts: Sequence[int]
 ) -> pl.DataFrame:
-    """frame, cut, grouping (all | subgroup | cohort), group, combo, n, events. Every combo
-    appears in every group, with zeros."""
+    """frame, cut, grouping (all | subgroup | cohort | period), group, combo, n, events.
+
+    `period` grouping applies to the person-period frame only. Every combo appears in every
+    group, with zeros."""
     coded = with_combos(df, s2, exam, cuts)
     parts = []
     for cut in cuts:
         col = f"combo_s2ge{cut}"
         rows = coded.filter(pl.col(col).is_not_null()).with_columns(pl.col(col).alias("combo"))
-        for grouping, by in (("all", None), ("subgroup", "subgroup"), ("cohort", "cohort")):
+        groupings = [("all", None), ("subgroup", "subgroup"), ("cohort", "cohort")]
+        if "period" in rows.columns:
+            groupings.append(("period", "period"))
+        for grouping, by in groupings:
             labelled = rows.with_columns(
-                (pl.lit("all") if by is None else pl.col(by)).alias("group")
+                (pl.lit("all") if by is None else pl.col(by).cast(pl.String)).alias("group")
             )
             counts = labelled.group_by("group", "combo").agg(
                 pl.len().alias("n"), pl.col("event").cast(pl.Int64).sum().alias("events")

@@ -39,6 +39,8 @@ def test_replication_is_graded_end_to_end():
         "dual_classification.csv",
     ):
         assert (out / name).is_file(), name
+    analyses = set(pl.read_csv(out / "dual_prediction.csv")["analysis"])
+    assert {"main_effects adjusted", "interaction adjusted", "combo adjusted"} <= analyses
     comparison = pl.read_csv(out / "comparison.csv")
     assert comparison.filter(pl.col("verdict") == "missing").height == 0
     baseline_soa = comparison.filter(pl.col("metric") == "flow.baseline_soa.excluded")
