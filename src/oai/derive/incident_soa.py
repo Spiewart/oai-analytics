@@ -35,6 +35,11 @@ EXPOSURE_VISITS = ALL_EXPOSURE_VISITS[:4]  # Lo 2018: annual visits to 48 months
 OUTCOME_VISITS = ALL_OUTCOME_VISITS[:4]
 VISITS = ("00", *OUTCOME_VISITS)
 DEFAULT_HORIZON = "06"
+READINGS_LAST_VISIT = "06"  # Project 15 reads baseline to 48 months
+# V99E{R,L}XIOA / XIOAN: earliest visit with KL >= 2 (or KL >= 2 with JSN), Projects 15, 37, 43
+INCIDENT_CODE_VISIT = {3: "01", 4: "03", 5: "05", 6: "06", 7: "08", 8: "10", 9: "12"}
+ROA_AT_BASELINE, NO_INCIDENCE = 1, 2
+ROA_COLUMN = {"kl2": "IOA", "kl2_jsn": "IOAN"}
 EXAM_CARRIED_FROM = "06"  # no exam at V08 or V10
 SUBGROUPS = ("roa_nosx", "noroa_sx", "noroa_nosx")
 ROA_KL = 2
@@ -87,6 +92,10 @@ def _replacements(A: Resolved, scope: str) -> pl.DataFrame:
     )
 
 
+def outcome_visits(A: Resolved) -> list[str]:
+    return schedule(horizon_of(A))["end_visit"].to_list()
+
+
 def _replaced_by_visit(A: Resolved) -> pl.DataFrame:
     """ID, visit, replaced: replaced at baseline, or on or before that visit's day count."""
     rep = _replacements(A, A["outcomes.arthroplasty_scope"])
@@ -95,7 +104,7 @@ def _replaced_by_visit(A: Resolved) -> pl.DataFrame:
             "ID", pl.lit("00").alias("visit"), pl.col("replaced_at_baseline").alias("replaced")
         )
     ]
-    for visit in OUTCOME_VISITS:
+    for visit in outcome_visits(A):
         nominal = nominal_month(visit) * DAYS_PER_MONTH
         days = visit_days(visit).select("ID", pl.col("days").alias("visit_day"))
         frames.append(
@@ -113,26 +122,58 @@ def _replaced_by_visit(A: Resolved) -> pl.DataFrame:
     return pl.concat(frames)
 
 
+def roa_from_outcomes99(A: Resolved) -> pl.DataFrame:
+    """ID, visit, roa for the cohort side at V00 and every outcome visit of the schedule, from
+    OUTCOMES99's earliest-incidence variables (carried forward once a knee has ROA)."""
+    side = A["cohort.side"]
+    column = f"V99E{side}X{ROA_COLUMN[setting(A, 'outcomes.roa_definition', 'kl2')]}"
+    df = read_table("outcomes", "99")
+    codes = df.select(
+        pl.col(find_col(df, "ID")).cast(pl.Int64).alias("ID"),
+        pl.col(find_col(df, column, where="outcomes99")).cast(pl.Int64).alias("code"),
+    )
+    frames = []
+    for visit in ("00", *outcome_visits(A)):
+        incident_by = [c for c, v in INCIDENT_CODE_VISIT.items() if v <= visit]
+        known = pl.col("code").is_in([ROA_AT_BASELINE, NO_INCIDENCE, *INCIDENT_CODE_VISIT])
+        roa = (pl.col("code") == ROA_AT_BASELINE) | pl.col("code").is_in(incident_by)
+        frames.append(
+            codes.select("ID", pl.lit(visit).alias("visit"), pl.when(known).then(roa).alias("roa"))
+        )
+    return pl.concat(frames)
+
+
 def soa_status(A: Resolved) -> pl.DataFrame:
     """ID, visit, kl, sx, roa, replaced, soa for the cohort side at V00 and every outcome visit.
 
     `soa` is True when the knee is replaced (`outcomes.arthroplasty_scope`); otherwise frequent
     pain and ROA. With `outcomes.soa_missing = "both_required"` a missing component leaves it
     null; with `"known_false"` a known absence of either component makes it False.
+
+    ROA comes from Project 15 readings at the same visit (`outcomes.roa_source = "readings"`,
+    48 months at most) or from OUTCOMES99 (`"outcomes99"`). `kl` is always Project 15's.
     """
     side, project = A["cohort.side"], A["cohort.reading_project"]
+    source = setting(A, "outcomes.roa_source", "readings")
+    visits = ["00", *outcome_visits(A)]
+    if source == "readings" and visits[-1] > READINGS_LAST_VISIT:
+        raise ValueError(
+            f"outcomes.roa_source = 'readings' uses Project 15, which ends at V{READINGS_LAST_VISIT}; "
+            f"periods.horizon V{visits[-1]} needs outcomes.roa_source = 'outcomes99'"
+        )
     enrollees = read_table("enrollees", None)
     ids = enrollees.select(pl.col(find_col(enrollees, "ID")).cast(pl.Int64).alias("ID"))
-    grid = ids.join(pl.DataFrame({"visit": list(VISITS)}), how="cross")
+    grid = ids.join(pl.DataFrame({"visit": visits}), how="cross")
+    read_visits = [v for v in visits if v <= READINGS_LAST_VISIT]
     kl = (
-        xray_readings(list(VISITS), project=project)
+        xray_readings(read_visits, project=project)
         .filter(pl.col("SIDE") == side)
         .select("ID", "visit", pl.col("KL").alias("kl"))
     )
     pain = (
         pl.concat(
             [frequent_knee_pain("00", A["outcomes.pain_baseline_item"])]
-            + [frequent_knee_pain(v, A["outcomes.pain_followup_item"]) for v in OUTCOME_VISITS]
+            + [frequent_knee_pain(v, A["outcomes.pain_followup_item"]) for v in visits[1:]]
         )
         .filter(pl.col("SIDE") == side)
         .select("ID", "visit", pl.col("frequent_pain").alias("sx"))
@@ -144,13 +185,16 @@ def soa_status(A: Resolved) -> pl.DataFrame:
         .with_columns(pl.col("replaced").fill_null(False))
         .sort("ID", "visit")
     )
-    roa_now = pl.col("kl") >= ROA_KL
-    if A["outcomes.roa_rule"] == "ever":
-        seen = roa_now.fill_null(False).cast(pl.Int8).cum_max().over("ID") == 1
-        roa = pl.when(seen).then(True).otherwise(roa_now)
+    if source == "outcomes99":
+        df = df.join(roa_from_outcomes99(A), on=["ID", "visit"], how="left")
     else:
-        roa = roa_now
-    df = df.with_columns(roa.alias("roa"))
+        roa_now = pl.col("kl") >= ROA_KL
+        if A["outcomes.roa_rule"] == "ever":
+            seen = roa_now.fill_null(False).cast(pl.Int8).cum_max().over("ID") == 1
+            roa = pl.when(seen).then(True).otherwise(roa_now)
+        else:
+            roa = roa_now
+        df = df.with_columns(roa.alias("roa"))
     both = pl.col("sx") & pl.col("roa")
     if A["outcomes.soa_missing"] == "both_required":
         both = pl.when(pl.col("sx").is_null() | pl.col("roa").is_null()).then(None).otherwise(both)
@@ -204,9 +248,7 @@ def build_cohort(A: Resolved, soa: pl.DataFrame) -> Cohort:
     rows.append(_flow_row("baseline_soa", before, kept))
 
     known = (
-        soa.filter(pl.col("visit").is_in(OUTCOME_VISITS) & pl.col("soa").is_not_null())
-        .select("ID")
-        .unique()
+        soa.filter((pl.col("visit") != "00") & pl.col("soa").is_not_null()).select("ID").unique()
     )
     before, kept = kept, kept.join(known, on="ID", how="semi")
     rows.append(_flow_row("no_outcome", before, kept))
