@@ -110,3 +110,8 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 - **Ask Mahmoudian / Englund which X-ray readings the OARSI 2023 abstract used** — <!-- skip --> Two eligibility readings reproduce their cohort size: both knees KL 0–1, and crepitus in either knee give 591 subjects (576 published), 39% with crepitus (45.8%). Structural development stays at 12–16% against their 54% under every JSN and osteophyte rule tried. Project 15 leaves osteophyte grades blank for most KL 0–1 knees. Questions: which reading project or dataset; how blank grades were handled; and whether those two eligibility readings are theirs. The null conclusion replicates either way.
   [analyses/exam_crepitus_soa/README.md](analyses/exam_crepitus_soa/README.md)
+
+### Crepitus to 96 and 120 months (`analyses/crepitus_soa_longterm`)
+
+- **Get Project 43's documentation from the OAI / NDA** — <!-- skip --> READPRJ 43 holds KL readings at baseline, 48, 72, 96 and 120 months for 3,842 knees (2,051 people), and OUTCOMES99's 120-month incidence codes depend on it. The release folder has no description of who was selected or how they were read. Until it does, the 120-month results (`--variant horizon_120`) are provisional; 96 months (Projects 15 and 37, documented as complete for incidence) is primary.
+  [analyses/crepitus_soa_longterm/README.md](analyses/crepitus_soa_longterm/README.md)
