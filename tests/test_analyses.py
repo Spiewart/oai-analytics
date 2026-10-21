@@ -16,6 +16,7 @@ def test_expected_analyses_exist():
     assert ANALYSES == [
         "activity_agreement",
         "crepitus",
+        "crepitus_soa_longterm",
         "exam_crepitus_soa",
         "genetics_progression",
         "lo2018_crepitus",

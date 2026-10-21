@@ -82,3 +82,9 @@ def test_exam_carry_forward():
     frame, counts = periods(none, inline_cohort(person()), soa, crep, require=("exam_crepitus",))
     assert frame["period"].to_list() == [1, 2, 3, 4, 5]
     assert counts["missing_crepitus"] == 1
+
+
+def test_empty_require_keeps_every_period():
+    crep = inline_crepitus(1, [None, None, 1, 1], exam=(None, 1, None, 0))
+    frame, counts = periods(resolved(), inline_cohort(person()), NO_SOA, crep, require=())
+    assert frame["period"].to_list() == [1, 2, 3, 4] and counts["missing_crepitus"] == 0

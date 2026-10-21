@@ -1,0 +1,157 @@
+# Assumptions for S2 and exam crepitus -> incident symptomatic OA beyond 48 months.
+# Spec: docs/superpowers/specs/2026-10-21-crepitus-soa-longterm-design.md
+# Keys shared with analyses/lo2018_crepitus/assumptions.toml are copied verbatim and must stay
+# identical to it (tests/test_longterm_definition.py). outcomes.roa_rule applies only when
+# outcomes.roa_source = "readings".
+
+[cohort.side]
+value = "R"
+status = "confirmed"
+source = "Lo 2018 Methods, Study Design: right knee only (GEE adjusts for one clustering level)"
+choices = ["R", "L"]
+
+[cohort.reading_project]
+value = 15
+status = "assumed"
+source = "Lo 2018 Methods: central readers; Project 15 reproduces the 877 baseline right-knee SOA exclusion exactly"
+alternatives = [37, 43]
+
+[cohort.arthroplasty_scope]
+value = "right"
+status = "assumed"
+source = "Lo 2018 Results: 35 excluded with arthroplasty at enrollment; right knee gives 38, either knee 63"
+choices = ["right", "either"]
+
+[cohort.missing_baseline_pain]
+value = "not_sx"
+status = "open"
+source = "Lo 2018 Results list no exclusion for a blank baseline frequent-pain answer (26 people)"
+rationale = "not_sx keeps them, counted as without frequent symptoms at baseline"
+choices = ["not_sx", "exclude"]
+
+[outcomes.pain_baseline_item]
+value = "P01KP{side}12CV"
+status = "assumed"
+source = "Lo 2018 Methods quote the 12-month frequent-pain question; screening-visit item, as in analyses/lo2022_walking"
+
+[outcomes.pain_followup_item]
+value = "V{visit}KP{side}12CV"
+status = "assumed"
+source = "Lo 2018 Methods: symptoms at 12, 24, 36, 48 months; AllClinical follow-up item"
+
+[outcomes.roa_rule]
+value = "same_visit"
+status = "open"
+source = "Lo 2018 Methods: ROA = tibiofemoral KL >= 2; whether ROA is carried forward once seen is not stated"
+choices = ["same_visit", "ever"]
+
+[outcomes.arthroplasty_scope]
+value = "right"
+status = "open"
+source = "Lo 2018 Methods: 'Any participant with a knee arthroplasty was identified as having Sx, ROA, and SOA'"
+rationale = "'Any participant' could mean a replacement in either knee"
+choices = ["right", "either"]
+
+[outcomes.arthroplasty_timing]
+value = "by_visit_days"
+status = "assumed"
+source = "A replacement counts from the first outcome visit whose V##VISDYS is on or after the replacement day"
+choices = ["by_visit_days"]
+
+[outcomes.soa_missing]
+value = "both_required"
+status = "open"
+source = "Lo 2018 does not say whether SOA is missing or known absent when one component (pain or KL) is missing"
+rationale = "known_false: no frequent pain (or KL < 2) rules SOA out even if the other component is missing"
+choices = ["both_required", "known_false"]
+
+[outcomes.replacement_counts]
+value = "adjudicated_or_self_report"
+status = "open"
+source = "oai.derive.knee.REPLACEMENT_STATUS_COUNTS (from Lo 2022 p.1661): V99E*RPCF of 1 (self-reported) or 3 (adjudicated, confirmed), or RPSN = 1 (seen on a follow-up X-ray). Lo 2018 says only 'any participant with a knee arthroplasty'"
+rationale = "A counted replacement with no day count (V99E*DAYS blank) never becomes SOA at a follow-up visit"
+choices = ["adjudicated_or_self_report"]
+
+[outcomes.missing_visit_days]
+value = "nominal_month"
+status = "assumed"
+source = "When a participant has no V##VISDYS for an outcome visit, the replacement-timing check uses the visit's nominal month (config/oai.toml [visits]) in days"
+choices = ["nominal_month"]
+
+[periods.after_missing_outcome]
+value = "continue"
+status = "open"
+source = "Lo 2018 Results: 750 of 11,994 potential observations missing the outcome were excluded; follow-up after them is not described"
+choices = ["continue", "stop"]
+
+[model.corstr]
+value = "exchangeable"
+status = "confirmed"
+source = "Lo 2018 Methods, Statistical analysis: GEE with an exchangeable correlation structure"
+choices = ["exchangeable", "independence"]
+
+[model.covariates]
+value = ["age", "sex", "bmi"]
+status = "confirmed"
+source = "Lo 2018 Methods: the adjusted model included age, sex, and BMI (BMI at baseline)"
+
+[model.missing_covariates]
+value = "complete_cases"
+status = "assumed"
+source = "Each model drops rows missing a covariate (models.R, dual.R); Lo 2018 does not say how missing age, sex or BMI were handled"
+rationale = "Few rows (Table 1 never: 7,297 fitted of 7,300 observations)"
+choices = ["complete_cases"]
+
+[periods.horizon]
+value = "10"
+status = "assumed"
+source = "kXR_SQ_BU_Descrip.pdf: Projects 15 and 37 together give complete radiographic OA incidence data over 96 months (V10)"
+rationale = "06 reproduces the 48-month analyses; 12 (120 months) depends on Project 43, whose selection the release does not document"
+choices = ["06", "10", "12"]
+
+[outcomes.roa_source]
+value = "outcomes99"
+status = "assumed"
+source = "kXR_SQ_BU_Descrip.pdf sections 1.3 and Appendix B recommend the OUTCOMES99 summary variables (V99E?XIOA) over merging reading projects by hand"
+rationale = "Earliest visit with KL >= 2 from Projects 15, 37 and 43, carried forward; readings (Project 15, same visit) is refused past 48 months"
+choices = ["readings", "outcomes99"]
+
+[outcomes.roa_definition]
+value = "kl2"
+status = "open"
+source = "OUTCOMES99 offers incident KL >= 2 (V99E?XIOA) and incident KL >= 2 with JSN (V99E?XIOAN); Lo 2018 used KL >= 2"
+choices = ["kl2", "kl2_jsn"]
+
+[exposure.exam_after_48m]
+value = "carry_v06"
+status = "open"
+source = "No exam crepitus at V08 (72 months) or V10 (96 months); the V06 exam is the last one before them"
+rationale = "carry_v06: the V06 exam is the exposure for the V08 and V10 periods; none: exam periods end at V08"
+choices = ["carry_v06", "none"]
+
+[model.period_term]
+value = "factor"
+status = "assumed"
+source = "Periods after 48 months are two years long, not one; a period factor lets the baseline odds differ by period"
+rationale = "none reproduces Lo 2018's one-period model"
+choices = ["factor", "none"]
+
+[variants.horizon_120]
+description = "Follow-up to 120 months (V12; depends on Project 43)"
+set = { "periods.horizon" = "12" }
+
+[variants.roa_kl2_jsn]
+description = "ROA = incident KL >= 2 with JSN (V99E?XIOAN)"
+set = { "outcomes.roa_definition" = "kl2_jsn" }
+
+[variants.exam_no_carry]
+description = "No exam exposure after 48 months (exam periods end at V08)"
+set = { "exposure.exam_after_48m" = "none" }
+
+[variants.period_term_none]
+description = "No period term (Lo 2018's model)"
+set = { "model.period_term" = "none" }
+
+[variants.lo2018_48m]
+description = "The 48-month design of lo2018_crepitus and exam_crepitus_soa (regression anchor)"
+set = { "periods.horizon" = "06", "outcomes.roa_source" = "readings", "model.period_term" = "none" }

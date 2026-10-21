@@ -2,7 +2,6 @@ ID|V12VISDYS|V12KPR12CV|V12KPL12CV|V12KSXRKN2|V12KSXLKN2|V12RKPFCRE|V12LKPFCRE
 2000005|3650|0: No|0: No|0: Never|0: Never|0: No|0: No
 2000006|3650|0: No|0: No|0: Never|0: Never|0: No|0: No
 2000007|3650|0: No|0: No|0: Never|0: Never|0: No|0: No
-2000008|3650|0: No|0: No|0: Never|0: Never|0: No|0: No
 2000009|3650|0: No|0: No|0: Never|0: Never|0: No|0: No
 2000010|3650|0: No|0: No|0: Never|0: Never|0: No|0: No
 2000011|3650|1: Yes|0: No|0: Never|0: Never|0: No|0: No
