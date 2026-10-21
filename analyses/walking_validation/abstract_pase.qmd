@@ -43,9 +43,10 @@ one <- function(x, what) {
   x
 }
 metric <- function(key) one(run$metrics[[key]], key)
-# A contrast against non-walkers (who answered no); numbers by means (as the figures show them), yes/no by shares
+# A contrast against non-walkers (who answered no); numbers by means (as the figures show them),
+# yes/no outcomes (any walking, each band of weekly hours) by shares
 contrast <- function(grouping, visit, outcome, level, col,
-                     estimator = if (outcome == "walking_any") "share" else "mean") {
+                     estimator = if (outcome == "walking_any" || startsWith(outcome, "band ")) "share" else "mean") {
   k <- pw_contrasts[pw_contrasts$grouping == grouping & pw_contrasts$visit == visit &
                       pw_contrasts$outcome == outcome & pw_contrasts$level == level &
                       pw_contrasts$estimator == estimator, col]
@@ -131,6 +132,33 @@ results <- paste(
           if (both_every) "every" else "most", mean_diff("00"), or_any("00"),
           num(month_of(last_total), 0), mean_diff(last_total), or_any(last_total),
           num(month_of(last_walk), 0), or_any(last_walk)))
+# Weekly walking-hours bands: at which visits walkers differ from non-walkers in each (adjusted,
+# Holm across visits); every significant band must favor walkers, as the sentence says
+hour_bands <- c("<2" = "under 2", "2–5" = "2–5", "5–10" = "5–10", "10+" = "10 or more")
+band_months <- lapply(stats::setNames(names(hour_bands), names(hour_bands)), function(b) {
+  k <- pw_contrasts[pw_contrasts$grouping == "any" & pw_contrasts$outcome == paste("band", b) &
+                      pw_contrasts$level == "yes" & !is.na(pw_contrasts$adj_p_holm) & pw_contrasts$adj_p_holm < 0.05, ]
+  if (any(k$adj_estimate <= 1)) stop("abstract_pase.qmd: non-walkers more often in band ", b, call. = FALSE)
+  sort(vapply(k$visit, month_of, numeric(1)))
+})
+band_share <- function(b, level) {
+  one(pw_bands$share[pw_bands$grouping == "any" & pw_bands$visit == asked & pw_bands$level == level &
+                       pw_bands$band == b], paste("band", b, level))
+}
+every_band <- names(Filter(function(m) length(m) == length(visits), band_months))
+some_band <- names(Filter(function(m) length(m) > 0 && length(m) < length(visits), band_months))
+no_band <- names(Filter(function(m) length(m) == 0, band_months))
+band_parts <- c(
+  if (length(every_band)) sprintf("%s hours a week at every visit%s", and2(hour_bands[every_band]),
+                                  if (length(every_band) == 1) sprintf(" (at 96 months %s vs %s; adjusted odds ratio %s)",
+                                    pct(band_share(every_band, "yes")), pct(band_share(every_band, "no")),
+                                    adj("any", asked, paste("band", every_band), "yes", digits = 1)) else ""),
+  vapply(some_band, function(b) sprintf("%s hours at %s months", hour_bands[[b]], and2(num(band_months[[b]], 0))), ""))
+bands_sentence <- paste0(
+  if (length(band_parts)) sprintf("By weekly walking hours, walkers more often walked %s", and2(band_parts)) else "Walkers and non-walkers did not differ in any band of weekly walking hours",
+  if (length(no_band) && length(band_parts)) sprintf("; %s hours a week did not differ", and2(hour_bands[no_band])) else "",
+  ".")
+results <- paste(results, bands_sentence)
 # The dose sentence: kept, and flagged in the review PDF for the original authors' decision
 dose <- sprintf("At 96 months, the odds of any walking rose with frequency (%s for %s times a month) and with years walked (%s to %s; trend %s for both).",
                 and2(vapply(times_levels, function(lv) num(contrast("times", asked, "walking_any", lv, "adj_estimate"), 1), "")),
@@ -145,7 +173,7 @@ conclusions <- sprintf("A single retrospective report of walking for exercise si
 # Figures: saved for upload, captions keyed to the stars they show
 fig1 <- fig_pase_total(); fig2 <- fig_pase_walking()
 oaireport::save_figure(fig1, "abstract_pase_fig1", "2col", height = 3.0)
-oaireport::save_figure(fig2, "abstract_pase_fig2", "2col", height = 3.6)
+oaireport::save_figure(fig2, "abstract_pase_fig2", "2col", height = 3.0)
 key <- function(fig, what) {
   k <- fig_star_key(attr(fig, "stars"))
   if (nzchar(k)) sprintf(" %s, %s, walkers vs non-walkers, adjusted for age, sex and body-mass index; %s.", k, what, p_note) else ""
@@ -153,8 +181,8 @@ key <- function(fig, what) {
 figures <- c(
   abstract_pase_fig1 = paste0("PASE total score, mean (95% CI), at each visit for walkers and non-walkers (yes or no to walking for exercise since age 50, asked at 96 months, dashed line); n of each group below.",
                               key(fig1, "difference in means")),
-  abstract_pase_fig2 = paste0("Share with any PASE walking (walking outside the home in the past 7 days), % (95% CI), at each visit for walkers and non-walkers (as in Figure 1); beside each point, a bar divides that group by estimated weekly walking hours (item 2 days × hours a day), each band labeled with its % of the group (bar height not to scale; non-walkers in gray); n of each group below.",
-                              key(fig2, "odds of any walking (above each visit) and of being in that band (in a walker's band)")))
+  abstract_pase_fig2 = paste0("Share with any PASE walking (walking outside the home in the past 7 days), % (95% CI), at each visit for walkers and non-walkers (as in Figure 1); n of each group below.",
+                              key(fig2, "odds of any walking")))
 captions <- stats::setNames(unname(figures), sprintf("Figure %d caption", seq_along(figures)))
 
 fields <- c(Title = title, Purpose = purpose, Methods = methods, Results = results,
