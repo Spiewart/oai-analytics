@@ -39,12 +39,15 @@ Run 2026-10-21 on the full release (default settings: right knee; exam value req
 | E6, four-year | Age ≥ 65 | 149 / 522 | 124 / 804 | 2.04 (1.55–2.69) |
 
 - **Adjusting for S2:** adding KOOS S2 (0–4) to the model barely moves the OR: 1.72 (1.46–2.03) one-year, 1.76 (1.47–2.10) four-year. The two measures carry largely separate information. Their agreement is poor (kappa about 0.1; `analyses/lo2018_crepitus` dual step).
-- **Where the signal sits:** the effect is confined to knees with radiographic OA but no frequent pain, as S2's was in Lo 2018. In symptomatic knees without radiographic OA (Mahmoudian's population) it is null.
-- **Interactions (E5, four-year):** sex p = 0.047 overall (larger in men, as for S2 in Lo 2018). Age p = 0.41, BMI p = 0.96, S2 p = 0.64.
+- **Where the signal sits:** the effect differs across the baseline subgroups (likelihood-ratio test of exam × subgroup, four-year: p = 0.003). It is 1.81 in knees with radiographic OA but no frequent pain, as S2's effect was concentrated there in Lo 2018. The two subgroups without radiographic OA show no evidence of an association, with wide CIs.
+- **Other interactions (E5, four-year):** sex p = 0.047 overall (larger in men, as for S2 in Lo 2018). Age p = 0.41, BMI p = 0.96, S2 p = 0.64.
+- **`require_s2` (both measures on every row):** results are unchanged. One-year 1.87 (1.58–2.20); four-year by subgroup 1.81 / 0.90 / 0.74.
 
 **Anchors.**
 - **Flow:** matches Lo 2018 as in the replication (877 baseline-SOA exclusions exact; the 84 "no valid outcome" is the open question).
-- **Mahmoudian 2023:** we reproduce the null, but not the cohort.
+- **Mahmoudian 2023:** the null conclusion replicates, but the anchor does not confirm the exam-item coding or the structural outcome. Crepitus prevalence and structural-development rates both differ from the abstract.
+  - **Cohort rules explain the size:** two eligibility readings (both knees KL 0–1; crepitus in either knee) bring the cohort to 591 subjects (576 published), with 39% crepitus and ORs 1.41 / 1.27 / 1.15.
+  - **Outcome still differs:** structural development stays at about 12–16% against 54% under every rule tried.
 
 | | Ours (default) | Mahmoudian 2023 |
 |---|---|---|
@@ -71,3 +74,6 @@ Run 2026-10-21 on the full release (default settings: right knee; exam value req
 | `mahmoudian_left` | 3 | 811 | 121 / 62 | 1.91 |
 | `mahmoudian_right` | 1 | 811 | 126 / 64 | 1.91 |
 | `mahmoudian_exclude_blank_osteophytes` | 0 | 309 | 121 / 60 | 1.91 |
+| `mahmoudian_crepitus_either_knee` | 3 | 811 (355 with crepitus) | 127 / 66 | 1.91 |
+| `mahmoudian_person_kl` | 3 | 591 | 71 / 38 | 1.91 |
+| both of the above (`--set`) | 3 | 591 (231 with crepitus) | 71 / 38 | 1.91 |

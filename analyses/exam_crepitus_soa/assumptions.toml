@@ -134,15 +134,28 @@ choices = ["sites", "grade_sum"]
 
 [mahmoudian.missing_osteophytes]
 value = "absent"
-status = "assumed"
+status = "open"
 source = "Release check 2026-10-21: Project 15 osteophyte grades are blank in 78% of KL 0 and 47% of KL 1 baseline readings and never in KL >= 2; 99% of the KL 0-1 knees it graded are 0"
 rationale = "absent: a blank grade in a KL 0-1 reading is no osteophyte; exclude: the knee has no structural outcome (keeps 309 of about 1,060 eligible subjects)"
 choices = ["absent", "exclude"]
+
+[mahmoudian.crepitus_knee]
+value = "selected"
+status = "open"
+source = "Mahmoudian 2023 reports crepitus 'at baseline' without saying whether in the selected knee or either knee (45.8% with crepitus vs 34% here in the selected knee)"
+choices = ["selected", "either"]
+
+[mahmoudian.kl_level]
+value = "knee"
+status = "open"
+source = "Mahmoudian 2023: 'subjects with K&L 0-1 ... in either knee at baseline'; knee = the included knee is KL 0-1; person = both knees are"
+choices = ["knee", "person"]
 
 [mahmoudian.reading_project]
 value = 15
 status = "assumed"
 source = "As cohort.reading_project; Project 15 covers baseline to 48 months"
+alternatives = [37, 43]
 
 [mahmoudian.missing_followup_pain]
 value = "exclude"
@@ -174,6 +187,14 @@ set = { "mahmoudian.jsn_rule" = "any_increase" }
 [variants.mahmoudian_exclude_blank_osteophytes]
 description = "Mahmoudian anchor: a knee with blank osteophyte grades has no structural outcome"
 set = { "mahmoudian.missing_osteophytes" = "exclude" }
+
+[variants.mahmoudian_crepitus_either_knee]
+description = "Mahmoudian anchor: crepitus present in either knee"
+set = { "mahmoudian.crepitus_knee" = "either" }
+
+[variants.mahmoudian_person_kl]
+description = "Mahmoudian anchor: both knees KL 0-1 at baseline"
+set = { "mahmoudian.kl_level" = "person" }
 
 [variants.mahmoudian_osteophyte_grade_sum]
 description = "Mahmoudian anchor: a rise in the summed osteophyte grades counts"
