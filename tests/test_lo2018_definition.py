@@ -20,6 +20,7 @@ DECISIONS = {
     "outcomes.roa_rule",
     "outcomes.arthroplasty_scope",
     "outcomes.arthroplasty_timing",
+    "outcomes.soa_missing",
     "periods.after_missing_outcome",
     "model.corstr",
     "model.covariates",
@@ -43,6 +44,7 @@ def test_manifest_and_assumptions_load():
         "exclude_missing_pain",
         "roa_ever",
         "stop_after_missing_outcome",
+        "soa_known_false",
         "corstr_independence",
     }
     assert loaded.items["periods.after_missing_outcome"].status == "open"
@@ -109,6 +111,7 @@ def test_published_sig_follows_the_rule():
         ("outcomes.roa_rule", "carry"),
         ("outcomes.arthroplasty_scope", "any"),
         ("periods.after_missing_outcome", "skip"),
+        ("outcomes.soa_missing", "missing"),
         ("model.corstr", "exchangable"),
         ("model.trend", "armitage"),
     ],
