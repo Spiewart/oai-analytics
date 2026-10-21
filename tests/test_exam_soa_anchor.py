@@ -42,7 +42,7 @@ def knees(rows):
 
 
 def developed(base, fu, jsn="incident", osteophytes="sites"):
-    out = mahmoudian.structural_development(knees(base), knees(fu), jsn, osteophytes)
+    out = mahmoudian.structural_development(knees(base), knees(fu), jsn, osteophytes, "exclude")
     return out.sort("ID")["structural"].to_list()
 
 
@@ -63,9 +63,8 @@ def test_structural_development_rules():
 def test_missing_feature_leaves_structural_null():
     base = knees([(1, [0, 0, 0, 0, 0, 0])])
     fu = knees([(1, [0, 0, 0, 0, 0, 0])]).with_columns(pl.lit(None, pl.Float64).alias("OSTL"))
-    assert mahmoudian.structural_development(base, fu, "incident", "sites")[
-        "structural"
-    ].to_list() == [None]
+    out = mahmoudian.structural_development(base, fu, "incident", "sites", "exclude")
+    assert out["structural"].to_list() == [None]
 
 
 def test_pick_knee_is_seeded_and_one_per_person():
@@ -127,3 +126,34 @@ def test_blank_osteophytes_in_kl01_readings_count_as_none():
     assert absent.sort("ID")["structural"].to_list() == [True, False]
     excluded = mahmoudian.structural_development(base, fu, "incident", "sites", "exclude")
     assert excluded["structural"].to_list() == [None, None]
+
+
+def test_structural_development_needs_an_explicit_blank_rule():
+    base = knees([(1, [0, 0, 0, 0, 0, 0])])
+    with pytest.raises(TypeError):
+        mahmoudian.structural_development(base, base, "incident", "sites")
+
+
+def test_knee_pick_does_not_depend_on_who_else_is_eligible():
+    both = pl.DataFrame({"ID": [i for i in range(1, 41) for _ in (0, 1)], "SIDE": ["R", "L"] * 40})
+    full = mahmoudian.pick_knee(both, "random", 2023)
+    fewer = mahmoudian.pick_knee(both.filter(pl.col("ID") != 1), "random", 2023)
+    kept = full.filter(pl.col("ID") != 1).sort("ID")
+    assert kept.equals(fewer.sort("ID"))
+    assert set(full["SIDE"]) == {"R", "L"}
+
+
+def test_crepitus_in_either_knee():
+    def exam(A, person):
+        return mahmoudian.anchor_frame(A).filter(pl.col("ID") == P[person])["exam0"].item()
+
+    # 13: both knees eligible, exam right 1 / left 0; 15: exam 0 in both knees
+    assert exam(resolved(**{"mahmoudian.knee_pick": "left"}), 13) == 0
+    either = resolved(**{"mahmoudian.knee_pick": "left", "mahmoudian.crepitus_knee": "either"})
+    assert exam(either, 13) == 1 and exam(either, 15) == 0
+
+
+def test_person_level_kl_needs_both_knees_kl01():
+    ids = mahmoudian.anchor_frame(resolved(**{"mahmoudian.kl_level": "person"}))["ID"].to_list()
+    assert P[14] not in ids  # left knee KL 2
+    assert {P[13], P[15], P[16]} <= set(ids)

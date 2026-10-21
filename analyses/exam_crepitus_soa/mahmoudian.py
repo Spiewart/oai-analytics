@@ -8,7 +8,7 @@ more osteophytes in either tibiofemoral compartment, and the same with frequent 
 
 from __future__ import annotations
 
-import random
+import hashlib
 from functools import partial
 
 import polars as pl
@@ -58,12 +58,12 @@ def structural_development(
     fu: pl.DataFrame,
     jsn_rule: str,
     osteophyte_rule: str,
-    missing_osteophytes: str = "exclude",
+    missing_osteophytes: str,
 ) -> pl.DataFrame:
     """ID, SIDE, structural: JSN rule or osteophyte rule; null if any feature is missing.
 
     `missing_osteophytes = "absent"` first turns blank osteophyte grades in KL 0-1 readings
-    into 0 (both frames then need a `kl` column).
+    into 0 (both frames then need a `kl` column); `"exclude"` leaves them missing.
     """
     if missing_osteophytes == "absent":
         base, fu = _fill_osteophytes(base), _fill_osteophytes(fu)
@@ -88,12 +88,19 @@ def structural_development(
     )
 
 
+def _draw(seed: int, id_: int, side: str) -> float:
+    """A uniform draw fixed by (seed, ID, SIDE), so one person's pick never depends on who else
+    is eligible."""
+    digest = hashlib.sha256(f"{seed}:{id_}:{side}".encode()).digest()
+    return int.from_bytes(digest[:8], "big") / 2**64
+
+
 def pick_knee(knees: pl.DataFrame, rule: str, seed: int) -> pl.DataFrame:
-    """One knee per ID: random (seeded) or the named side when both are eligible."""
+    """One knee per ID: random (seeded per person) or the named side when both are eligible."""
     df = knees.sort("ID", "SIDE")
     if rule == "random":
-        rng = random.Random(seed)
-        order = pl.Series("_order", [rng.random() for _ in range(df.height)])
+        draws = [_draw(seed, i, s) for i, s in zip(df["ID"], df["SIDE"], strict=True)]
+        order = pl.Series("_order", draws, dtype=pl.Float64)
     else:
         wanted = {"right": "R", "left": "L"}[rule]
         order = (df["SIDE"] != wanted).cast(pl.Float64).alias("_order")
@@ -155,7 +162,21 @@ def anchor_frame(A: Resolved) -> pl.DataFrame:
             & pl.col("structural").is_not_null()
         )
     )
+    if A["mahmoudian.kl_level"] == "person":
+        both_low = (
+            base.group_by("ID")
+            .agg(((pl.col("kl").is_in(ELIGIBLE_KL)).all() & (pl.len() == 2)).alias("ok"))
+            .filter(pl.col("ok"))
+        )
+        knees = knees.join(both_low.select("ID"), on="ID", how="semi")
     picked = pick_knee(knees, A["mahmoudian.knee_pick"], A["mahmoudian.seed"])
+    if A["mahmoudian.crepitus_knee"] == "either":
+        any_knee = exam0.group_by("ID").agg(pl.col("exam0").max().alias("exam_any"))
+        picked = (
+            picked.join(any_knee, on="ID", how="left")
+            .with_columns(pl.col("exam_any").alias("exam0"))
+            .drop("exam_any")
+        )
     pain_at_4y = pl.col("pain6")
     if A["mahmoudian.missing_followup_pain"] == "not_sx":
         pain_at_4y = pain_at_4y.fill_null(False)

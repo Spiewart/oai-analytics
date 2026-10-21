@@ -88,6 +88,16 @@ e5 <- do.call(rbind, lapply(c("all", subgroups), function(g) {
   data.frame(group = g, age = interaction_p(d, "age"), sex = interaction_p(d, "sex"),
              bmi = interaction_p(d, "bmi"), s2 = interaction_p(d, "crep0"))
 }))
+# Does the exam effect differ across the baseline subgroups? Likelihood-ratio test of
+# exam0:subgroup (all subjects), reported on the "all" row.
+subgroup_p <- local({
+  d <- persons[stats::complete.cases(persons[, c("event", "exam0", "subgroup", covariates)]), ]
+  rhs <- paste(c("exam0", "subgroup", covariates), collapse = " + ")
+  fit0 <- stats::glm(stats::as.formula(paste("event ~", rhs)), data = d, family = stats::binomial)
+  fit1 <- stats::update(fit0, . ~ . + exam0:subgroup)
+  stats::anova(fit0, fit1, test = "LRT")[2, "Pr(>Chi)"]
+})
+e5$subgroup <- ifelse(e5$group == "all", subgroup_p, NA)
 utils::write.csv(e5, file.path(out_dir, "table_e5.csv"), row.names = FALSE)
 
 # E6: four-year by sex (adjusted for age, BMI) and age (adjusted for sex, BMI), as Lo 2018 Table 6

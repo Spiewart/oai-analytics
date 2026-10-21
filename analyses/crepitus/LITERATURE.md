@@ -61,7 +61,7 @@ WOMAC has no crepitus item. V13 and V14 carry none of the three.
 
 | Outcome of interest | OAI evidence found | Gap |
 |---|---|---|
-| Incident symptomatic OA | Lo 2018 (KOOS S2) | Exam crepitus now tested in `analyses/exam_crepitus_soa` (unpublished): four-year adjusted OR 1.91 (1.60–2.28), 1.76 after adjusting for S2; null in symptomatic knees without ROA, as Mahmoudian 2023 found. No patellofemoral definition. |
+| Incident symptomatic OA | Lo 2018 (KOOS S2) | Exam crepitus now tested in `analyses/exam_crepitus_soa` (unpublished): four-year adjusted OR 1.91 (1.60–2.28), 1.76 after adjusting for S2; the effect differs by baseline subgroup (p = 0.003): 1.81 with ROA and no frequent pain, no evidence of association without ROA (wide CIs). No patellofemoral definition. |
 | Incident radiographic OA | Two abstracts only: Lo 2014 OARSI (S2, right knees without ROA; radiographic plus symptomatic outcome) and Mahmoudian 2023 OARSI (exam crepitus, 576 symptomatic KL 0–1 knees, JSN/osteophyte development; null, OR 1.2, 0.9–1.7). | No full paper. Exam crepitus against incident KL ≥ 2 in all at-risk knees, repeated measures, and S2 and exam together are all untested. |
 | Progressive OA | Mahmoudian 2021 (composite criteria); Price 2019 (no signal); Chen 2023 (unclear) | Crepitus alone not tested for KL, JSW or MRI progression. |
 | Knee replacement | Pazzinatto 2019 (36 months, null) | No longer follow-up, time-to-event or exam-versus-self-report comparison. |
