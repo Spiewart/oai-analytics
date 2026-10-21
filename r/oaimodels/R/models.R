@@ -32,3 +32,24 @@ fit_tkr_cox <- function(frame, time = "time_to_event", event = "event", exposure
                         covariates = default_covariates()) {
   not_implemented("11.4")
 }
+
+#' Logistic regression with one row per person (Lo 2018 four-year models)
+#'
+#' @param data Rows with the outcome and the right-hand-side variables.
+#' @param rhs Right-hand side, e.g. "factor(crep0) + age + sex + bmi".
+#' @param outcome Binary outcome column: 0/1 or logical.
+#' @param term Coefficient whose odds ratio is returned.
+#' @return Named numeric: or, lo, hi (95% Wald), log_or, se.
+fit_logit <- function(data, rhs, outcome = "y", term) {
+  if (!outcome %in% names(data)) stop("fit_logit(): data has no column ", outcome, call. = FALSE)
+  model <- stats::glm(stats::as.formula(paste(outcome, "~", rhs)), data = data,
+                      family = stats::binomial)
+  coefs <- summary(model)$coefficients
+  if (!term %in% rownames(coefs)) {
+    stop("term ", term, " is not in the model (", paste(rownames(coefs), collapse = ", "), ")",
+         call. = FALSE)
+  }
+  b <- coefs[term, "Estimate"]
+  se <- coefs[term, "Std. Error"]
+  c(or = exp(b), lo = exp(b - 1.96 * se), hi = exp(b + 1.96 * se), log_or = b, se = se)
+}
