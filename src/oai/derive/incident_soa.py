@@ -279,6 +279,13 @@ def _required(require: Sequence[str], suffix: str = "") -> list[str]:
     return [REQUIRE_COLUMNS[m] + suffix for m in require]
 
 
+def _present(columns: Sequence[str]) -> pl.Expr:
+    """True where every column is non-null (always True for no columns)."""
+    return (
+        pl.all_horizontal([pl.col(c).is_not_null() for c in columns]) if columns else pl.lit(True)
+    )
+
+
 def _crepitus_at(visit: str, side: str) -> pl.DataFrame:
     try:
         return crepitus_values(visit, ["koos_s2", "exam_crepitus"], sides=(side,))
@@ -310,7 +317,7 @@ def periods(
     in `require` is (`missing_crepitus`). With `periods.after_missing_outcome = "stop"`, a
     missing outcome also ends the person's follow-up.
     """
-    needed = pl.all_horizontal([pl.col(c).is_not_null() for c in _required(require)])
+    needed = _present(_required(require))
     crep = crepitus.select(
         "ID",
         pl.col("visit").alias("start_visit"),
@@ -362,7 +369,7 @@ def four_year(
 ) -> pl.DataFrame:
     """One row per person with every required baseline measure: incident SOA at any outcome
     visit in `soa` (48 months for Lo 2018; to the horizon when soa_status covers more)."""
-    needed = pl.all_horizontal([pl.col(c).is_not_null() for c in _required(require, "0")])
+    needed = _present(_required(require, "0"))
     event = (
         soa.filter(pl.col("visit") != "00")
         .group_by("ID")

@@ -1,0 +1,26 @@
+name = "crepitus_soa_longterm"
+description = "KOOS S2 and exam crepitus -> incident symptomatic knee OA to 96 (primary) and 120 months, with ROA by visit from OUTCOMES99."
+
+[inputs]
+tables = [
+    "enrollees", "allclinical:00", "allclinical:01", "allclinical:03", "allclinical:05",
+    "allclinical:06", "allclinical:08", "allclinical:10", "allclinical:12",
+    "kxr_sq_bu:00", "kxr_sq_bu:01", "kxr_sq_bu:03", "kxr_sq_bu:05", "kxr_sq_bu:06",
+    "kxr_sq_bu:08", "kxr_sq_bu:10", "kxr_sq_bu:12", "outcomes:99",
+]
+
+[[steps]]
+id = "cohort"
+lang = "python"
+stage = "local"
+entry = "build_frame.py"
+
+[[steps]]
+id = "models"
+lang = "r"
+stage = "local"
+entry = "models.R"
+needs = ["cohort"]
+
+[outputs]
+aggregate = ["flow.csv", "coverage.csv", "table_*.csv", "metrics_*.csv", "assumptions.resolved.json"]
