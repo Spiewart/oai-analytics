@@ -46,7 +46,7 @@ metric <- function(key) one(run$metrics[[key]], key)
 # A contrast against non-walkers (who answered no); numbers by means (as the figures show them),
 # yes/no outcomes (any walking, each band of weekly hours) by shares
 contrast <- function(grouping, visit, outcome, level, col,
-                     estimator = if (outcome == "walking_any" || startsWith(outcome, "band ")) "share" else "mean") {
+                     estimator = if (outcome == "walking_any" || startsWith(outcome, "band ") || startsWith(outcome, "hours ")) "share" else "mean") {
   k <- pw_contrasts[pw_contrasts$grouping == grouping & pw_contrasts$visit == visit &
                       pw_contrasts$outcome == outcome & pw_contrasts$level == level &
                       pw_contrasts$estimator == estimator, col]
@@ -57,12 +57,13 @@ group_value <- function(grouping, visit, outcome, level, col = "estimate") {
                    pw_groups$outcome == outcome & pw_groups$level == level, col]
   one(g, paste(grouping, visit, outcome, level, col))
 }
-# "20 [95% CI 10 to 30]": square brackets, as the estimates sit inside parentheses; later
-# intervals drop "95% CI"
-ci <- function(est, lo, hi, digits, label = FALSE) {
-  sprintf("%s [%s%s to %s]", num(est, digits), if (label) "95% CI " else "", num(lo, digits), num(hi, digits))
+# "20 [95% CI 12–27]": square brackets, as the estimates sit inside parentheses; " to " when the
+# lower bound is negative, so the dash cannot read as a minus sign
+ci <- function(est, lo, hi, digits, label = TRUE) {
+  sprintf("%s [%s%s%s%s]", num(est, digits), if (label) "95% CI " else "", num(lo, digits),
+          if (lo < 0) " to " else "–", num(hi, digits))
 }
-adj <- function(grouping, visit, outcome, level, digits = 1, label = FALSE) {
+adj <- function(grouping, visit, outcome, level, digits = 1, label = TRUE) {
   ci(contrast(grouping, visit, outcome, level, "adj_estimate"), contrast(grouping, visit, outcome, level, "adj_lo"),
      contrast(grouping, visit, outcome, level, "adj_hi"), digits, label)
 }
@@ -95,98 +96,67 @@ trend_p <- function(grouping, outcome = "walking_any") {
   p <- one(p, paste("trend", grouping))
   if (p < 0.001) "p<0.001" else sprintf("p=%s", num(p, 3))
 }
-# Share of a group walking at least 5 hours a week (the top two bands)
-long_walk <- function(level, visit = asked) {
-  b <- pw_bands[pw_bands$grouping == "any" & pw_bands$visit == visit & pw_bands$level == level, ]
-  one(sum(b$share[b$band %in% c("5–10", "10+")]), paste("5+ hours", level))
-}
 n_with <- function(visit) {
   sum(pw_groups$n[pw_groups$grouping == "any" & pw_groups$visit == visit & pw_groups$outcome == "total"])
 }
 last_walk <- visits[length(visits)]
 
-title <- sprintf("SINGLE REPORT OF RETROSPECTIVE WALKING BEHAVIOR CONFIRMED USING A REPEATED SHORT-TERM WALKING QUESTIONNAIRE OVER %s YEARS", span_years)
+title <- sprintf("VALIDATION OF A SINGLE REPORT OF RETROSPECTIVE WALKING BEHAVIOR USING A REPEATED SHORT-TERM WALKING QUESTIONNAIRE OVER %s YEARS", span_years)
 
-purpose <- "In the Osteoarthritis Initiative, a single question asked at the 96-month visit about walking for exercise since age 50 has been linked to fewer people developing frequent knee pain. We assessed its construct validity against the Physical Activity Scale for the Elderly (PASE), a 7-day activity questionnaire repeated before, at and after the visit at which the question was asked."
+purpose <- "In the Osteoarthritis Initiative (OAI), walking for exercise since age 50, evaluated by a mail-out survey returned at the 96-month visit, has been linked to fewer people developing frequent knee pain. We assessed its construct validity against the Physical Activity Scale for the Elderly (PASE), a 7-day activity questionnaire that has been administered multiple times over the course of the OAI."
 
 # How the p-values were adjusted, from the ledger: "p-values Holm-adjusted across visits"
 p_method <- assumption("pase_walking.p_adjust")
 p_note <- if (p_method == "none") "unadjusted p-values" else sprintf(
   "p-values %s-adjusted %s", tools::toTitleCase(p_method),
   if (assumption("pase_walking.p_adjust_family") == "across_visits") "across visits" else "within each visit")
+hours <- format(assumption("pase_walking.hours_threshold"), drop0trailing = TRUE)  # "5"
+at_least <- paste0("hours ", hours, "+")
 methods <- paste0(
-  "Participants reported whether they had walked for exercise (at least 20 minutes a day, at least 10 times) since age 50 and, if so, how many times a month and for how many years. ",
+  "Participants reported whether they had walked for exercise (at least 20 minutes a day, at least 10 times) since age 50 (“Walkers for Exercise”) and, if so, how many times a month and for how many years. ",
   sprintf("PASE was collected at %s months (the walking item also at %s months). ",
           and2(vapply(total_visits, month_of, numeric(1))), num(month_of(last_walk), 0)),
-  "At each visit, walkers (who answered yes) were compared with non-walkers (no) on the mean PASE total score (linear regression), any walking outside the home (PASE item 2; logistic regression) and each band of estimated weekly walking hours (item 2 days × hours a day; logistic regression), adjusted for age, sex and body-mass index, with ", p_note, "; walkers were also grouped by frequency and years walked, with tests for trend.")
+  sprintf("At each visit, Walkers for Exercise were compared with those who were not on the mean PASE total score (linear regression), short-term walking (any walking outside the home in the past 7 days, PASE item 2; logistic regression) and walking %s or more hours a week (item 2 days × hours a day; logistic regression), adjusted for age, sex and body-mass index, with %s; Walkers for Exercise were also grouped by frequency and years walked, with tests for trend.", hours, p_note))
 
+# Broad strokes by measure: where walkers differ (every visit, or how many), the range of the
+# adjusted estimates over the visits, and the 96-month estimate with its CI
+estimator_of <- function(outcome) if (outcome == "total") "mean" else "share"
+where <- function(outcome) {
+  p <- pw_contrasts$adj_p_holm[pw_contrasts$grouping == "any" & pw_contrasts$outcome == outcome &
+                                 pw_contrasts$estimator == estimator_of(outcome)]
+  k <- sum(!is.na(p) & p < 0.05)
+  if (k == length(p)) "at every visit" else sprintf("at %d of %d visits", k, length(p))
+}
+est_range <- function(outcome, digits) {
+  e <- pw_contrasts$adj_estimate[pw_contrasts$grouping == "any" & pw_contrasts$outcome == outcome &
+                                   pw_contrasts$estimator == estimator_of(outcome)]
+  sprintf("%s–%s", num(min(e), digits), num(max(e), digits))
+}
 results <- paste(
-  sprintf("Of %s participants, %s (%s) reported walking for exercise since age 50; %s had a PASE total at enrollment and %s at %s months.",
+  sprintf("Of %s participants, %s (%s) were Walkers for Exercise; %s had a PASE total at enrollment and %s at %s months.",
           count(n_all), count(n_yes), pct(n_yes / n_all), count(n_with("00")), count(n_with(last_total)), num(month_of(last_total), 0)),
-  sprintf("At 96 months, walkers had a higher mean PASE total (%s vs %s; adjusted difference %s), more often reported any walking (%s vs %s; adjusted odds ratio %s) and more often walked 5 or more hours a week (%s vs %s).",
+  sprintf("Walkers for Exercise had a higher mean PASE total %s (adjusted differences %s), including at the 96-month visit (%s vs %s; difference %s; Figure 1).",
+          where("total"), est_range("total", 0),
           num(group_value("any", asked, "total", "yes", "mean"), 0), num(group_value("any", asked, "total", "no", "mean"), 0),
-          mean_diff(asked, label = TRUE),
-          pct(group_value("any", asked, "walking_any", "yes")), pct(group_value("any", asked, "walking_any", "no")),
-          or_any(asked), pct(long_walk("yes")), pct(long_walk("no"))),
-  sprintf("Both differed at %s visit, from enrollment (difference %s; odds ratio %s) to %s months (%s; %s), and any walking also at %s months (%s; Figures 1 and 2).",
-          if (both_every) "every" else "most", mean_diff("00"), or_any("00"),
-          num(month_of(last_total), 0), mean_diff(last_total), or_any(last_total),
-          num(month_of(last_walk), 0), or_any(last_walk)))
-# Weekly walking-hours bands: at which visits walkers differ from non-walkers in each (adjusted,
-# Holm across visits); every significant band must favor walkers, as the sentence says
-hour_bands <- c("<2" = "under 2", "2–5" = "2–5", "5–10" = "5–10", "10+" = "10 or more")
-band_months <- lapply(stats::setNames(names(hour_bands), names(hour_bands)), function(b) {
-  k <- pw_contrasts[pw_contrasts$grouping == "any" & pw_contrasts$outcome == paste("band", b) &
-                      pw_contrasts$level == "yes" & !is.na(pw_contrasts$adj_p_holm) & pw_contrasts$adj_p_holm < 0.05, ]
-  if (any(k$adj_estimate <= 1)) stop("abstract_pase.qmd: non-walkers more often in band ", b, call. = FALSE)
-  sort(vapply(k$visit, month_of, numeric(1)))
-})
-band_share <- function(b, level) {
-  one(pw_bands$share[pw_bands$grouping == "any" & pw_bands$visit == asked & pw_bands$level == level &
-                       pw_bands$band == b], paste("band", b, level))
-}
-every_band <- names(Filter(function(m) length(m) == length(visits), band_months))
-some_band <- names(Filter(function(m) length(m) > 0 && length(m) < length(visits), band_months))
-no_band <- names(Filter(function(m) length(m) == 0, band_months))
-# A Holm-adjusted p as text; an odds ratio [95% CI] with its p, for a grouping, outcome and level
-p_text <- function(p) {
-  if (p < 0.001) "p<0.001" else if (p > 0.99) "p>0.99" else sprintf("p=%s", num(p, if (p < 0.01) 3 else 2))
-}
-or_p <- function(grouping, visit, outcome, level) {
-  sprintf("%s, %s", adj(grouping, visit, outcome, level, digits = 1), p_text(contrast(grouping, visit, outcome, level, "adj_p_holm")))
-}
-band_p <- function(b) {  # the largest Holm p of a band over the visits, rounded up
-  p <- max(pw_contrasts$adj_p_holm[pw_contrasts$grouping == "any" & pw_contrasts$outcome == paste("band", b) &
-                                     pw_contrasts$level == "yes"])
-  if (p < 0.001) "p<0.001" else sprintf("p≤%s", num(round_up(p, 1), if (p < 0.01) 3 else 2))
-}
-visit_of <- function(m) one(unique(pw_groups$visit[pw_groups$month == m]), paste("visit of month", m))
-band_parts <- c(
-  if (length(every_band)) sprintf("%s hours a week at every visit%s", and2(hour_bands[every_band]),
-                                  if (length(every_band) == 1) sprintf(" (at 96 months %s vs %s; adjusted odds ratio %s; %s at every visit)",
-                                    pct(band_share(every_band, "yes")), pct(band_share(every_band, "no")),
-                                    or_p("any", asked, paste("band", every_band), "yes"), band_p(every_band)) else ""),
-  vapply(some_band, function(b) {
-    sprintf("%s hours at %s months (%s)", hour_bands[[b]], and2(num(band_months[[b]], 0)),
-            paste(vapply(band_months[[b]], function(m) or_p("any", visit_of(m), paste("band", b), "yes"), ""), collapse = "; "))
-  }, ""))
-bands_sentence <- paste0(
-  if (length(band_parts)) sprintf("By weekly walking hours, walkers more often walked %s", and2(band_parts)) else "Walkers and non-walkers did not differ in any band of weekly walking hours",
-  if (length(no_band) && length(band_parts)) {
-    sprintf("; differences in %s hours a week were not significant after adjustment across visits (at 96 months %s)",
-            and2(hour_bands[no_band]), paste(vapply(no_band, function(b) or_p("any", asked, paste("band", b), "yes"), ""), collapse = "; "))
-  } else "",
-  ".")
-results <- paste(results, bands_sentence)
-# The dose sentence: kept, and flagged in the review copies for the original authors' decision
-amount_ors <- function(grouping, levels) and2(vapply(levels, function(lv) adj(grouping, asked, "walking_any", lv, digits = 1), ""))
-dose <- sprintf("At 96 months, the adjusted odds of any walking against non-walkers rose with frequency (%s for %s times a month) and with years walked (%s for %s years; trend %s for both).",
-                amount_ors("times", times_levels), and2(sub(" times/month$", "", labels$times)),
-                amount_ors("years", years_levels), and2(tolower(sub(" years$", "", labels$years))),
+          mean_diff(asked, label = TRUE)),
+  sprintf("They more often reported short-term walking %s (adjusted odds ratios [OR] %s; at 96 months %s vs %s, OR %s; Figure 2) and walking %s or more hours a week %s (at 96 months %s vs %s, OR %s).",
+          where("walking_any"), est_range("walking_any", 1),
+          pct(group_value("any", asked, "walking_any", "yes")), pct(group_value("any", asked, "walking_any", "no")), or_any(asked),
+          hours, where(at_least),
+          pct(group_value("any", asked, at_least, "yes")), pct(group_value("any", asked, at_least, "no")),
+          adj("any", asked, at_least, "yes", digits = 1)))
+# The dose gradient in broad strokes: the lowest and highest amount's OR, and the trend tests
+amount_or <- function(grouping, level) num(contrast(grouping, asked, "walking_any", level, "adj_estimate"), 1)
+dose <- sprintf("At 96 months, the OR for short-term walking rose with how often (%s for %s to %s for %s times a month) and how long (%s for %s to %s for %s years) they had walked (trend %s for both).",
+                amount_or("times", times_levels[1]), sub(" times/month$", "", labels$times[1]),
+                amount_or("times", times_levels[length(times_levels)]), sub(" times/month$", "", labels$times[length(times_levels)]),
+                amount_or("years", years_levels[1]), sub(" years$", "", labels$years[1]),
+                amount_or("years", years_levels[length(years_levels)]), tolower(sub(" years$", "", labels$years[length(years_levels)])),
                 and2(unique(c(trend_p("times"), trend_p("years")))))
 results <- paste(results, dose)
 
-conclusions <- sprintf("A single retrospective report of walking for exercise since age 50 was confirmed by a repeated 7-day activity questionnaire over %s years: those who reported it were more active and more likely to walk at %s visit, before, at and after the question. This supports the question's construct validity as a measure of a long-term walking habit.", span_years, if (both_every) "every" else "most")
+conclusions <- sprintf("Walkers for Exercise, defined by a single retrospective report of walking for exercise since age 50, differed on short-term measures of walking and physical activity over %s years: they were more active and more likely to walk %s, before, at and after the survey that defined walking status. This supports the construct validity of Walker for Exercise as a designation of a long-term walking habit.",
+                       span_years, if (both_every) "at every visit" else "at most visits")
 
 # Figures: saved for upload, captions keyed to the stars they show
 fig1 <- fig_pase_total(); fig2 <- fig_pase_walking()
@@ -194,13 +164,13 @@ oaireport::save_figure(fig1, "abstract_pase_fig1", "2col", height = 3.0)
 oaireport::save_figure(fig2, "abstract_pase_fig2", "2col", height = 3.0)
 key <- function(fig, what) {
   k <- fig_star_key(attr(fig, "stars"))
-  if (nzchar(k)) sprintf(" %s, %s, walkers vs non-walkers, adjusted for age, sex and body-mass index; %s.", k, what, p_note) else ""
+  if (nzchar(k)) sprintf(" %s, %s, Walkers for Exercise vs not, adjusted for age, sex and body-mass index; %s.", k, what, p_note) else ""
 }
 figures <- c(
-  abstract_pase_fig1 = paste0("PASE total score, mean (95% CI), at each visit for walkers and non-walkers (yes or no to walking for exercise since age 50, asked at 96 months, dashed line); n of each group with a PASE total at that visit below.",
+  abstract_pase_fig1 = paste0("PASE total score, mean (95% CI), stratified by Walkers for Exercise; n of each group with a PASE total at that visit below.",
                               key(fig1, "difference in means")),
-  abstract_pase_fig2 = paste0("Share with any PASE walking (walking outside the home in the past 7 days), % (95% CI), at each visit for walkers and non-walkers (as in Figure 1); n of each group who answered item 2 at that visit below.",
-                              key(fig2, "odds of any walking")))
+  abstract_pase_fig2 = paste0("Percentage of each group who indicated short-term walking (95% CI) at each visit, Walkers for Exercise vs not; n of each group who answered PASE item 2 at that visit below.",
+                              key(fig2, "odds of short-term walking")))
 captions <- stats::setNames(unname(figures), sprintf("Figure %d caption", seq_along(figures)))
 
 fields <- c(Title = title, Purpose = purpose, Methods = methods, Results = results,
@@ -220,11 +190,8 @@ close(paste_file)
 ```{r show}
 #| results: asis
 body <- c(Purpose = purpose, Methods = methods, Results = results, Conclusions = conclusions)
-# In the review PDF only: the dose sentence highlighted, with a question for the original authors
-flagged <- sprintf("`#highlight(fill: rgb(\"#fff2a8\"))[`{=typst}%s`]`{=typst} ***[For co-authors: keep this sentence on frequency and years walked?]***", dose)
-# Escape * so Markdown prints a star key rather than reading it as emphasis, then add the flag
+# Escape * so Markdown prints a star key rather than reading it as emphasis
 body <- vapply(body, function(x) gsub("*", "\\*", x, fixed = TRUE), character(1))
-body[["Results"]] <- sub(dose, flagged, body[["Results"]], fixed = TRUE)
 cat("## ", title, "\n\n", sep = "")
 for (f in names(body)) cat(sprintf("**%s.** %s\n\n", f, body[[f]]))
 for (i in seq_along(figures)) {

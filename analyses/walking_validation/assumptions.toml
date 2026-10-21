@@ -269,6 +269,11 @@ status = "assumed"
 source = "PASE contrasts: the adjustment method; pase_walking.p_adjust_family sets which p-values are adjusted together"
 choices = ["holm", "bonferroni", "none"]
 
+[pase_walking.hours_threshold]
+value = 5.0
+status = "assumed"
+source = "PASE contrasts: walking at least this many estimated hours a week (item 2 days x hours a day), compared as a yes/no outcome; the abstract reports its odds ratio at review's request"
+
 [pase_walking.p_adjust_family]
 value = "across_visits"
 status = "assumed"
@@ -298,6 +303,10 @@ set = { "device.nonwear_minutes" = 60 }
 [variants.pase_p_within_visit]
 description = "PASE contrasts adjusted only across a grouping's levels at each visit, not across visits"
 set = { "pase_walking.p_adjust_family" = "within_visit" }
+
+[variants.pase_without_bmi]
+description = "PASE contrasts adjusted for age and sex only, without BMI (raised at co-author review; the abstract keeps BMI)"
+set = { "pase_walking.covariates" = ["age", "sex"] }
 
 [variants.exposure_replication_coding]
 description = "'Yes' with no amount answers coded as a walker (the replication's default coding)"

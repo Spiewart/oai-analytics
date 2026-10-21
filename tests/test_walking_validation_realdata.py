@@ -173,7 +173,8 @@ def test_e2e_pase_walking_compares_each_answer_group_with_no_at_every_visit(fast
     assert set(means["effect"]) == set(means["adj_effect"]) == {"mean_difference"}
     # each band of weekly walking hours is also a yes/no outcome: in that band or not
     band_outcomes = [f"band {b}" for b in ("<2", "2–5", "5–10", "10+")]
-    shares = ["walking_any", *band_outcomes]
+    # and walking at least pase_walking.hours_threshold (5) hours a week
+    shares = ["walking_any", *band_outcomes, "hours 5+"]
     assert means.height == contrasts.filter(~pl.col("outcome").is_in(shares)).height
     # weekly walking-hours bands: each group's shares add to 1 at every visit
     sums = bands.group_by("grouping", "visit", "level").agg(
@@ -188,12 +189,18 @@ def test_e2e_pase_walking_compares_each_answer_group_with_no_at_every_visit(fast
         (v, "total") for v in visits if v != "14"
     }
     assert len(cells) == 26
-    cells |= {(v, b) for v in visits for b in band_outcomes}
+    cells |= {(v, b) for v in visits for b in [*band_outcomes, "hours 5+"]}
     assert set(zip(contrasts["visit"], contrasts["outcome"], strict=True)) == cells
-    assert len(cells) == 26 + 36
+    assert len(cells) == 26 + 36 + 9
     # one contrast per non-reference level: any 1, Lo coding 1, times a month 3, years walked 4
     per_cell = contrasts.group_by("grouping").len().sort("grouping")
-    assert dict(per_cell.iter_rows()) == {"any": 62, "any_lo": 62, "times": 186, "years": 248}
+    assert dict(per_cell.iter_rows()) == {"any": 71, "any_lo": 71, "times": 213, "years": 284}
+    # each group's share walking 5+ hours a week is the sum of its two top bands
+    five = groups.filter((pl.col("outcome") == "hours 5+") & (pl.col("grouping") == "any"))
+    top = bands.filter(pl.col("band").is_in(["5–10", "10+"]) & (pl.col("grouping") == "any"))
+    top = top.group_by("visit", "level").agg(pl.col("share").sum().alias("top"))
+    joined = five.join(top, on=["visit", "level"])
+    assert joined.height == 18 and ((joined["estimate"] - joined["top"]).abs() < 1e-9).all()
     assert trend.height == 2 * 26 and set(trend["grouping"]) == {"times", "years"}
     assert groups["label"].is_not_null().all() and not groups["label"].str.contains("NA").any()
     # the "any" grouping covers everyone with that visit's measure (No + Yes)
@@ -627,7 +634,7 @@ def _check_abstract(pdf: Path, paste: Path) -> None:
     ).translate(curly)
     # every pasted field but the title (a heading) appears verbatim; captions carry the star keys
     for name in [f for f in fields if f != "TITLE"]:
-        assert re.sub(r"\s+", "", fields[name]) in pdf_text, name
+        assert re.sub(r"\s+", "", fields[name]).translate(curly) in pdf_text, name
 
 
 @pytest.mark.realdata

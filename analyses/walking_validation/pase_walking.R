@@ -8,7 +8,8 @@
 # medians and by means; trends across ordered amount levels from Jonckheere-Terpstra (numbers)
 # and Cochran-Armitage (yes/no); and each group's share in each band of weekly walking hours
 # (components.pase_weekly_hours_bins), with each band but none compared as a yes/no outcome
-# ("band <2" and so on: in that band or not). p-values are adjusted (pase_walking.p_adjust) within each
+# ("band <2" and so on: in that band or not) and walking at least pase_walking.hours_threshold
+# hours a week compared the same way ("hours 5+"). p-values are adjusted (pase_walking.p_adjust) within each
 # family of pase_walking.p_adjust_family: every visit and level of a grouping, outcome and
 # estimator ("across_visits"), or a grouping's levels at one visit ("within_visit").
 A <- oaimodels::assumptions()
@@ -23,6 +24,7 @@ seed <- A[["bias.seed"]]
 p_adjust <- A[["pase_walking.p_adjust"]]
 across_visits <- A[["pase_walking.p_adjust_family"]] == "across_visits"
 hour_edges <- unlist(A[["components.pase_weekly_hours_bins"]])
+hours_threshold <- A[["pase_walking.hours_threshold"]]
 labels <- lapply(A[["components.answer_labels"]], unlist)
 amount_columns <- c(times = "amount_times", months = "amount_months", years = "amount_years")
 if (length(bad <- setdiff(amounts, names(amount_columns)))) {
@@ -94,6 +96,18 @@ for (v in visits) {
             band = names(tab), k = as.integer(tab), n = sum(in_level),
             share = if (sum(in_level)) as.numeric(tab) / sum(in_level) else NA_real_)
         }
+        # walking at least the threshold hours a week, as a yes/no outcome: each group's share and
+        # its contrast against the reference
+        at_least <- ifelse(is.na(y), NA, y >= hours_threshold)
+        outcome_at_least <- paste0("hours ", format(hours_threshold, drop0trailing = TRUE), "+")
+        s <- oaimodels::group_summaries(at_least, g)
+        summaries[[length(summaries) + 1]] <- cbind(
+          data.frame(grouping = grouping, visit = v, outcome = outcome_at_least), s, label = level_label(grouping, s$level))
+        k <- oaimodels::group_contrasts(at_least, g, covariates = cov_frame, se = se_method, reps = reps,
+                                        seed = seed, adjust = if (across_visits) "none" else p_adjust)
+        contrasts[[length(contrasts) + 1]] <- cbind(
+          data.frame(grouping = grouping, visit = v, outcome = outcome_at_least), estimator = "share", k,
+          label = level_label(grouping, k$level))
         # each band but "0" (whose complement is any walking) against the reference: in it or not
         for (b in levels(band)[-1]) {
           in_band <- ifelse(is.na(band), NA, band == b)

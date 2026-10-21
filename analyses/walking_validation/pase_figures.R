@@ -13,10 +13,10 @@ pw_contrasts$visit <- pw_visit(pw_contrasts$visit)
 pw_bands <- run$pase_walking_bands
 pw_bands$visit <- pw_visit(pw_bands$visit)
 pw_question_visit <- "10"  # the visit that asked the walking question (96 months)
-# Its label over the dashed line at that visit: the survey and the item
-pw_question_label <- "Historical Physical Activity Survey:\nwalked for exercise since age 50?"
+# Its label over the dashed line at that visit
+pw_question_label <- "Walker for Exercise Question"
 # Each answer's name in the figures, in legend order, and its colour (points, intervals and n)
-pw_labels <- c(no = "Non-walker", yes = "Walker")
+pw_labels <- c(no = "Not Walkers for Exercise", yes = "Walkers for Exercise")
 pw_colours <- stats::setNames(c("grey45", oaireport::brief_colours[["item"]]), pw_labels)
 
 # The adjusted p of walkers against non-walkers at a visit, for an outcome and estimator
@@ -33,16 +33,16 @@ pw_positions <- function(visits) {
   data.frame(visit = visits, month = months, x = seq_along(visits))
 }
 
-# Rows of n at the foot of the panel, one per group in its colour, labelled at the right end (the
-# left is the y axis's); and the "walking question" label over its visit, with a dashed line that
-# stops below it
+# Rows of n at the foot of the panel, one per group in its colour, each labelled "n" at the right
+# end (the left is the y axis's; the colour names the group); and the label over the question's
+# visit, with a dashed line that stops below it
 pw_n_rows <- function(n_frame, y_rows, last_x) {
   list(
     ggplot2::geom_text(data = n_frame, ggplot2::aes(x = x, y = y_rows[answer], label = count(n)),
                        inherit.aes = FALSE, size = 2.3, colour = pw_colours[n_frame$answer],
                        family = oaireport::oai_font()),
     ggplot2::geom_text(data = data.frame(answer = names(y_rows), y = unname(y_rows)),
-                       ggplot2::aes(x = last_x + 0.42, y = y, label = paste("n,", tolower(answer))),
+                       ggplot2::aes(x = last_x + 0.42, y = y, label = "n"),
                        inherit.aes = FALSE, hjust = 0, size = 2.3, colour = pw_colours[names(y_rows)],
                        family = oaireport::oai_font()))
 }
@@ -110,8 +110,8 @@ fig_pase_total <- function() {
                   "PASE total score, mean (95% CI)")
 }
 
-# Figure 2: any PASE walking (item 2, past 7 days), % (Wilson 95% CI)
+# Figure 2: short-term walking (any walking outside the home, PASE item 2, past 7 days), % (Wilson 95% CI)
 fig_pase_walking <- function() {
   pw_point_figure("walking_any", "share", c(y = "estimate", lo = "lo", hi = "hi"),
-                  "Any PASE walking, % (95% CI)", scale = 100, y_labels = function(v) paste0(v, "%"))
+                  "Short-term walking (PASE), % (95% CI)", scale = 100, y_labels = function(v) paste0(v, "%"))
 }
