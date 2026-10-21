@@ -7,3 +7,5 @@ id uv.lock
 header tests/fixtures/*
 # Fixture files deliberately reuse release file names (AllClinical00.txt, ...).
 name tests/fixtures/*
+# PubMed Central article IDs in the literature ledger look like participant IDs.
+id analyses/crepitus/LITERATURE.md

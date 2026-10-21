@@ -1,0 +1,14 @@
+name = "crepitus"
+description = "Crepitus measures in the OAI: sample sizes by visit and cohort, and at-risk knees and events for incident and progressive knee OA outcomes."
+
+[inputs]
+tables = ["enrollees", "allclinical:*", "kxr_sq_bu:00", "kxr_sq_bu:01", "kxr_sq_bu:03", "kxr_sq_bu:05", "kxr_sq_bu:06", "outcomes:99"]
+
+[[steps]]
+id = "counts"
+lang = "python"
+stage = "local"
+entry = "build_counts.py"
+
+[outputs]
+aggregate = ["*.csv", "SAMPLE_SIZES.md", "assumptions.resolved.json"]
