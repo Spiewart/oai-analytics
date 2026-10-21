@@ -118,3 +118,25 @@ def test_select_section_matches_equivalent_overrides():
         == "default"
     )
     assert select_section(published, None, base, sets) == "default"
+
+
+def test_or_without_sig_ignores_significance():
+    published = {"t1.x": {"or": 1.8, "lo": 1.0, "hi": 3.3}}  # a bound of 1.0: sig unknown
+    ours = {"t1.x": 1.85, "t1.x.lo": 0.98, "t1.x.hi": 3.4}
+    r = row(grade(published, ours), "t1.x")
+    assert r["verdict"] == "replicated" and r["kind"] == "or"
+    assert r["published"] == "1.8 (1.0-3.3)"
+
+
+@pytest.mark.parametrize(
+    "ours, verdict", [(0.35, "replicated"), (0.37, "drift"), (None, "missing")]
+)
+def test_toleranced_value(ours, verdict):
+    published = {"r.womac": {"value": 0.33, "tol": 0.03}}
+    r = row(grade(published, {} if ours is None else {"r.womac": ours}), "r.womac")
+    assert r["verdict"] == verdict and r["kind"] == "value"
+
+
+def test_value_table_rejects_unknown_keys():
+    with pytest.raises(ValueError):
+        grade({"r.womac": {"value": 0.33, "tolerance": 0.03}}, {"r.womac": 0.33})

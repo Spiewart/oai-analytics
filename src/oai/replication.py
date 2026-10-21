@@ -3,7 +3,10 @@
 Published values: int = count, float = mean, {or, lo, hi, sig} = odds ratio.
 A count replicates within max(3%, 2), a mean within 0.5, and an odds ratio within 0.1
 with the same significance. The published `sig` flag is authoritative, because rounded
-bounds such as "0.6-1.0" can hide an upper bound below 1.
+bounds such as "0.6-1.0" can hide an upper bound below 1. An odds ratio without `sig`
+(its significance cannot be read from the paper) is graded on the 0.1 distance alone.
+
+A float that needs its own tolerance (a correlation, say) is {value, tol}.
 
 A count that needs its own tolerance is a table instead of an int:
   {count, tol}                 within `tol` of `count` (tol = 0 is exact)
@@ -48,7 +51,8 @@ def _grade_or(
         return "missing", None, None
     sig = hi < 1 or lo > 1
     diff = o - float(pub["or"])
-    verdict = "replicated" if abs(diff) <= OR_TOL + EPS and sig == bool(pub["sig"]) else "drift"
+    same_sig = "sig" not in pub or sig == bool(pub["sig"])
+    verdict = "replicated" if abs(diff) <= OR_TOL + EPS and same_sig else "drift"
     return verdict, f"{o:.2f} ({lo:.2f}-{hi:.2f}){' *' if sig else ''}", diff
 
 
@@ -56,7 +60,7 @@ def _check_keys(pub: Mapping[str, Any], allowed: set[str], metric: str) -> None:
     unknown = sorted(set(pub) - allowed)
     if unknown:
         raise ValueError(
-            f"{metric}: unknown key(s) {', '.join(unknown)} in a count table "
+            f"{metric}: unknown key(s) {', '.join(unknown)} in a published table "
             f"(it takes {', '.join(sorted(allowed))})"
         )
 
@@ -90,6 +94,22 @@ def _grade_toleranced_count(
     return pub_text, verdict, f"{value:g}", diff
 
 
+def _grade_value(
+    pub: Mapping[str, Any], ours: Mapping[str, float], metric: str
+) -> tuple[str, str, str | None, float | None]:
+    """(published text, verdict, our text, diff) of a {value, tol}."""
+    _check_keys(pub, {"value", "tol"}, metric)
+    if "tol" not in pub:
+        raise ValueError(f"{metric}: a value table needs `tol`")
+    target, tol = float(pub["value"]), float(pub["tol"])
+    pub_text = f"{pub['value']} (within {tol:g})"
+    value = ours.get(metric)
+    if value is None:
+        return pub_text, "missing", None, None
+    diff = float(value) - target
+    return pub_text, "replicated" if abs(diff) <= tol + EPS else "drift", f"{value:.3g}", diff
+
+
 def grade(
     published: Mapping[str, Any],
     ours: Mapping[str, float],
@@ -103,9 +123,12 @@ def grade(
         if isinstance(pub, Mapping) and "count" in pub:
             kind = "count"
             pub_text, verdict, ours_text, diff = _grade_toleranced_count(pub, ours, metric)
+        elif isinstance(pub, Mapping) and "value" in pub:
+            kind = "value"
+            pub_text, verdict, ours_text, diff = _grade_value(pub, ours, metric)
         elif isinstance(pub, Mapping):
             kind = "or"
-            pub_text = f"{pub['or']} ({pub['lo']}-{pub['hi']}){' *' if pub['sig'] else ''}"
+            pub_text = f"{pub['or']} ({pub['lo']}-{pub['hi']}){' *' if pub.get('sig') else ''}"
             verdict, ours_text, diff = _grade_or(pub, ours, metric)
         else:
             kind = "mean" if isinstance(pub, float) else "count"
