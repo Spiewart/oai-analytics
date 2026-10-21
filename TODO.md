@@ -105,3 +105,8 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
   [analyses/lo2018_crepitus/assumptions.toml](analyses/lo2018_crepitus/assumptions.toml)
 
 - **Ask the authors what "no valid outcome" meant (84 people) and how 11,994 potential observations were counted** — <!-- skip --> On this release only 1 cohort member has no SOA at any follow-up visit (paper 84), and we count 13,071 potential observations (paper 11,994) because periods after a participant's last visit are counted as missing. Observations analyzed (11,248 vs 11,237) and cases (641 vs 636) already match, so the answer mostly moves the person-level four-year tables.
+
+### Palpable crepitus and incident SOA (`analyses/exam_crepitus_soa`)
+
+- **Ask Mahmoudian / Englund which X-ray readings and eligibility the OARSI 2023 abstract used** — <!-- skip --> Our anchor has 811 subjects with 15% structural development; the abstract reports 576 with 54%. Project 15 leaves osteophyte grades blank for most KL 0–1 knees, and no JSN or osteophyte rule we tried raises events above 130. Questions: which reading project or dataset; how blank osteophyte grades were handled; whether "K&L 0–1 in either knee" was knee- or person-level; whether crepitus was in the selected knee or either knee (45.8% vs our 34%). The null conclusion replicates either way.
+  [analyses/exam_crepitus_soa/README.md](analyses/exam_crepitus_soa/README.md)
