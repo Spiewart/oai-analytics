@@ -5,6 +5,9 @@ analyses/lo2018_crepitus. Person-based, one knee (`cohort.side`): crepitus at an
 visit predicts incident symptomatic OA (SOA: frequent pain and KL >= 2; a knee replacement
 counts as SOA) at the next annual visit. `require` names the crepitus measures an
 observation needs (KOOS S2 in the paper; examiner crepitus in analyses/exam_crepitus_soa).
+
+Optional settings (`periods.horizon`, `exposure.exam_after_48m`) default to the 48-month
+Lo 2018 design, so analyses whose ledgers lack them behave as before.
 """
 
 from __future__ import annotations
@@ -26,9 +29,13 @@ from oai.derive.knee import (
 from oai.loader import read_table
 from oai.visits import DAYS_PER_YEAR, nominal_month
 
-EXPOSURE_VISITS = ("00", "01", "03", "05")
-OUTCOME_VISITS = ("01", "03", "05", "06")
+ALL_EXPOSURE_VISITS = ("00", "01", "03", "05", "06", "08", "10")
+ALL_OUTCOME_VISITS = ("01", "03", "05", "06", "08", "10", "12")
+EXPOSURE_VISITS = ALL_EXPOSURE_VISITS[:4]  # Lo 2018: annual visits to 48 months
+OUTCOME_VISITS = ALL_OUTCOME_VISITS[:4]
 VISITS = ("00", *OUTCOME_VISITS)
+DEFAULT_HORIZON = "06"
+EXAM_CARRIED_FROM = "06"  # no exam at V08 or V10
 SUBGROUPS = ("roa_nosx", "noroa_sx", "noroa_nosx")
 ROA_KL = 2
 DAYS_PER_MONTH = DAYS_PER_YEAR / 12
@@ -38,6 +45,30 @@ DAYS_PER_MONTH = DAYS_PER_YEAR / 12
 class Cohort:
     people: pl.DataFrame  # ID, age, sex, bmi, kl0, sx0, womac0, subgroup
     flow: pl.DataFrame  # step, persons, excluded
+
+
+def setting(A: Resolved, key: str, default):
+    """An optional assumption: its value when the analysis's ledger has it, else `default`."""
+    return A.values.get(key, default)
+
+
+def schedule(horizon: str = DEFAULT_HORIZON) -> pl.DataFrame:
+    """period, start_visit, end_visit: exposure -> outcome pairs up to the horizon visit."""
+    pairs = [
+        (s, e) for s, e in zip(ALL_EXPOSURE_VISITS, ALL_OUTCOME_VISITS, strict=True) if e <= horizon
+    ]
+    return pl.DataFrame(
+        {
+            "period": list(range(1, len(pairs) + 1)),
+            "start_visit": [s for s, _ in pairs],
+            "end_visit": [e for _, e in pairs],
+        },
+        schema={"period": pl.Int64, "start_visit": pl.String, "end_visit": pl.String},
+    )
+
+
+def horizon_of(A: Resolved) -> str:
+    return setting(A, "periods.horizon", DEFAULT_HORIZON)
 
 
 def _select(df: pl.DataFrame, **columns: str) -> pl.DataFrame:
@@ -196,14 +227,7 @@ def build_cohort(A: Resolved, soa: pl.DataFrame) -> Cohort:
 
 # ---------------------------------------------------------------- observation periods
 
-PERIODS = pl.DataFrame(
-    {
-        "period": [1, 2, 3, 4],
-        "start_visit": list(EXPOSURE_VISITS),
-        "end_visit": list(OUTCOME_VISITS),
-    },
-    schema={"period": pl.Int64, "start_visit": pl.String, "end_visit": pl.String},
-)
+PERIODS = schedule(DEFAULT_HORIZON)
 COVARIATES = ("age", "sex", "bmi", "subgroup")
 REQUIRE_COLUMNS = {"koos_s2": "crep", "exam_crepitus": "exam"}
 
@@ -213,12 +237,21 @@ def _required(require: Sequence[str], suffix: str = "") -> list[str]:
     return [REQUIRE_COLUMNS[m] + suffix for m in require]
 
 
+def _crepitus_at(visit: str, side: str) -> pl.DataFrame:
+    try:
+        return crepitus_values(visit, ["koos_s2", "exam_crepitus"], sides=(side,))
+    except KeyError:  # V08 and V10 carry S2 but no exam
+        return crepitus_values(visit, ["koos_s2"], sides=(side,)).with_columns(
+            pl.lit(None, pl.Int64).alias("exam_crepitus")
+        )
+
+
 def crepitus_frame(A: Resolved) -> pl.DataFrame:
-    """ID, SIDE, visit, koos_s2, exam_crepitus for the cohort side at every exposure visit."""
+    """ID, SIDE, visit, koos_s2, exam_crepitus for the cohort side at every exposure visit of
+    the schedule (null exam where the visit has none)."""
     side = A["cohort.side"]
-    return pl.concat(
-        [crepitus_values(v, ["koos_s2", "exam_crepitus"], sides=(side,)) for v in EXPOSURE_VISITS]
-    )
+    visits = schedule(horizon_of(A))["start_visit"].to_list()
+    return pl.concat([_crepitus_at(v, side) for v in visits])
 
 
 def periods(
@@ -242,10 +275,22 @@ def periods(
         pl.col("koos_s2").alias("crep"),
         pl.col("exam_crepitus").alias("exam"),
     )
+    if setting(A, "exposure.exam_after_48m", "carry_v06") == "carry_v06":
+        carried = crep.filter(pl.col("start_visit") == EXAM_CARRIED_FROM).select(
+            "ID", pl.col("exam").alias("_exam_carried")
+        )
+        later = pl.col("start_visit") > EXAM_CARRIED_FROM
+        crep = (
+            crep.join(carried, on="ID", how="left")
+            .with_columns(
+                pl.when(later).then(pl.col("_exam_carried")).otherwise(pl.col("exam")).alias("exam")
+            )
+            .drop("_exam_carried")
+        )
     outcome = soa.select("ID", pl.col("visit").alias("end_visit"), pl.col("soa").alias("event"))
     df = (
         cohort.people.select("ID", *COVARIATES)
-        .join(PERIODS, how="cross")
+        .join(schedule(horizon_of(A)), how="cross")
         .join(crep, on=["ID", "start_visit"], how="left")
         .join(outcome, on=["ID", "end_visit"], how="left")
         .sort("ID", "period")
@@ -274,10 +319,10 @@ def four_year(
     require: Sequence[str] = ("koos_s2",),
 ) -> pl.DataFrame:
     """One row per person with every required baseline measure: incident SOA at any outcome
-    visit to 48 months."""
+    visit in `soa` (48 months for Lo 2018; to the horizon when soa_status covers more)."""
     needed = pl.all_horizontal([pl.col(c).is_not_null() for c in _required(require, "0")])
     event = (
-        soa.filter(pl.col("visit").is_in(OUTCOME_VISITS))
+        soa.filter(pl.col("visit") != "00")
         .group_by("ID")
         .agg(pl.col("soa").fill_null(False).any().alias("event"))
     )
