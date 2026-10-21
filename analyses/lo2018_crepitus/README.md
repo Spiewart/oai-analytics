@@ -36,4 +36,20 @@ oai run lo2018_crepitus --variant stop_after_missing_outcome
 
 ## Replication status
 
-Not run yet.
+Run 2026-10-21 on the full release. 266 graded metrics: counts within max(3%, 2), means within 0.5, correlations within 0.03, odds ratios within 0.1 with the same significance.
+
+| Run | Replicated | Drift | Persons | Observations | Cases |
+|---|---|---|---|---|---|
+| Paper | | | 3,495 | 11,237 | 636 |
+| `default` | 209 | 57 | 3,576 | 11,248 | 641 |
+| `exclude_missing_pain` | **220** | 46 | 3,550 | 11,179 | 635 |
+| `corstr_independence` | 210 | 56 | 3,576 | 11,248 | 641 |
+| `soa_known_false` | 185 | 81 | 3,577 | 11,958 | 641 |
+| `stop_after_missing_outcome` | 171 | 95 | 3,576 | 10,643 | 599 |
+| `roa_ever` | 170 | 96 | 3,576 | 11,449 | 662 |
+| `arthroplasty_either` | 167 | 99 | 3,564 | 11,191 | 663 |
+| `left_knee` (not the paper) | 67 | 199 | 3,614 | 11,401 | 615 |
+
+- **Replicates:** every Table 1 metric (one-year model: cases, totals and all eight ORs); observations, cases and cases per period; mean age and BMI; all five Spearman correlations; the baseline-SOA exclusion (877, exact).
+- **Drifts:** the persons count (about 80 more than the paper), the "potential observation" and missing-outcome counts, and, because they count persons, cells of the four-year Tables 3, 4 and 6.
+- **Unexplained:** the paper excludes 84 people with "no valid outcome measure assessments of SOA at any of the follow up visit time points"; on this release only 1 cohort member has no SOA at any follow-up, and 3,547 have one or more analyzable observations. The paper's 11,994 potential observations are also fewer than ours (13,071), which suggests it did not count periods after a participant's last visit. Both are filed in `TODO.md` as questions for the authors.
