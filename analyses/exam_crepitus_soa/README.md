@@ -47,7 +47,7 @@ Run 2026-10-21 on the full release (default settings: right knee; exam value req
 - **Flow:** matches Lo 2018 as in the replication (877 baseline-SOA exclusions exact; the 84 "no valid outcome" is the open question).
 - **Mahmoudian 2023:** the null conclusion replicates, but the anchor does not confirm the exam-item coding or the structural outcome. Crepitus prevalence and structural-development rates both differ from the abstract.
   - **Cohort rules explain the size:** two eligibility readings (both knees KL 0–1; crepitus in either knee) bring the cohort to 591 subjects (576 published), with 39% crepitus and ORs 1.41 / 1.27 / 1.15.
-  - **Outcome still differs:** structural development stays at about 12–16% against 54% under every rule tried.
+  - **Outcome still differs:** structural development stays at about 12–16% against 54% under every rule tried. The knee pick is a seeded per-person draw, so variants differ only by their rule.
 
 | | Ours (default) | Mahmoudian 2023 |
 |---|---|---|
@@ -55,10 +55,10 @@ Run 2026-10-21 on the full release (default settings: right knee; exam value req
 | With crepitus | 277 (34%) | 264 (45.8%) |
 | Women | 447 (55%) | 60% |
 | Age, BMI | 58.7, 28.0 | 58.9, 29.6 |
-| Structural development | 124 (15%) | 310 (54%) |
-| With persistent symptoms | 64 (8%) | 153 (27%) |
-| OR crude / adjusted / plus KL | 1.21 / 1.06 / 1.01 | 1.3 / 1.2 / 1.2 |
-| OR with symptoms | 1.26 / 1.15 / 1.09 | 1.1 / 1.1 / 1.0 |
+| Structural development | 127 (16%) | 310 (54%) |
+| With persistent symptoms | 66 (8%) | 153 (27%) |
+| OR crude / adjusted / plus KL | 1.25 / 1.11 / 1.05 | 1.3 / 1.2 / 1.2 |
+| OR with symptoms | 1.37 / 1.26 / 1.19 | 1.1 / 1.1 / 1.0 |
 
 - **Event rates:** structural development is about a third as common as published under every rule tried (JSN incident vs any increase, osteophyte sites vs grade sum, knee pick).
 - **Blank grades:** Project 15 leaves osteophyte grades blank for most KL 0–1 knees. Keeping only the graded knees gives 309 subjects with 39% events, but that subset is selected. The paper probably used another reading or rule, so this is filed as a question for the authors.
@@ -66,14 +66,14 @@ Run 2026-10-21 on the full release (default settings: right knee; exam value req
 
 | Variant | Anchors replicated (of 13) | Subjects | Events | E3 adjusted OR |
 |---|---|---|---|---|
-| default | 4 | 811 | 124 / 64 | 1.91 |
-| `require_s2` | 4 | 811 | 124 / 64 | 1.91 |
-| `exclude_missing_pain` | 4 | 811 | 124 / 64 | 1.90 |
-| `mahmoudian_osteophyte_grade_sum` | 4 | 811 | 126 / 66 | 1.91 |
-| `mahmoudian_any_jsn_increase` | 3 | 811 | 128 / 67 | 1.91 |
+| default | 3 | 811 | 127 / 66 | 1.91 |
+| `require_s2` | 3 | 811 | 127 / 66 | 1.91 |
+| `exclude_missing_pain` | 3 | 811 | 127 / 66 | 1.90 |
+| `mahmoudian_osteophyte_grade_sum` | 3 | 811 | 129 / 68 | 1.91 |
+| `mahmoudian_any_jsn_increase` | 3 | 811 | 130 / 69 | 1.91 |
 | `mahmoudian_left` | 3 | 811 | 121 / 62 | 1.91 |
 | `mahmoudian_right` | 1 | 811 | 126 / 64 | 1.91 |
-| `mahmoudian_exclude_blank_osteophytes` | 0 | 309 | 121 / 60 | 1.91 |
+| `mahmoudian_exclude_blank_osteophytes` | 0 | 309 | 119 / 61 | 1.91 |
 | `mahmoudian_crepitus_either_knee` | 3 | 811 (355 with crepitus) | 127 / 66 | 1.91 |
 | `mahmoudian_person_kl` | 3 | 591 | 71 / 38 | 1.91 |
 | both of the above (`--set`) | 3 | 591 (231 with crepitus) | 71 / 38 | 1.91 |
