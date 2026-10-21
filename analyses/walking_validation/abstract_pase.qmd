@@ -197,9 +197,9 @@ key <- function(fig, what) {
   if (nzchar(k)) sprintf(" %s, %s, walkers vs non-walkers, adjusted for age, sex and body-mass index; %s.", k, what, p_note) else ""
 }
 figures <- c(
-  abstract_pase_fig1 = paste0("PASE total score, mean (95% CI), at each visit for walkers and non-walkers (yes or no to walking for exercise since age 50, asked at 96 months, dashed line); n of each group below.",
+  abstract_pase_fig1 = paste0("PASE total score, mean (95% CI), at each visit for walkers and non-walkers (yes or no to walking for exercise since age 50, asked at 96 months, dashed line); n of each group with a PASE total at that visit below.",
                               key(fig1, "difference in means")),
-  abstract_pase_fig2 = paste0("Share with any PASE walking (walking outside the home in the past 7 days), % (95% CI), at each visit for walkers and non-walkers (as in Figure 1); n of each group below.",
+  abstract_pase_fig2 = paste0("Share with any PASE walking (walking outside the home in the past 7 days), % (95% CI), at each visit for walkers and non-walkers (as in Figure 1); n of each group who answered item 2 at that visit below.",
                               key(fig2, "odds of any walking")))
 captions <- stats::setNames(unname(figures), sprintf("Figure %d caption", seq_along(figures)))
 
