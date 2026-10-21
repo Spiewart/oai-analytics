@@ -11,3 +11,9 @@ id|V99ERKBLRP|V99ELKBLRP|V99ERKRPCF|V99ELKRPCF|V99ERKRPSN|V99ELKRPSN|V99ERKDAYS|
 2000010|0: No|0: No| | | | | | 
 2000011|0: No|0: No| | | | | | 
 2000012|0: No|1: Yes| | | | | | 
+2000013|0: No|0: No| | | | | | 
+2000014|0: No|0: No| | | | | | 
+2000015|0: No|0: No| | | | | | 
+2000016|0: No|0: No| | | | | | 
+2000017|0: No|0: No| | | | | | 
+2000018|0: No|0: No| | | | | | 

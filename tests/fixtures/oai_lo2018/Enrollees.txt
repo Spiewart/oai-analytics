@@ -11,3 +11,9 @@ ID|VERSION|P02SEX|V00COHORT
 2000010|2.1|2: Female|2: Incidence
 2000011|2.1|1: Male|2: Incidence
 2000012|2.1|2: Female|2: Incidence
+2000013|2.1|2: Female|2: Incidence
+2000014|2.1|1: Male|1: Progression
+2000015|2.1|2: Female|2: Incidence
+2000016|2.1|1: Male|2: Incidence
+2000017|2.1|2: Female|2: Incidence
+2000018|2.1|1: Male|3: Non-exposed control

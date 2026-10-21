@@ -7,3 +7,9 @@ ID|V03VISDYS|V03KPR12CV|V03KPL12CV|V03KSXRKN2|V03KSXLKN2|V03RKPFCRE|V03LKPFCRE
 2000010|730|1: Yes|0: No|0: Never|0: Never|0: No|0: No
 2000011|730|0: No|0: No|0: Never|0: Never|0: No|0: No
 2000012|730|0: No|0: No|0: Never|0: Never|0: No|0: No
+2000013|730|1: Yes|1: Yes|2: Sometimes|0: Never|1: Yes|0: No
+2000014|730|0: No|0: No|1: Rarely|0: Never|1: Yes|0: No
+2000015|730|1: Yes|0: No|0: Never|0: Never|0: No|0: No
+2000016|730|1: Yes|0: No|1: Rarely|0: Never|1: Yes|0: No
+2000017|730|0: No|0: No|0: Never|0: Never|1: Yes|0: No
+2000018|730|1: Yes|0: No|1: Rarely|0: Never|1: Yes|0: No
