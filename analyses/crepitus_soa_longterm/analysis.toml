@@ -24,3 +24,7 @@ needs = ["cohort"]
 
 [outputs]
 aggregate = ["flow.csv", "coverage.csv", "table_*.csv", "metrics_*.csv", "assumptions.resolved.json"]
+
+[report]
+entry = "summary.qmd"
+runs = ["default", "horizon_120", "lo2018_48m"]
