@@ -148,23 +148,41 @@ band_share <- function(b, level) {
 every_band <- names(Filter(function(m) length(m) == length(visits), band_months))
 some_band <- names(Filter(function(m) length(m) > 0 && length(m) < length(visits), band_months))
 no_band <- names(Filter(function(m) length(m) == 0, band_months))
+# A Holm-adjusted p as text; an odds ratio [95% CI] with its p, for a grouping, outcome and level
+p_text <- function(p) {
+  if (p < 0.001) "p<0.001" else if (p > 0.99) "p>0.99" else sprintf("p=%s", num(p, if (p < 0.01) 3 else 2))
+}
+or_p <- function(grouping, visit, outcome, level) {
+  sprintf("%s, %s", adj(grouping, visit, outcome, level, digits = 1), p_text(contrast(grouping, visit, outcome, level, "adj_p_holm")))
+}
+band_p <- function(b) {  # the largest Holm p of a band over the visits, rounded up
+  p <- max(pw_contrasts$adj_p_holm[pw_contrasts$grouping == "any" & pw_contrasts$outcome == paste("band", b) &
+                                     pw_contrasts$level == "yes"])
+  if (p < 0.001) "p<0.001" else sprintf("p≤%s", num(round_up(p, 1), if (p < 0.01) 3 else 2))
+}
+visit_of <- function(m) one(unique(pw_groups$visit[pw_groups$month == m]), paste("visit of month", m))
 band_parts <- c(
   if (length(every_band)) sprintf("%s hours a week at every visit%s", and2(hour_bands[every_band]),
-                                  if (length(every_band) == 1) sprintf(" (at 96 months %s vs %s; adjusted odds ratio %s)",
+                                  if (length(every_band) == 1) sprintf(" (at 96 months %s vs %s; adjusted odds ratio %s; %s at every visit)",
                                     pct(band_share(every_band, "yes")), pct(band_share(every_band, "no")),
-                                    adj("any", asked, paste("band", every_band), "yes", digits = 1)) else ""),
-  vapply(some_band, function(b) sprintf("%s hours at %s months", hour_bands[[b]], and2(num(band_months[[b]], 0))), ""))
+                                    or_p("any", asked, paste("band", every_band), "yes"), band_p(every_band)) else ""),
+  vapply(some_band, function(b) {
+    sprintf("%s hours at %s months (%s)", hour_bands[[b]], and2(num(band_months[[b]], 0)),
+            paste(vapply(band_months[[b]], function(m) or_p("any", visit_of(m), paste("band", b), "yes"), ""), collapse = "; "))
+  }, ""))
 bands_sentence <- paste0(
   if (length(band_parts)) sprintf("By weekly walking hours, walkers more often walked %s", and2(band_parts)) else "Walkers and non-walkers did not differ in any band of weekly walking hours",
-  if (length(no_band) && length(band_parts)) sprintf("; %s hours a week did not differ", and2(hour_bands[no_band])) else "",
+  if (length(no_band) && length(band_parts)) {
+    sprintf("; differences in %s hours a week were not significant after adjustment across visits (at 96 months %s)",
+            and2(hour_bands[no_band]), paste(vapply(no_band, function(b) or_p("any", asked, paste("band", b), "yes"), ""), collapse = "; "))
+  } else "",
   ".")
 results <- paste(results, bands_sentence)
-# The dose sentence: kept, and flagged in the review PDF for the original authors' decision
-dose <- sprintf("At 96 months, the odds of any walking rose with frequency (%s for %s times a month) and with years walked (%s to %s; trend %s for both).",
-                and2(vapply(times_levels, function(lv) num(contrast("times", asked, "walking_any", lv, "adj_estimate"), 1), "")),
-                and2(sub(" times/month$", "", labels$times)),
-                num(contrast("years", asked, "walking_any", years_levels[1], "adj_estimate"), 1),
-                num(contrast("years", asked, "walking_any", years_levels[length(years_levels)], "adj_estimate"), 1),
+# The dose sentence: kept, and flagged in the review copies for the original authors' decision
+amount_ors <- function(grouping, levels) and2(vapply(levels, function(lv) adj(grouping, asked, "walking_any", lv, digits = 1), ""))
+dose <- sprintf("At 96 months, the adjusted odds of any walking against non-walkers rose with frequency (%s for %s times a month) and with years walked (%s for %s years; trend %s for both).",
+                amount_ors("times", times_levels), and2(sub(" times/month$", "", labels$times)),
+                amount_ors("years", years_levels), and2(tolower(sub(" years$", "", labels$years))),
                 and2(unique(c(trend_p("times"), trend_p("years")))))
 results <- paste(results, dose)
 
