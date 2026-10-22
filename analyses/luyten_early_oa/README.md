@@ -51,7 +51,7 @@ from logistic GEE clustered within person.
 
 **No ledger variant closes the gap:**
 
-| Variant | Early-OA knees | Share of KL 0–1 | Graded (replicated/drift) | G1 KL ≥ 2 by 96 months, adjusted OR | C1 exam crepitus, KL ≥ 2 by 96 months, model 2 OR |
+| Variant | Early-OA knees | Share of classifiable KL 0–1 knees | Graded vs abstract (replicated/drift) | G1 KL ≥ 2 by 96 months, adjusted OR | C1 exam crepitus, KL ≥ 2 by 96 months, model 2 OR |
 |---|---|---|---|---|---|
 | `default` | 1,098 | 21.8% | 4/2 | 1.47 (1.22–1.77) | 1.59 (1.13–2.22) |
 | `right_knee` | 579 | 23.5% | 4/2 | 1.44 (1.10–1.88) | 1.36 (0.87–2.13) |
@@ -65,7 +65,12 @@ from logistic GEE clustered within person.
 | `roa_kl2_jsn` | 1,098 | 21.8% | 4/2 | 1.36 (1.10–1.67) | 1.26 (0.86–1.84) |
 | `roa_replacement_ignore` | 1,098 | 21.8% | 4/2 | 1.45 (1.20–1.75) | 1.62 (1.15–2.27) |
 
-The full text should say which choice explains the extra ~200 knees (TODO.md).
+Notes on this table:
+- Every variant is graded against the abstract's both-knee, all-cohort targets. For `right_knee` and `progression_incidence` that is a different population, so their drift in group size is expected.
+- Under the `exclude` rules the share's denominator is the KL 0–1 knees with a known status. For `sign_missing_exclude` that is about 4,840 knees, not 5,028.
+- `horizon_complete` cannot change the KL ≥ 2 outcome: OUTCOMES99 carries ROA forward, so a case always has a known 96-month value. It does change SOA. G1's adjusted SOA by 96 months goes from 1.89 (1.53–2.34) to 1.76 (1.41–2.19), and the C1 exam OR (model 2) from 1.36 (0.95–1.96) to 1.34 (0.91–1.97).
+
+The full text should say which choice explains the extra ~200 knees (TODO.md). The abstract's 27% also implies a KL 0–1 denominator of about 4,870, smaller than our 5,028, so the gap is not only in the numerator.
 
 **Enrichment (G1):** the group does enrich for progression, as Mahmoudian found.
 
@@ -76,7 +81,7 @@ The full text should say which choice explains the extra ~200 knees (TODO.md).
 | SOA by 48 months | 110/911 | 189/3,467 | 2.39 (1.87–3.05) | 2.04 (1.57–2.64) |
 | SOA by 96 months | 174/774 | 339/2,972 | 2.21 (1.81–2.70) | 1.89 (1.53–2.34) |
 
-Mahmoudian's abstract gives ranges over undefined outcomes: structural 1.1–1.4, clinical 2.1–2.5. Our KL ≥ 2 and SOA ORs fall near those ranges.
+Mahmoudian's abstract gives ranges over undefined outcomes: structural 1.1–1.4, clinical 2.1–2.5. Our adjusted KL ≥ 2 ORs (1.47–1.54) are above the structural range. Our adjusted SOA ORs (1.89–2.04) are below the clinical range; only the crude SOA ORs (2.21–2.39) fall inside it.
 
 ### Crepitus within early OA (Part 2)
 
@@ -104,7 +109,7 @@ Mahmoudian's abstract gives ranges over undefined outcomes: structural 1.1–1.4
 **Reading:**
 - In early-stage OA, crepitus on examination enriches for incident radiographic OA by 96 months:
   - against tenderness only, OR 1.6;
-  - against no crepitus among symptomatic KL 0–1 knees, OR 1.3.
+  - against no crepitus among KL 0–1 knees meeting the KOOS criterion, OR 1.3.
 - It is unchanged by adjusting for self-report.
 - The 48-month and SOA estimates point the same way but their CIs include 1.
 - Self-reported crepitus adds nothing within early OA (ORs 0.9–1.2; five levels in `s2_levels` show no gradient). In the whole Lo 2018 cohort, by contrast, it predicts SOA.
