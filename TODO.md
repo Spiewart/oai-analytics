@@ -115,3 +115,8 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 - **Get Project 43's documentation from the OAI / NDA** — <!-- skip --> READPRJ 43 holds KL readings at baseline, 48, 72, 96 and 120 months for 3,842 knees (2,051 people), and OUTCOMES99's 120-month incidence codes depend on it. The release folder has no description of who was selected or how they were read. Until it does, the 120-month results (`--variant horizon_120`) are provisional; 96 months (Projects 15 and 37, documented as complete for incidence) is primary.
   [analyses/crepitus_soa_longterm/README.md](analyses/crepitus_soa_longterm/README.md)
+
+### Crepitus in Luyten early-stage OA (`analyses/luyten_early_oa`)
+
+- **Get the Mahmoudian 2021 full text** — <!-- skip --> *Semin Arthritis Rheum* 2021;51:285–91 (doi 10.1016/j.semarthrit.2020.11.002) is not open access, so `published.toml` holds only the abstract's group size, age and BMI. The Methods and Table 1 decide what is still guessed: how "structural" and "clinical" progression were defined (the abstract's ORs are ranges, 1.1–1.4 and 2.1–2.5), where the KOOS daily-living score came from (the release has none; we rescale WOMAC function), which KL reading, how missing KOOS or exam items were handled, and the KL 0–1 denominator behind "27%". We find 1,098 knees (21.8%); no ledger variant closes the gap (the highest share is 23.5%, right knees only), so the difference is a choice outside the ledger. Candidates: patellar tenderness counted as a sign, or KOOS taken from another visit. Then extend `published.toml` and settle the `luyten.*` keys.
+  [analyses/luyten_early_oa/README.md](analyses/luyten_early_oa/README.md)
