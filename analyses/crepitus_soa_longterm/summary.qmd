@@ -127,7 +127,7 @@ methods <- paste(
           if (t1_all) "including every odds ratio in its Table 1" else "with some Table 1 odds ratios differing"),
   "Crepitus was assessed on examination (palm over the patella during passive flexion and extension; present or absent) and by self-report (KOOS symptoms item 2, never to always) at enrollment and 12, 24 and 36 months.",
   "SOA was frequent knee pain with tibiofemoral Kellgren–Lawrence grade 2 or more, or a knee replacement.",
-  "We related crepitus at each visit to SOA at the next annual visit (repeated-measures GEE), crepitus at enrollment to SOA by 4 years (logistic regression) and to SOA over 8 years (discrete-time hazard model; radiographic OA after 48 months from the OAI central readings), adjusting for age, sex and body-mass index, and in addition for self-reported crepitus.")
+  "We related crepitus at each visit to SOA at the next annual visit (repeated-measures GEE), crepitus at enrollment to SOA by 4 years (logistic regression) and to SOA over 8 years (discrete-time hazard model; radiographic OA after 48 months from the OAI central readings), in model 1 with exam crepitus, age, sex and body-mass index (the covariates of Lo et al. 2018) and in model 2 with self-reported crepitus added.")
 
 results <- paste(
   sprintf("Of %s participants with both measures at enrollment, %s (%s) had crepitus on examination and %s (%s) reported it at least rarely; agreement between the two was poor (kappa %s).",
@@ -182,23 +182,26 @@ f2_rows <- list(
 row_labels <- vapply(f2_rows, function(r) {
   sprintf("%s\n(%s %s, %s cases)", r$label, count(r$base$n), r$unit, count(r$base$events))
 }, character(1))
+# Each model named by all its terms, so the legend cannot be read as the covariates' own ORs
+model_labels <- c(base = "Model 1: exam crepitus + age, sex, BMI",
+                  s2 = "Model 2: exam crepitus + self-reported crepitus + age, sex, BMI")
 f2 <- do.call(rbind, Map(function(r, label) {
-  rbind(data.frame(row = label, model = "Age, sex, BMI", or = r$base$or, lo = r$base$lo, hi = r$base$hi),
-        data.frame(row = label, model = "+ self-reported crepitus", or = r$s2$or, lo = r$s2$lo, hi = r$s2$hi))
+  rbind(data.frame(row = label, model = model_labels[["base"]], or = r$base$or, lo = r$base$lo, hi = r$base$hi),
+        data.frame(row = label, model = model_labels[["s2"]], or = r$s2$or, lo = r$s2$lo, hi = r$s2$hi))
 }, f2_rows, row_labels))
 f2$row <- factor(f2$row, levels = rev(row_labels))
-f2$model <- factor(f2$model, levels = c("+ self-reported crepitus", "Age, sex, BMI"))  # dodge: base on top
+f2$model <- factor(f2$model, levels = rev(model_labels))  # dodge: model 1 on top
 fig2 <- ggplot(f2, aes(or, row, colour = model)) +
   geom_vline(xintercept = 1, linewidth = 0.3, colour = "grey50") +
   geom_errorbarh(aes(xmin = lo, xmax = hi), height = 0.2, linewidth = 0.4,
                  position = position_dodge(width = 0.5)) +
   geom_point(size = 1.6, position = position_dodge(width = 0.5)) +
   scale_x_log10(breaks = c(1, 1.5, 2, 2.5)) +
-  scale_colour_manual(values = c("Age, sex, BMI" = oaireport::oai_palette[[1]], "+ self-reported crepitus" = oaireport::oai_palette[[2]]),
-                      breaks = c("Age, sex, BMI", "+ self-reported crepitus"), name = "Adjusted for") +
-  labs(x = "Odds ratio for crepitus on examination (log scale)", y = NULL) +
+  scale_colour_manual(values = stats::setNames(unname(oaireport::oai_palette[1:2]), model_labels),
+                      breaks = unname(model_labels), name = NULL) +
+  labs(x = "Odds ratio for incident symptomatic OA, crepitus on examination vs none (log scale)", y = NULL) +
   oaireport::theme_oai() +
-  theme(legend.position = "top")
+  theme(legend.position = "top", legend.direction = "vertical")
 
 # Figure 3: exam crepitus OR by baseline subgroup, at 4 years (logistic) and over 8 years (hazard)
 f3 <- do.call(rbind, lapply(names(subgroup_labels), function(s) {
@@ -221,7 +224,8 @@ fig3 <- ggplot(f3, aes(or, group, colour = when)) +
   scale_x_log10(breaks = c(0.5, 1, 1.5, 2, 3), expand = expansion(mult = c(0.05, 0.25))) +
   scale_colour_manual(values = c("By 4 years" = oaireport::oai_palette[[1]], "Over 8 years (hazard)" = oaireport::oai_palette[[3]]),
                       breaks = c("By 4 years", "Over 8 years (hazard)"), name = NULL) +
-  labs(x = "Odds ratio for crepitus on examination (log scale), adjusted for age, sex and BMI", y = "Baseline subgroup") +
+  labs(x = "Odds ratio for incident symptomatic OA, crepitus on examination vs none (log scale)\nModel 1: exam crepitus + age, sex, BMI",
+       y = "Baseline subgroup") +
   oaireport::theme_oai() +
   theme(legend.position = "top")
 
@@ -230,9 +234,9 @@ oaireport::save_figure(fig2, "summary_fig2", "2col", height = 2.8)
 oaireport::save_figure(fig3, "summary_fig3", "2col", height = 2.4)
 
 captions <- c(
-  summary_fig1 = sprintf("Share of right knees that developed symptomatic OA by 4 years (95%% CI), by crepitus at enrollment: examination (present/absent) and self-report (KOOS S2, at least rarely). Labels give cases/people. All participants (n=%s with both measures) and the three baseline subgroups.", count(n_both_measures)),
-  summary_fig2 = "Odds ratios (95% CI) for crepitus on examination, adjusted for age, sex and body-mass index (blue) and also for self-reported crepitus (orange). Rows give the model, the number of observations it used and the cases. The 10-year estimate depends on X-ray readings whose selection is not documented in the OAI release and is provisional.",
-  summary_fig3 = sprintf("Odds ratios (95%% CI) for crepitus on examination by baseline subgroup, adjusted for age, sex and body-mass index, by 4 years (logistic) and over 8 years (hazard); labels give cases. Interaction of crepitus with subgroup: %s at 4 years, %s over 8 years (%s for the same hazard model at 4 years).",
+  summary_fig1 = sprintf("Examination vs self-reported crepitus at enrollment and incident symptomatic OA by 4 years. Share of right knees that developed symptomatic OA (95%% CI), by crepitus on examination (present/absent) and self-reported crepitus (KOOS S2, at least rarely). Labels give cases/people. All participants (n=%s with both measures) and the three baseline subgroups.", count(n_both_measures)),
+  summary_fig2 = "Crepitus on examination and incident symptomatic OA, without vs with self-reported crepitus in the model. Each point is the odds ratio (95% CI) for incident symptomatic OA in a knee with crepitus on examination vs one without: model 1 (blue) also contains age, sex and body-mass index; model 2 (orange) contains, in addition, self-reported crepitus (KOOS S2, five levels), so it asks whether the examination adds to self-report. Rows give the analysis, the number of observations and the cases. The 10-year estimate depends on X-ray readings whose selection is not documented in the OAI release and is provisional.",
+  summary_fig3 = sprintf("Crepitus on examination and incident symptomatic OA, by baseline subgroup. Each point is the odds ratio (95%% CI) from model 1 (exam crepitus + age, sex, body-mass index) within one subgroup, by 4 years (logistic) and over 8 years (hazard); labels give cases. Becoming a case means developing frequent pain in knees with radiographic OA but no frequent pain, radiographic OA in knees with frequent pain only, and both in knees with neither. Interaction of exam crepitus with subgroup: %s at 4 years, %s over 8 years (%s for the same hazard model at 4 years).",
                          pval(p_sub4), pval(p_sub8), pval(m_of(lt48, "l4.exam.interaction_p"))))
 
 fields <- c(Title = title, Purpose = purpose, Methods = methods, Results = results, Conclusions = conclusions,
