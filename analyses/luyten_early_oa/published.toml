@@ -1,0 +1,16 @@
+# Targets for analyses/luyten_early_oa. Graded by oai.replication.
+# g.*: Mahmoudian A, Lohmander LS, Jafari H, Luyten FP. Semin Arthritis Rheum 2021;51:285-91
+#   (doi:10.1016/j.semarthrit.2020.11.002), abstract only. g.share is "27%" of KL 0-1 knees, so it
+#   carries its own tolerance. The abstract's ORs (structural 1.1-1.4, clinical 2.1-2.5 at 48 and
+#   96 months) are ranges over undefined outcomes; they are reported in README.md, not graded.
+
+[related]
+"g" = ["luyten.kl_source", "luyten.koos_cutoff", "luyten.koos_min", "luyten.adl_source", "luyten.koos_missing", "luyten.sign_missing", "cohort.knees", "cohort.cohorts"]
+
+[default]
+"g.knees" = 1315
+"g.share" = { value = 0.27, tol = 0.005 }
+"g.early.age_mean" = 59.2
+"g.control.age_mean" = 60.2
+"g.early.bmi_mean" = 28.3
+"g.control.bmi_mean" = 26.8

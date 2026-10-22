@@ -1,0 +1,32 @@
+name = "luyten_early_oa"
+description = "Exam and self-reported crepitus within Luyten 2018 early-stage knee OA (Mahmoudian 2021 group): incident KL >= 2 and SOA by 48 and 96 months, knee-level."
+
+[inputs]
+tables = [
+    "enrollees", "outcomes:99", "allclinical:00", "allclinical:01", "allclinical:03",
+    "allclinical:05", "allclinical:06", "allclinical:08", "allclinical:10",
+    "kxr_sq_bu:00", "kxr_sq_bu:01", "kxr_sq_bu:03", "kxr_sq_bu:05", "kxr_sq_bu:06",
+]
+
+[[steps]]
+id = "cohort"
+lang = "python"
+stage = "local"
+entry = "build_frame.py"
+
+[[steps]]
+id = "models"
+lang = "r"
+stage = "local"
+entry = "models.R"
+needs = ["cohort"]
+
+[[steps]]
+id = "compare"
+lang = "python"
+stage = "local"
+entry = "compare.py"
+needs = ["models"]
+
+[outputs]
+aggregate = ["flow.csv", "table_*.csv", "comparison.csv", "metrics_*.csv", "assumptions.resolved.json"]
