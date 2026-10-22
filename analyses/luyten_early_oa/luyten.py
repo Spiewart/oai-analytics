@@ -12,10 +12,13 @@ Framing 2 compares crepitus with none among KL 0-1 knees meeting the KOOS criter
 
 from __future__ import annotations
 
+import dataclasses
+
 import polars as pl
 
 from oai.assumptions import Resolved
 from oai.derive.crepitus import crepitus_values
+from oai.derive.incident_soa import soa_status
 from oai.derive.knee import find_col, xray_readings
 from oai.loader import read_table
 
@@ -24,6 +27,10 @@ WOMAC_FUNCTION_MAX = 68
 ROA_AT_BASELINE = 1  # V99E?XIOA: KL >= 2 at baseline; 2-9: no ROA at baseline (read knee)
 OUTCOMES99_READ = tuple(range(2, 10))
 PROGRESSION_INCIDENCE = (1, 2)
+HORIZONS = {"48": "06", "96": "10"}  # outcome label -> last visit
+OUTCOMES = ("roa48", "roa96", "soa48", "soa96")
+# Case-count frames (early OA vs controls, Framing 1, Framing 2) and their exposure levels
+FRAMES = {"early": ("yes", "no"), "f1": ("yes", "jlt_only"), "f2": ("yes", "no")}
 
 
 def sides_of(A: Resolved) -> tuple[str, ...]:
@@ -182,3 +189,125 @@ def group_metrics(knees: pl.DataFrame) -> pl.DataFrame:
         },
         schema={"metric": pl.String, "value": pl.Float64},
     )
+
+
+# ---------------------------------------------------------------- outcomes
+
+
+def for_side(A: Resolved, side: str) -> Resolved:
+    """`A` with `cohort.side` set, for oai.derive.incident_soa's one-knee functions."""
+    return dataclasses.replace(A, values={**A.values, "cohort.side": side})
+
+
+def roa_series(status: pl.DataFrame, rule: str) -> pl.DataFrame:
+    """ID, visit, roa: OUTCOMES99 ROA, or ROA or a replacement (`outcomes.roa_replacement`)."""
+    roa = pl.col("roa") | pl.col("replaced") if rule == "event" else pl.col("roa")
+    return status.select("ID", "visit", roa.alias("roa"))
+
+
+def by_horizon(status: pl.DataFrame, column: str, horizon: str, selection: str) -> pl.DataFrame:
+    """ID, value: incident `column` (True at any follow-up visit up to `horizon`).
+
+    False when the horizon visit's value is known and no earlier visit is True; null otherwise
+    (`known_or_case`). Under `complete` the horizon visit's value must be known even for a case.
+    A knee True at baseline is prevalent, not incident: null.
+    """
+    up_to = status.filter(pl.col("visit") <= horizon)
+    follow = pl.col("visit") != "00"
+    at_horizon = pl.col(column).filter(pl.col("visit") == horizon).first()
+    return (
+        up_to.group_by("ID", maintain_order=True)
+        .agg(
+            pl.col(column).filter(pl.col("visit") == "00").first().alias("_base"),
+            pl.col(column).filter(follow).fill_null(False).any().alias("_case"),
+            at_horizon.alias("_last"),
+        )
+        .select(
+            "ID",
+            pl.when(pl.col("_base").fill_null(False))
+            .then(None)
+            .when(pl.col("_last").is_null() & (pl.lit(selection == "complete") | ~pl.col("_case")))
+            .then(None)
+            .otherwise(pl.col("_case"))
+            .alias("value"),
+        )
+    )
+
+
+def knee_outcomes(A: Resolved) -> pl.DataFrame:
+    """ID, SIDE, replaced0, roa48, roa96, soa48, soa96 for every knee of the cohort."""
+    selection, rule = A["horizon.selection"], A["outcomes.roa_replacement"]
+    frames = []
+    for side in sides_of(A):
+        status = soa_status(for_side(A, side))
+        knee = status.filter(pl.col("visit") == "00").select(
+            "ID", pl.lit(side).alias("SIDE"), pl.col("replaced").alias("replaced0")
+        )
+        sources = {"roa": roa_series(status, rule), "soa": status.select("ID", "visit", "soa")}
+        for label, visit in HORIZONS.items():
+            for name, frame in sources.items():
+                value = by_horizon(frame, name, visit, selection).rename(
+                    {"value": f"{name}{label}"}
+                )
+                knee = knee.join(value, on="ID", how="left")
+        frames.append(knee)
+    return pl.concat(frames).select("ID", "SIDE", "replaced0", *OUTCOMES)
+
+
+def all_knees(A: Resolved) -> pl.DataFrame:
+    """Every knee with the criteria and outcomes, before the enrollment-replacement exclusion."""
+    return criteria(baseline_knees(A), A).join(knee_outcomes(A), on=["ID", "SIDE"], how="left")
+
+
+def knee_frame(A: Resolved, knees: pl.DataFrame | None = None) -> pl.DataFrame:
+    """The criteria joined to the outcomes, without knees replaced at enrollment."""
+    knees = all_knees(A) if knees is None else knees
+    return knees.filter(~pl.col("replaced0").fill_null(False)).drop("replaced0")
+
+
+def flow(A: Resolved, knees: pl.DataFrame | None = None) -> pl.DataFrame:
+    """step, knees, persons: every knee, then each restriction in turn."""
+    knees = all_knees(A) if knees is None else knees
+    kept = knee_frame(A, knees)
+    steps = {
+        "all": knees,
+        "replaced_at_baseline": kept,
+        "kl_read": kept.filter(pl.col("kl0").is_not_null()),
+        "kl01": kept.filter(pl.col("luyten").is_not_null() & pl.col("kl01")),
+        "kl01_koos": kept.filter(pl.col("kl01_koos").fill_null(False)),
+        "luyten": kept.filter(pl.col("luyten").fill_null(False)),
+        "f1": kept.filter(pl.col("f1_exposure").is_not_null()),
+        "f2": kept.filter(pl.col("f2_exposure").is_not_null()),
+    }
+    return pl.DataFrame(
+        [{"step": s, "knees": d.height, "persons": d["ID"].n_unique()} for s, d in steps.items()]
+    )
+
+
+def _level(frame: str) -> pl.Expr:
+    """The case-count level of each knee in `frame` (null outside it)."""
+    if frame == "early":
+        return (
+            pl.when(pl.col("luyten").fill_null(False))
+            .then(pl.lit("yes"))
+            .when((pl.col("luyten") == False) & pl.col("kl01").fill_null(False))  # noqa: E712
+            .then(pl.lit("no"))
+        )
+    exposure = pl.col(f"{frame}_exposure")
+    reference = "jlt_only" if frame == "f1" else "no"
+    return pl.when(exposure == 1).then(pl.lit("yes")).when(exposure == 0).then(pl.lit(reference))
+
+
+def cohort_metrics(knees: pl.DataFrame) -> pl.DataFrame:
+    """group_metrics plus o.<frame>.<outcome>.<level>.cases and .n (knees with a known outcome)."""
+    rows = group_metrics(knees).to_dicts()
+    for frame, levels in FRAMES.items():
+        d = knees.with_columns(_level(frame).alias("_level"))
+        for level in levels:
+            at_level = d.filter(pl.col("_level") == level)
+            for outcome in OUTCOMES:
+                known = at_level.filter(pl.col(outcome).is_not_null())
+                key = f"o.{frame}.{outcome}.{level}"
+                rows.append({"metric": f"{key}.cases", "value": float(known[outcome].sum())})
+                rows.append({"metric": f"{key}.n", "value": float(known.height)})
+    return pl.DataFrame(rows, schema={"metric": pl.String, "value": pl.Float64})
