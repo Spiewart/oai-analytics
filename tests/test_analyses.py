@@ -21,6 +21,7 @@ def test_expected_analyses_exist():
         "genetics_progression",
         "lo2018_crepitus",
         "lo2022_walking",
+        "luyten_early_oa",
         "progression_definitions",
         "walking_validation",
     ]

@@ -80,6 +80,7 @@ Coded cells (`1: Right`) load as their code, with labels in the codebook. Missin
 | `genetics_progression` | local → enclave | [analysis plan §10–12](docs/reference/oai-activity-agreement-analysis-plan.md) |
 | `lo2018_crepitus` | local | Replication of Lo et al. 2018 (crepitus and incident symptomatic OA), with a KOOS S2 × exam crepitus extension ([README](analyses/lo2018_crepitus/README.md)) |
 | `lo2022_walking` | local | Replication of Lo et al. 2022 ([README](analyses/lo2022_walking/README.md)) |
+| `luyten_early_oa` | local | Exam and self-reported crepitus within Luyten 2018 early-stage knee OA (Mahmoudian 2021 group), incident KL ≥ 2 and SOA by 48 and 96 months ([README](analyses/luyten_early_oa/README.md)) |
 | `walking_validation` | local | Validity of the Lo et al. 2022 walking item against accelerometry ([README](analyses/walking_validation/README.md) · [spec](docs/superpowers/specs/2026-10-01-walking-validation-design.md)) |
 
 Each folder's `analysis.toml` declares its input tables, ordered steps (`lang = python|r`, `stage = local|enclave`), the columns it exports and its aggregate outputs.
