@@ -1039,7 +1039,7 @@ cat(oaireport::table_note(priors_note, label = lab("Table")), sep = "\n")
 
 Priors are Beta(k + 1, n − k + 1) from the 2×2 counts above, taken in the Lo et al. 2022 participants with device data and the outcome observed.`r outside_text` Reclassification is done within outcome strata, and each iteration refits the replication's own GEE models. Each scenario ran `r count(pba$n[1])` iterations and each tipping-point cell `r count(assumption("bias.tipping_iterations"))`.
 
-The assumptions ledger below lists every analytic choice, its status (confirmed, assumed or open) and its source. It is generated from `assumptions.toml`.
+The assumptions ledger below lists every analytic choice behind this report's analyses, its status (confirmed, assumed or open) and its source. It is generated from `assumptions.toml`. Entries for the separate construct-validity analyses (keys starting `construct.`) are left out here; the complete ledger is in `ASSUMPTIONS.md`.
 
 ```{r ledger-legend}
 #| results: asis
@@ -1052,5 +1052,6 @@ cat(oaireport::table_note("Each table lists the assumptions of one status: confi
 # the widths from its dashes): the status tables are Key, Value, Source and Rationale at 5:5:9:4, so
 # Source gets the most room (about 39%), Key and Value about 22% each and Rationale about 17%,
 # because most rationales are empty; the Variants table (Variant, Sets, Description) has equal columns
-cat(oaireport::ledger_markdown("ASSUMPTIONS.md", widths = list(c(5, 5, 9, 4), c(1, 1, 1))), sep = "\n")
+cat(oaireport::ledger_markdown("ASSUMPTIONS.md", widths = list(c(5, 5, 9, 4), c(1, 1, 1)),
+                               exclude_prefixes = "construct."), sep = "\n")
 ```

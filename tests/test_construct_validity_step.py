@@ -48,6 +48,8 @@ CONTINUOUS = {
 WITH_192 = {"walking_any", "hours_5plus", "womac_function", "womac_walk"}
 NOT_AFTER = {"pace_20m", "koos_sport"}
 TRUE_GAP = 40.0
+# Walker gaps that differ from the default: WOMAC walking is lower (better), sitting less likely
+GAPS = {"total": TRUE_GAP, "womac_walk": -3.0, "sitting_long": -0.7}
 
 
 @functools.cache
@@ -105,10 +107,10 @@ def synthetic_frame(
                 if ALL_MONTHS[visit] >= 168 and i % 10 == 0:
                     continue
                 if m in CONTINUOUS:
-                    gap = TRUE_GAP if m == "total" else 3.0
+                    gap = GAPS.get(m, 3.0)
                     value = 50 + walker[i] * gap + 5 * person[i] + rng.normal(0, 5)
                 else:
-                    p = 1 / (1 + math.exp(-(0.1 + 0.7 * walker[i] + 0.6 * person[i])))
+                    p = 1 / (1 + math.exp(-(0.1 + GAPS.get(m, 0.7) * walker[i] + 0.6 * person[i])))
                     value = float(rng.random() < p)
                 rows.append(
                     {
@@ -238,7 +240,7 @@ def test_step_computes_when_approved(approved):
 def test_contrasts_have_the_models_structures_and_ledger_labels(approved):
     frame, results = approved
     got = read(results, "contrasts")
-    assert got.columns[:16] == [
+    assert got.columns[:17] == [
         "facet",
         "measure",
         "model",
@@ -255,6 +257,7 @@ def test_contrasts_have_the_models_structures_and_ledger_labels(approved):
         "converged",
         "expected",
         "period_test",
+        "favors_walkers",
     ]
     assert set(got["measure"]) == set(MEASURES)
     facets, expected = ledger("construct.facets"), ledger("construct.expected")
@@ -356,10 +359,14 @@ def test_sensitivity_models_use_their_own_rows_and_covariates(approved):
     assert row("base")["n_obs"] == total.height
 
 
-def test_completers_are_those_with_data_at_both_visits_and_report_after_only(approved):
+def test_completers_are_those_with_data_at_both_visits_and_report_visit_13_only(approved):
     frame, results = approved
-    got = read(results, "contrasts").filter(model="completers_168")
-    assert set(got["term"]) == {"after"}
+    contrasts = read(results, "contrasts")
+    got = contrasts.filter(model="completers_168")
+    assert set(got["term"]) == {"visit_13"}
+    # a 192-month measure's row is the 168-month contrast, not 168 and 192 together
+    base_after = contrasts.filter(model="base", measure="walking_any", term="after")
+    assert got.filter(measure="walking_any")["estimate"][0] != base_after["estimate"][0]
     # no 168-month data, so no row
     assert set(got["measure"]) == set(MEASURES) - NOT_AFTER
     assert got.height == len(set(got["measure"]))
@@ -543,13 +550,22 @@ def test_kl4_combines_below_the_minimum(tmp_path, count, used):
 
 
 def test_a_failed_model_is_recorded_and_the_step_continues(tmp_path):
-    frame = synthetic_frame(measures=("total", "walking_any", "garden", "caring", "yard"))
+    frame = synthetic_frame(
+        measures=("total", "walking_any", "garden", "caring", "yard", "home_repairs")
+    )
     frame = frame.with_columns(
         # unfittable: a binary outcome with no events at any visit
         pl.when(pl.col("measure") == "garden").then(0.0).otherwise(pl.col("value")).alias("value")
     )
     # a visit no period holds stops walker_model() itself, in the period model only
     extra = frame.filter(measure="caring", visit="00").with_columns(visit=pl.lit("99"))
+    # no variation at all at visit 13
+    frame = frame.with_columns(
+        pl.when(pl.col("measure") == "home_repairs", pl.col("visit") == "13")
+        .then(1.0)
+        .otherwise(pl.col("value"))
+        .alias("value")
+    )
     # separated after the survey only: every Walker walks, so that period has no estimate
     frame = frame.with_columns(
         pl.when(pl.col("measure") == "yard", pl.col("walker_yes"), pl.col("visit").is_in(["13"]))
@@ -571,17 +587,99 @@ def test_a_failed_model_is_recorded_and_the_step_continues(tmp_path):
         fine = got.filter(model="base", measure=measure, term="overall").row(0, named=True)
         assert fine["converged"] is True
         assert fine["estimate"] is not None
-    for model in ("base", "completers_168"):
-        after = got.filter(model=model, measure="yard", term="after").row(0, named=True)
+    for model, term in (("base", "after"), ("completers_168", "visit_13")):
+        after = got.filter(model=model, measure="yard", term=term).row(0, named=True)
         assert after["converged"] is False
         assert after["fit_note"] == "separated"
+    # the fit succeeds with visit 13 left out, so its term cannot be estimated: still a visible row
+    gone = got.filter(model="completers_168", measure="home_repairs").row(0, named=True)
+    assert gone["term"] == "visit_13"
+    assert gone["converged"] is False
+    assert gone["estimate"] is None
+    assert "not estimable" in gone["fit_note"]
+    assert gone["favors_walkers"] is None
     assert got.filter(model="base", measure="yard", term="at")["estimate"][0] is not None
     # measures with no rows produce no rows
     assert "koos_sport" not in set(got["measure"])
     rule = read(results, "rule")
     assert rule.filter(measure="garden")["band"].null_count() == 1
-    assert rule["narrow_evaluable"].unique().to_list() == [2]
+    assert rule["narrow_evaluable"].unique().to_list() == [3]
     assert read(results, "status")["status"].to_list() == ["computed"]
+
+
+def test_holm_family_size_stays_fixed_when_a_model_fails(tmp_path):
+    frame = synthetic_frame(people=120, measures=("total", "walking_any")).with_columns(
+        pl.when(pl.col("measure") == "walking_any")
+        .then(0.0)
+        .otherwise(pl.col("value"))
+        .alias("value")
+    )
+    done, results = run_step(tmp_path, frame, approved=True)
+    assert done.returncode == 0, done.stderr
+    got = read(results, "contrasts").filter(model="base", term="overall")
+    survivor = got.filter(measure="total").row(0, named=True)
+    assert 0 < survivor["p"] < 0.5
+    assert survivor["p_holm"] == pytest.approx(min(1, 2 * survivor["p"]), rel=1e-6, abs=0)
+    assert got.filter(measure="walking_any")["p_holm"][0] is None
+    # discriminative: three tests are pre-specified, and one failed here
+    kl = read(results, "kl")
+    assert kl.filter(analysis="walker_x_kl", measure="walking_any")["p"][0] is None
+    tests = kl.filter(pl.col("p").is_not_null()).unique(
+        ["analysis", "measure"], maintain_order=True
+    )
+    assert tests.height == 2
+    small, large = sorted(tests["p"].to_list())
+    expected = {small: min(1, 3 * small), large: min(1, max(3 * small, 2 * large))}
+    for row in tests.iter_rows(named=True):
+        assert row["p_holm"] == pytest.approx(expected[row["p"]], rel=1e-6, abs=0)
+
+
+def test_favors_walkers_follows_the_estimate_and_each_measures_direction(approved):
+    _, results = approved
+    got = read(results, "contrasts")
+    higher = ledger("construct.higher_is_better")
+    for row in got.filter(pl.col("estimate").is_not_null()).iter_rows(named=True):
+        null = 1 if row["scale"] == "or" else 0
+        better = row["estimate"] > null if higher[row["measure"]] else row["estimate"] < null
+        assert row["favors_walkers"] is better, row
+    overall = got.filter(model="base", term="overall")
+
+    def favors(measure):
+        return overall.filter(measure=measure)["favors_walkers"][0]
+
+    # the simulated gaps: more activity and a lower WOMAC walking score favor Walkers
+    assert favors("total") is True
+    assert favors("womac_walk") is True
+    assert favors("womac_function") is False  # simulated higher, which is worse
+    assert favors("sitting_long") is True  # simulated less likely, with lower as the direction
+
+
+def test_a_dose_level_with_no_variation_has_no_estimate_and_says_why(tmp_path):
+    frame = synthetic_frame(people=120, measures=("total", "walking_any"))
+    walkers = frame.filter(pl.col("walker_yes")).unique("ID", maintain_order=True)["ID"].to_list()
+    tiny = walkers[:3]
+    frame = frame.with_columns(
+        pl.when(pl.col("ID").is_in(tiny))
+        .then(3)
+        .when(pl.col("amount_times") == 3)
+        .then(2)
+        .otherwise(pl.col("amount_times"))
+        .alias("amount_times"),
+        pl.when(pl.col("ID").is_in(tiny), measure="walking_any", visit="10")
+        .then(1.0)
+        .otherwise(pl.col("value"))
+        .alias("value"),
+    )
+    done, results = run_step(tmp_path, frame, approved=True)
+    assert done.returncode == 0, done.stderr
+    dose = read(results, "dose").filter(grouping="times").sort("level")
+    small = dose.filter(level=3).row(0, named=True)
+    assert small["n"] == 3
+    assert (small["estimate"], small["lo"], small["hi"]) == (None, None, None)
+    assert "constant" in small["fit_note"]
+    assert dose.filter(level=1)["estimate"][0] is not None
+    assert dose.filter(level=1)["fit_note"][0] is None
+    assert dose.filter(level=1)["trend_p"][0] is not None
 
 
 def test_a_measure_the_ledger_does_not_know_stops_the_step(tmp_path):
@@ -593,6 +691,13 @@ def test_a_measure_the_ledger_does_not_know_stops_the_step(tmp_path):
 
 def test_ledger_entries_behind_the_step_are_present():
     assert set(ledger("construct.continuous_measures")) == CONTINUOUS
+    higher = ledger("construct.higher_is_better")
+    assert set(higher) == set(MEASURES)
+    assert {m for m, up in higher.items() if not up} == {
+        "womac_function",
+        "womac_walk",
+        "sitting_long",
+    }
     assert json.dumps(ledger("construct.sensitivity_covariates"), sort_keys=True) == json.dumps(
         {"enroll_disease": ["kl_group0", "womac_pain0", "cohort"], "time_pain": ["womac_pain_t"]},
         sort_keys=True,

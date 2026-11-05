@@ -21,10 +21,14 @@
 #'   vector (every table must have that many columns), or a list of numeric vectors of different
 #'   lengths (each table takes the vector whose length is its column count, for a ledger whose
 #'   tables differ in shape: the status tables and the Variants table).
+#' @param exclude_prefixes Keys starting with any of these are left out of the status tables, and
+#'   the counts in the headings and the summary line follow what is left. The Variants table stays
+#'   whole, since it lists variants, not keys.
 #' @return The lines, to be written with `cat(lines, sep = "\n")`.
-ledger_markdown <- function(path = "ASSUMPTIONS.md", widths = NULL) {
+ledger_markdown <- function(path = "ASSUMPTIONS.md", widths = NULL, exclude_prefixes = character()) {
   ledger <- readLines(path, warn = FALSE)
   ledger <- ledger[!grepl("^# |^<!--", ledger)]
+  if (length(exclude_prefixes)) ledger <- ledger_without(ledger, exclude_prefixes)
   identifiers <- gregexpr("`[A-Za-z][A-Za-z0-9_.{}]*`", ledger)
   regmatches(ledger, identifiers) <- lapply(regmatches(ledger, identifiers), function(x) {
     breakable_ids(gsub("`", "", x))
@@ -37,6 +41,29 @@ ledger_markdown <- function(path = "ASSUMPTIONS.md", widths = NULL) {
     }, character(1), USE.NAMES = FALSE)
   })
   if (is.null(widths)) ledger else ledger_widths(ledger, widths)
+}
+
+# The ledger without the rows of keys starting with a prefix, its counts following what is left.
+ledger_without <- function(lines, prefixes) {
+  counted <- "^## ([A-Za-z]+) \\(([0-9]+)\\)$"
+  summary_line <- grepl("^[0-9]+ [a-z]+( \u00b7 [0-9]+ [a-z]+)*$", lines)
+  keys <- ifelse(grepl("^\\| *`", lines), sub("^\\| *`([^`]*)`.*$", "\\1", lines), NA_character_)
+  section_starts <- grep("^## ", lines)
+  section <- findInterval(seq_along(lines), section_starts)
+  drop <- rep(FALSE, length(lines))
+  for (i in seq_along(section_starts)) {
+    heading <- lines[section_starts[i]]
+    if (!grepl(counted, heading)) next
+    here <- section == i & !is.na(keys) &
+      Reduce(`|`, lapply(prefixes, function(prefix) startsWith(ifelse(is.na(keys), "", keys), prefix)))
+    drop <- drop | here
+    status <- sub(counted, "\\1", heading)
+    left <- as.integer(sub(counted, "\\2", heading)) - sum(here)
+    lines[section_starts[i]] <- sprintf("## %s (%d)", status, left)
+    lines[summary_line] <- sub(paste0("[0-9]+ ", tolower(status)), paste(left, tolower(status)),
+                               lines[summary_line])
+  }
+  lines[!drop]
 }
 
 # Rewrite each pipe table's separator row (|---|---|) to dashes in the proportions of `widths`

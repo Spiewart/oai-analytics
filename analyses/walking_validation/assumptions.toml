@@ -395,6 +395,11 @@ value = { enroll_disease = ["kl_group0", "womac_pain0", "cohort"], time_pain = [
 status = "assumed"
 source = "Spec 'Analyses' item 6: added to pase_walking.covariates, one model each. enroll_disease is the main sensitivity analysis (enrollment KL, enrollment WOMAC pain, subcohort; KL and subcohort as categories). time_pain is secondary and labeled so: time-varying WOMAC pain alone, since later pain may lie on the path from walking; it does not also carry the enroll_disease terms (builder's reading)"
 
+[construct.higher_is_better]
+value = { total = true, total_minus_walking = true, walking_any = true, hours_5plus = true, pace_20m = true, koos_sport = true, womac_function = false, womac_walk = false, sitting_long = false, light_sport = true, moderate_sport = true, strenuous_sport = true, muscle = true, light_housework = true, heavy_housework = true, home_repairs = true, yard = true, garden = true, caring = true, work_active = true }
+status = "assumed"
+source = "Which direction of each measure favors Walkers, for reading a contrast's sign. PASE scores and items: more activity is higher. 20-m pace is in m/sec (AllClinical00_Contents.pdf p.15). KOOS: score = 100 - sum*100/(items*4), so 100 is no problems (KOOSG.sas, AllClinical00_Comments.pdf p.224). WOMAC function and walking difficulty: higher is more difficulty (items scored 0-4, AllClinical00_Contents.pdf p.67). sitting_long false is a descriptive direction only: construct.expected is none_stated, so no claim rests on it"
+
 [construct.excluded.walk_400m]
 value = "Not used: given only at 0, 24, 48 and 96 months; recorded time falls from 2,437 to 1,919 of 2,582 people; 400MTIM is the time at 400 m or at stop, so non-completers' times are not comparable; completion code 4 (not attempted, excluded) rises from 60 to 235 people between enrollment and 96 months. An endurance measure, not judged uninformative"
 status = "confirmed"

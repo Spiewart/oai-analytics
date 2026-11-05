@@ -987,6 +987,15 @@ def test_e2e_construct_step_waits_for_review(fast_run):
 
 
 @pytest.mark.realdata
+def test_construct_frame_sex_is_coded_as_the_attrition_table_reads_it(fast_run):
+    # only this column: the walker column stays unread until the scope is approved
+    path = fast_run.settings.work_dir / fast_run.analysis.name / fast_run.out.name
+    sex = pl.read_parquet(path / "construct_frame.parquet", columns=["sex"])["sex"]
+    assert sex.dtype.is_integer()
+    assert set(sex.drop_nulls().unique()) == {1, 2}
+
+
+@pytest.mark.realdata
 def test_construct_counts_has_no_walker_column(fast_run):
     counts = pl.read_csv(
         fast_run.out / "construct_counts.csv", schema_overrides={"visit": pl.String}
