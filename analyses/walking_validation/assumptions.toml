@@ -280,6 +280,111 @@ status = "assumed"
 source = "PASE contrasts: one family per grouping, outcome and estimator, across every visit and level, so walkers vs non-walkers (one test a visit) is adjusted across visits; within_visit adjusts only across a grouping's levels at one visit"
 choices = ["across_visits", "within_visit"]
 
+[construct.scope_approved]
+value = false
+status = "assumed"
+source = "Spec 'Analyses': Grace Lo approves the scope and expectations before any new walker-group comparison is computed. Flip to true only with the approver and date named here"
+
+[construct.periods]
+value = { before = ["00", "01", "03", "05", "06", "08"], at = ["10"], after = ["13", "14"] }
+status = "assumed"
+source = "Spec 'Analyses' item 1: visits before the survey (0-72 months), at it (96), after it (168, 192)"
+
+[construct.facets]
+value = { total = "primary", walking_any = "primary", hours_5plus = "convergent", womac_walk = "convergent", pace_20m = "convergent", womac_function = "convergent", total_minus_walking = "divergent", sitting_long = "divergent", light_sport = "divergent", moderate_sport = "divergent", strenuous_sport = "divergent", muscle = "divergent", light_housework = "divergent", heavy_housework = "divergent", home_repairs = "divergent", yard = "divergent", garden = "divergent", caring = "divergent", work_active = "divergent", koos_sport = "divergent" }
+status = "assumed"
+source = "Spec 'Analyses' items 1-3: which validity facet each measure serves; discriminative validity (KL) is handled by the kl_* keys, so no measure is listed under it"
+
+[construct.expected]
+value = { total = "favors_walkers", walking_any = "favors_walkers", hours_5plus = "favors_walkers", womac_walk = "favors_walkers", pace_20m = "favors_walkers", womac_function = "favors_walkers", total_minus_walking = "little_or_none", sitting_long = "none_stated", light_sport = "moderate", moderate_sport = "moderate", strenuous_sport = "moderate", muscle = "moderate", light_housework = "little_or_none", heavy_housework = "little_or_none", home_repairs = "little_or_none", yard = "little_or_none", garden = "little_or_none", caring = "little_or_none", work_active = "little_or_none", koos_sport = "relative_to_womac_walk" }
+status = "assumed"
+source = "Spec 'Analyses' items 2-3, recorded before computing. WOMAC function is 'between the two' in the spec; it is kept with the convergent measures and expected to favor walkers. KOOS sport is judged relative to WOMAC walking difficulty (smaller standardized difference), sitting has no stated expectation"
+
+[construct.rule.or_little]
+value = 1.44
+status = "open"
+source = "Spec 'Analyses' item 2, decision rule: OR under about 1.44 means little or no link. Chinn 2000 logistic conversion; citation to be checked (Task 2)"
+
+[construct.rule.or_moderate]
+value = 2.47
+status = "open"
+source = "Spec 'Analyses' item 2: OR about 1.44 to 2.47 means a moderate link. Chinn 2000 logistic conversion; citation to be checked (Task 2)"
+
+[construct.rule.d_little]
+value = 0.2
+status = "open"
+source = "Spec 'Analyses' item 2: standardized difference under 0.2 means little or no link (Chinn 2000; check, Task 2)"
+
+[construct.rule.d_moderate]
+value = 0.5
+status = "open"
+source = "Spec 'Analyses' item 2: standardized difference 0.2 to 0.5 means a moderate link (Chinn 2000; check, Task 2)"
+
+[construct.rule.narrow_min_items]
+value = 4
+status = "open"
+source = "Spec 'Analyses' item 2: if at least half (four or more) of the seven household and work items reach OR 1.44, the conclusion narrows to generally active people. Chinn 2000; check, Task 2"
+
+[construct.rule.narrow_items]
+value = ["light_housework", "heavy_housework", "home_repairs", "yard", "garden", "caring", "work_active"]
+status = "assumed"
+source = "Spec 'Analyses' item 2: the six household items and the work item that count toward the narrowing rule"
+
+[construct.sd_reference]
+value = "first_visit"
+status = "assumed"
+source = "Standardized difference = adjusted difference over the pooled SD at the measure's first visit, so it does not move with later attrition"
+choices = ["first_visit"]
+
+[construct.worse_knee_missing]
+value = "use_available"
+status = "assumed"
+source = "Spec 'Analyses' item 3: per-knee measures use the worse knee at each visit; when one knee is missing the available knee is used"
+choices = ["use_available"]
+
+[construct.sitting_long_code]
+value = 4
+status = "assumed"
+source = "Spec 'Analyses' item 2: documented dichotomy for sitting, PASE1HR code 4 (more than 4 hours a day) versus less"
+
+[construct.kl_groups]
+value = { "0-1" = [0, 1], "2-3" = [2, 3], "4" = [4] }
+status = "assumed"
+source = "Spec 'Analyses' item 4: worse-knee enrollment KL groups"
+
+[construct.kl4_min_nonwalkers]
+value = 20
+status = "assumed"
+source = "Spec 'Analyses' item 4: below this many non-walkers in KL 4, combine to KL 2-4 instead of showing KL 4 alone"
+
+[construct.reporting.kl_table]
+value = "walker_share"
+status = "assumed"
+source = "Spec 'Analyses' item 4: walker share across KL goes in Table 1, whatever it shows"
+choices = ["walker_share"]
+
+[construct.reporting.kl_supplement]
+value = "within_kl"
+status = "assumed"
+source = "Spec 'Analyses' item 4: walker contrasts within KL go in the supplement (or one sentence in Results if no supplement is allowed), fixed before computing"
+choices = ["within_kl"]
+
+[construct.gee_corstr]
+value = "exchangeable"
+status = "assumed"
+source = "Spec 'Analyses' items 1-2: working correlation for the GEE logistic models"
+choices = ["exchangeable"]
+
+[construct.age_sensitivity_min]
+value = 50
+status = "assumed"
+source = "Spec 'Analyses' item 6: sensitivity analysis limited to visits at this age or older"
+
+[construct.excluded.walk_400m]
+value = "Not used: given only at 0, 24, 48 and 96 months; recorded time falls from 2,437 to 1,919 of 2,582 people; 400MTIM is the time at 400 m or at stop, so non-completers' times are not comparable; completion code 4 rises from 60 to 235 people between enrollment and 96 months. An endurance measure, not judged uninformative"
+status = "open"
+source = "Spec 'The 400-meter walk': rationale rests on schedule, follow-up and non-comparable values, not on walker results; open until PERFCOMP codes (formats.pdf) and eligibility (protocol) are confirmed in Task 2"
+
 [variants.wave48]
 description = "Device = 48-month wave only"
 set = { "device.wave_combination" = "06" }

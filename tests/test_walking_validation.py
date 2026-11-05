@@ -568,3 +568,19 @@ def test_device_step_keeps_person_rows_out_of_results(tmp_path, monkeypatch, cap
     assert metrics.filter(pl.col("metric") == "device.06.mv_mismatch_days")["value"].to_list() == [
         1.0
     ]
+
+
+def test_construct_ledger_fixes_the_rule_before_computing():
+    values = DEFAULTS
+    assert values["construct.scope_approved"] is False
+    assert values["construct.rule.or_little"] == 1.44
+    assert values["construct.rule.narrow_min_items"] == 4
+    assert len(values["construct.rule.narrow_items"]) == 7
+    facets = values["construct.facets"]
+    expected = values["construct.expected"]
+    assert set(facets.values()) <= {"primary", "convergent", "divergent"}
+    assert set(facets) == set(expected)
+    assert expected["sitting_long"] == "none_stated"
+    # a measure sits in one facet by construction (one key each); the narrow items are divergent
+    assert all(facets[m] == "divergent" for m in values["construct.rule.narrow_items"])
+    assert LEDGER.items["construct.rule.or_little"].status == "open"
