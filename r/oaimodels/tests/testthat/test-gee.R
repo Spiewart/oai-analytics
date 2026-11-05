@@ -101,3 +101,27 @@ test_that("fit_knee_gee rejects a non-0/1 outcome and missing ids", {
   some_na$y[5] <- NA
   expect_no_error(fit_knee_gee(some_na, "walker"))
 })
+
+test_that("fit_knee_gee gives the same fit whatever the type of the cluster column", {
+  skip_if_not_installed("geepack")
+  d <- clustered()
+  expected <- fit_knee_gee(d, "walker + age")
+  labels <- sprintf("P%04d", d$ID)
+  # geepack finds clusters from diff(as.numeric(id)), which is all NA for labels like these
+  for (id in list(labels, factor(labels), as.character(d$ID), 1000000 + d$ID)) {
+    typed <- d
+    typed$ID <- id
+    expect_no_warning(est <- fit_knee_gee(typed, "walker + age"))
+    expect_equal(est, expected)
+  }
+  # Some IDs numeric and some not: geepack would merge the non-numeric ones with a neighbour
+  mixed <- d
+  mixed$ID <- ifelse(d$ID %% 2 == 0, labels, as.character(d$ID))
+  expect_equal(fit_knee_gee(mixed, "walker + age"), expected)
+  # Different strings that as.numeric() reads as one number, sorted side by side, stay two clusters
+  same_number <- d
+  same_number$ID <- as.character(2000 + d$ID)
+  same_number$ID[d$ID == 1] <- "1000"
+  same_number$ID[d$ID == 2] <- "1e3"
+  expect_equal(fit_knee_gee(same_number, "walker + age"), expected)
+})
