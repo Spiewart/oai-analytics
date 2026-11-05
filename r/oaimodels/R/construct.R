@@ -14,12 +14,22 @@
 #' visit with only one Walker group gets no term and no row; its rows stay in the fit, where they
 #' still inform the covariates and the visit terms.
 #'
+#' Binomial models screen the rows before fitting, since geeglm can run away or never return on an
+#' unbounded estimate. A visit with no events or no non-events across both groups is left out and
+#' named in the attribute `dropped_visits`. A level ("period" or "visit") where one Walker group is
+#' all 0 or all 1 has an unbounded contrast: its rows are left out, so they cannot shape the other
+#' levels, and it gets a visible row with `converged` FALSE, NA estimates and `fit_note`
+#' "separated". For "overall", a Walker group all 0 or all 1 across the fitted rows gives the
+#' failure row. Each GEE fit runs in a forked child process (unix only), which is killed after
+#' `fit_timeout` seconds, since tryCatch cannot interrupt geepack's compiled code.
+#'
 #' The attribute `period_test` is the p-value for whether the Walker contrast differs by period, the
 #' same whichever `structure` is asked for. Gaussian: a likelihood-ratio test of the
 #' `walker_yes:period` model against the one-Walker-term model, both ML on the same rows. Binomial:
 #' a joint Wald test, from the robust covariance matrix, that the per-period contrasts are equal.
-#' It is NA with fewer than two periods holding both groups, or with no `periods`; if only its own
-#' fit fails the attribute `period_test_error` holds the message.
+#' It is NA with fewer than two periods holding both groups, or with no `periods`. It is also NA
+#' when a period is separated, since equal gaps cannot be tested with one of them unbounded. If only
+#' its own fit fails or a period is separated, the attribute `period_test_error` holds the message.
 #'
 #' @param data Long rows with `ID`, `visit`, `value`, `walker_yes` (logical or 0/1) and the
 #'   covariates. Rows with a null `value`, `walker_yes`, `visit` or covariate are dropped.
@@ -30,24 +40,32 @@
 #'   `list(before = c("00", "01"), at = "10", after = c("13", "14"))`. Needed for "period"; any
 #'   visit in `data` outside it is an error.
 #' @param corstr Working correlation (geepack; ignored for gaussian).
+#' @param fit_timeout Seconds allowed for each GEE fit (ignored for gaussian).
 #' @return Data frame with `term`, `estimate`, `lo`, `hi`, `p`, `scale` ("difference" or "or"),
-#'   `n_people`, `n_obs` (of the model as fitted, so the same on every row) and `converged`. A fit
-#'   that fails or does not converge gives one row with `converged` FALSE, NA estimates, `term` NA
-#'   unless `structure` is "overall", and the message as attribute `fit_error`.
+#'   `n_people`, `n_obs` (of the model as fitted, so the same on every row), `converged` and
+#'   `fit_note` (NA or "separated"). A fit that fails, times out or does not converge gives one row
+#'   with `converged` FALSE, NA estimates, `term` NA unless `structure` is "overall", and the message
+#'   as attribute `fit_error`. The attribute `dropped_visits` is always present.
 walker_model <- function(data, covariates = character(), structure = c("overall", "period", "visit"),
                          family = c("gaussian", "binomial"), periods = NULL,
-                         corstr = "exchangeable") {
+                         corstr = "exchangeable", fit_timeout = 300) {
   structure <- match.arg(structure)
   family <- match.arg(family)
   covariates <- as.character(covariates)
+  if (!is.numeric(fit_timeout) || length(fit_timeout) != 1L || is.na(fit_timeout) || fit_timeout <= 0) {
+    stop("walker_model(): fit_timeout must be a positive number of seconds", call. = FALSE)
+  }
   frame <- walker_frame(data, covariates, family, periods, structure)
   scale <- if (family == "gaussian") "difference" else "or"
-  n_people <- length(unique(frame$ID))
-  n_obs <- nrow(frame)
+  dropped_visits <- character()
+  if (family == "binomial") {
+    dropped_visits <- walker_constant_visits(frame)
+    frame <- frame[!frame$visit %in% dropped_visits, , drop = FALSE]
+  }
 
   fits <- list()
   fit_of <- function(s) {
-    if (is.null(fits[[s]])) fits[[s]] <<- walker_fit(frame, covariates, s, family, corstr)
+    if (is.null(fits[[s]])) fits[[s]] <<- walker_fit(frame, covariates, s, family, corstr, fit_timeout)
     fits[[s]]
   }
 
@@ -55,15 +73,18 @@ walker_model <- function(data, covariates = character(), structure = c("overall"
   if (inherits(fit, "error")) {
     failed <- data.frame(term = if (structure == "overall") "overall" else NA_character_,
                          estimate = NA_real_, lo = NA_real_, hi = NA_real_, p = NA_real_, scale = scale,
-                         n_people = n_people, n_obs = n_obs, converged = FALSE)
+                         n_people = length(unique(frame$ID)), n_obs = nrow(frame), converged = FALSE,
+                         fit_note = if (inherits(fit, "walker_separated")) "separated" else NA_character_)
     attr(failed, "period_test") <- NA_real_
     attr(failed, "fit_error") <- conditionMessage(fit)
+    attr(failed, "dropped_visits") <- dropped_visits
     return(failed)
   }
 
   rows <- data.frame(term = fit$table$term, estimate = fit$table$estimate, lo = fit$table$lo,
-                     hi = fit$table$hi, p = fit$table$p, scale = scale, n_people = n_people,
-                     n_obs = n_obs, converged = TRUE)
+                     hi = fit$table$hi, p = fit$table$p, scale = scale, n_people = fit$n_people,
+                     n_obs = fit$n_obs, converged = is.na(fit$table$fit_note),
+                     fit_note = fit$table$fit_note)
   if (family == "binomial") rows[c("estimate", "lo", "hi")] <- exp(rows[c("estimate", "lo", "hi")])
 
   period_test <- NA_real_
@@ -75,6 +96,7 @@ walker_model <- function(data, covariates = character(), structure = c("overall"
     }
   }
   attr(rows, "period_test") <- period_test
+  attr(rows, "dropped_visits") <- dropped_visits
   rows
 }
 
@@ -111,7 +133,7 @@ walker_frame <- function(data, covariates, family, periods, structure) {
   }
 
   visit <- as.character(data$visit)
-  period <- NA_character_
+  period <- rep(NA_character_, nrow(data))
   if (!is.null(periods)) {
     if (!is.list(periods) || is.null(names(periods)) || any(names(periods) == "")) {
       stop("walker_model(): periods must be a named list of visits", call. = FALSE)
@@ -138,7 +160,7 @@ walker_frame <- function(data, covariates, family, periods, structure) {
   frame[internal] <- data[covariates]
   keep <- stats::complete.cases(frame[c("ID", "visit", "value", ".walker", internal)])
   frame <- frame[keep, , drop = FALSE]
-  frame$.period <- factor(frame$.period, levels = names(periods))
+  frame$.period <- factor(frame$.period, levels = names(periods) %||% character())
   frame <- frame[order(frame$ID, frame$visit), , drop = FALSE]
   # geepack reads the cluster with as.numeric(), which a character ID would turn into NA
   frame$.cluster <- match(frame$ID, unique(frame$ID))
@@ -163,24 +185,56 @@ walker_estimable <- function(frame, by) {
   }, logical(1))]
 }
 
-# Fits one structure. Returns the contrast table on the model's own scale, the Walker coefficient
-# names, and the model. Any failure is an error, which walker_model() catches.
-walker_fit <- function(frame, covariates, structure, family, corstr) {
+# Visits where the outcome does not vary, across both groups.
+walker_constant_visits <- function(frame) {
+  constant <- vapply(split(frame$value, frame$visit), function(v) length(unique(v)) == 1L, logical(1))
+  as.character(names(constant)[constant])
+}
+
+# TRUE if either Walker group's values are all 0 or all 1.
+walker_group_constant <- function(value, walker) {
+  any(vapply(split(value, walker), function(v) length(unique(v)) == 1L, logical(1)))
+}
+
+# Fits one structure. Returns the contrast table on the model's own scale, with a row for each
+# separated level, the Walker coefficient names, what the fit needs for the period test, and the
+# counts of what was fitted. Any failure is an error, which walker_model() catches.
+walker_fit <- function(frame, covariates, structure, family, corstr, fit_timeout) {
   if (!nrow(frame)) stop("no rows left to fit", call. = FALSE)
   if (length(unique(frame$.walker)) < 2L) {
     stop("walker_yes has only one group in the fitted rows", call. = FALSE)
   }
   by <- switch(structure, overall = NULL, period = ".period", visit = "visit")
+  separated <- character()
   if (is.null(by)) {
-    labels <- "overall"
+    if (family == "binomial" && walker_group_constant(frame$value, frame$.walker)) {
+      stop(errorCondition("separated: a walker_yes group is all 0 or all 1 in the fitted rows",
+                          class = "walker_separated", call = NULL))
+    }
+    all_labels <- labels <- "overall"
     walker_columns <- ".walker"
   } else {
-    labels <- walker_estimable(frame, by)
-    if (!length(labels)) stop("no ", structure, " holds both walker_yes groups", call. = FALSE)
-    walker_columns <- paste0(".w", seq_along(labels))
+    all_labels <- walker_estimable(frame, by)
+    if (!length(all_labels)) stop("no ", structure, " holds both walker_yes groups", call. = FALSE)
+    if (family == "binomial") {
+      level <- as.character(frame[[by]])
+      separated <- all_labels[vapply(all_labels, function(lv) {
+        walker_group_constant(frame$value[level == lv], frame$.walker[level == lv])
+      }, logical(1))]
+      frame <- frame[!level %in% separated, , drop = FALSE]
+    }
+    labels <- setdiff(all_labels, separated)
+    walker_columns <- if (length(labels)) paste0(".w", seq_along(labels)) else character()
     for (i in seq_along(labels)) {
       frame[[walker_columns[i]]] <- frame$.walker * (as.character(frame[[by]]) == labels[i])
     }
+  }
+  result <- list(walker_columns = walker_columns, separated = separated, n_people = 0L, n_obs = 0L)
+  table <- data.frame(term = all_labels, estimate = NA_real_, lo = NA_real_, hi = NA_real_, p = NA_real_,
+                      fit_note = ifelse(all_labels %in% separated, "separated", NA_character_))
+  if (!length(labels)) {
+    result$table <- table
+    return(result)
   }
   # A single visit has no visit terms to estimate; factor() of one level cannot be coded
   controls <- c(if (length(unique(frame$visit)) > 1L) "factor(visit)",
@@ -193,33 +247,86 @@ walker_fit <- function(frame, covariates, structure, family, corstr) {
     half_width <- stats::qt(0.975, coefs[, "DF"]) * coefs[, "Std.Error"]
     p <- coefs[, "p-value"]
     estimate <- coefs[, "Value"]
+    result$log_lik <- stats::logLik(model)
   } else {
-    model <- geepack::geeglm(formula, id = .cluster, data = frame, family = stats::binomial, corstr = corstr)
-    if (!identical(as.integer(model$geese$error), 0L)) stop("geeglm did not converge", call. = FALSE)
-    coefs <- summary(model)$coefficients[walker_columns, , drop = FALSE]
+    gee <- walker_in_child(function() walker_gee(formula, frame, corstr), fit_timeout)
+    if (!identical(as.integer(gee$error), 0L)) stop("geeglm did not converge", call. = FALSE)
+    coefs <- gee$coefs[walker_columns, , drop = FALSE]
     half_width <- stats::qnorm(0.975) * coefs[, "Std.err"]
     p <- coefs[, "Pr(>|W|)"]
     estimate <- coefs[, "Estimate"]
+    result$beta <- gee$beta
+    result$vcov <- gee$vcov
   }
   if (!all(is.finite(c(estimate, half_width)))) stop("the Walker estimate is not finite", call. = FALSE)
-  table <- data.frame(term = labels, estimate = unname(estimate), lo = unname(estimate - half_width),
-                      hi = unname(estimate + half_width), p = unname(p))
-  list(table = table, walker_columns = walker_columns, model = model)
+  at <- match(labels, table$term)
+  table$estimate[at] <- estimate
+  table$lo[at] <- estimate - half_width
+  table$hi[at] <- estimate + half_width
+  table$p[at] <- p
+  result$table <- table
+  result$n_people <- length(unique(frame$ID))
+  result$n_obs <- nrow(frame)
+  result
+}
+
+# Runs in the child process, so returns only what the parent needs.
+walker_gee <- function(formula, frame, corstr) {
+  # geepack prints the design matrix when it is rank deficient
+  utils::capture.output(
+    model <- geepack::geeglm(formula, id = .cluster, data = frame, family = stats::binomial, corstr = corstr)
+  )
+  list(error = model$geese$error, coefs = summary(model)$coefficients, beta = stats::coef(model),
+       vcov = model$geese$vbeta)
+}
+
+# fun() in a forked process, killed after `timeout` seconds, since tryCatch cannot interrupt compiled
+# code that never returns. Errors and warnings from fun() come back as if raised here. Leaves the
+# caller's random-number stream alone.
+walker_in_child <- function(fun, timeout) {
+  job <- parallel::mcparallel({
+    warned <- list()
+    outcome <- tryCatch(withCallingHandlers(list(value = fun()), warning = function(w) {
+      warned[[length(warned) + 1L]] <<- w
+      invokeRestart("muffleWarning")
+    }), error = function(e) list(error = e))
+    outcome$warnings <- warned
+    outcome
+  }, mc.set.seed = FALSE)
+  on.exit({
+    tools::pskill(job$pid, tools::SIGKILL)
+    suppressWarnings(parallel::mccollect(job, wait = TRUE)) # so no zombie stays
+  }, add = TRUE)
+  deadline <- Sys.time() + timeout
+  repeat {
+    left <- as.numeric(deadline - Sys.time(), units = "secs")
+    if (left <= 0) stop("geeglm timed out after ", timeout, " seconds", call. = FALSE)
+    # A child that died warns here too; the is.list() check below reports it
+    collected <- suppressWarnings(parallel::mccollect(job, wait = FALSE, timeout = min(left, 1)))
+    if (!is.null(collected)) break
+  }
+  outcome <- collected[[1]]
+  if (!is.list(outcome)) stop("the fit process ended without a result", call. = FALSE)
+  for (w in outcome$warnings) warning(w)
+  if (!is.null(outcome$error)) stop(outcome$error)
+  outcome$value
 }
 
 walker_period_test <- function(fit_of, family) {
   alternative <- fit_of("period")
+  if (length(alternative$separated)) {
+    stop("no period test: separated in ", paste(alternative$separated, collapse = ", "), call. = FALSE)
+  }
   if (family == "gaussian") {
-    null <- fit_of("overall")
-    ll_null <- stats::logLik(null$model)
-    ll_alternative <- stats::logLik(alternative$model)
+    ll_null <- fit_of("overall")$log_lik
+    ll_alternative <- alternative$log_lik
     statistic <- max(0, 2 * (as.numeric(ll_alternative) - as.numeric(ll_null)))
     df <- attr(ll_alternative, "df") - attr(ll_null, "df")
     return(stats::pchisq(statistic, df, lower.tail = FALSE))
   }
   # Wald: every per-period coefficient equal to the first
-  beta <- stats::coef(alternative$model)
-  vcov <- alternative$model$geese$vbeta
+  beta <- alternative$beta
+  vcov <- alternative$vcov
   at <- match(alternative$walker_columns, names(beta))
   contrast <- matrix(0, length(at) - 1L, length(beta))
   contrast[, at[1]] <- 1
