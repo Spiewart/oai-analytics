@@ -3,15 +3,19 @@
 # construct_status.csv (awaiting_review), reads no data and stops with success. Once approved:
 #   construct_contrasts.csv  Each measure's Walker contrast under each model. p and p_holm appear
 #                            only where a claim rests on them: base overall rows of the primary and
-#                            other convergent measures, each facet its own Holm family. Every other
-#                            row reports a CI only. period_test is on the base overall PASE total row.
+#                            other convergent measures, each facet its own Holm family, of its
+#                            pre-specified size even if a model fails. Every other row reports a CI
+#                            only. period_test is on the base overall PASE total row. favors_walkers
+#                            reads the estimate through construct.higher_is_better.
 #   construct_rule.csv       The divergent measures judged by size (base overall), and the narrowing.
 #   construct_kl.csv         Walker share by KL (person-level, adjusted; a likelihood-ratio p for the
 #                            KL term, repeated on its rows), the contrasts within each KL group
 #                            (CIs only), and the walker x KL tests. The share p and the two tests are
-#                            one Holm family. n_people is the model's, on every row.
+#                            one Holm family of 3. n_people is the model's, on every row.
 #   construct_dose.csv       At 96 months, walking_any by each amount level against not-Walkers
 #                            (adjusted ORs with CIs) and a Cochran-Armitage trend, as pase_walking.R.
+#                            A level with a constant outcome or a non-finite CI has no estimate and
+#                            says so in fit_note.
 #   construct_attrition.csv  Who had a PASE total at 96 and at 168 months, and enrollment
 #                            characteristics of those with one at 96 months, with and without one at
 #                            168. No p-values.
@@ -36,6 +40,7 @@ sensitivity <- lapply(A[["construct.sensitivity_covariates"]], unlist)
 periods <- lapply(A[["construct.periods"]], unlist)
 facets <- unlist(A[["construct.facets"]])
 expected <- unlist(A[["construct.expected"]])
+higher_is_better <- unlist(A[["construct.higher_is_better"]])
 continuous <- unlist(A[["construct.continuous_measures"]])
 corstr <- A[["construct.gee_corstr"]]
 sd_reference <- A[["construct.sd_reference"]]
@@ -53,6 +58,10 @@ if (!nrow(frame)) stop("construct_frame.parquet has no rows", call. = FALSE)
 unknown <- setdiff(unique(frame$measure), names(facets))
 if (length(unknown)) {
   stop("measures not in construct.facets: ", paste(unknown, collapse = ", "), call. = FALSE)
+}
+no_direction <- setdiff(names(facets), names(higher_is_better))
+if (length(no_direction)) {
+  stop("measures not in construct.higher_is_better: ", paste(no_direction, collapse = ", "), call. = FALSE)
 }
 frame$visit <- as.character(frame$visit)
 family_of <- function(measure) if (measure %in% continuous) "gaussian" else "binomial"
@@ -80,7 +89,8 @@ models <- list(
                    applies = every_measure, keep = all_rows),
   age50 = list(covariates = covariates, structures = c("overall", "period"), applies = every_measure,
                keep = function(d) d[!is.na(d$age_at_visit) & d$age_at_visit >= age_min, , drop = FALSE]),
-  completers_168 = list(covariates = covariates, structures = "period", only_term = "after",
+  completers_168 = list(covariates = covariates, structures = "visit", only_term = after_visit,
+                        term_label = paste0("visit_", after_visit),
                         applies = function(d) length(completers(d)) > 0L,
                         keep = function(d) d[d$ID %in% completers(d), , drop = FALSE])
 )
@@ -126,8 +136,16 @@ run_model <- function(d, measure, model, structure) {
                dropped_visits = "")
   })
   if (!is.null(spec$only_term)) {
-    rows <- rows[is.na(rows$term) | rows$term == spec$only_term, , drop = FALSE]
-    rows$term <- rep(spec$only_term, nrow(rows))
+    wanted <- rows[is.na(rows$term) | rows$term == spec$only_term, , drop = FALSE]
+    if (!nrow(wanted)) {
+      # The fit worked but this visit has no contrast in it: still a visible row
+      wanted <- rows[1L, , drop = FALSE]
+      wanted[c("estimate", "lo", "hi", "p", "std_diff")] <- NA_real_
+      wanted$converged <- FALSE
+      wanted$fit_note <- paste0("visit ", spec$only_term, " not estimable in this fit")
+    }
+    rows <- wanted
+    rows$term <- spec$term_label
   }
   cbind(data.frame(measure = rep(measure, nrow(rows)), model = rep(model, nrow(rows))), rows,
         row.names = NULL)
@@ -147,6 +165,9 @@ for (measure in measures) {
 contrasts <- do.call(rbind, contrast_rows)
 contrasts$facet <- unname(facets[contrasts$measure])
 contrasts$expected <- unname(expected[contrasts$measure])
+no_gap <- ifelse(contrasts$scale == "or", 1, 0)
+contrasts$favors_walkers <- ifelse(unname(higher_is_better[contrasts$measure]),
+                                   contrasts$estimate > no_gap, contrasts$estimate < no_gap)
 
 # ---- p-values: only where a claim rests on one, one Holm family a facet ----------------------
 base_overall <- contrasts$model == "base" & contrasts$term %in% "overall"
@@ -154,10 +175,11 @@ contrasts$p[!(base_overall & contrasts$facet %in% c("primary", "convergent"))] <
 contrasts$p_holm <- NA_real_
 for (family in c("primary", "convergent")) {
   claim <- which(base_overall & contrasts$facet == family)
-  contrasts$p_holm[claim] <- stats::p.adjust(contrasts$p[claim], method = "holm")
+  # n fixed, so a failed model cannot make the family smaller
+  contrasts$p_holm[claim] <- stats::p.adjust(contrasts$p[claim], method = "holm", n = sum(facets == family))
 }
 write_out(contrasts[c("facet", "measure", "model", "term", "estimate", "lo", "hi", "p", "p_holm", "scale",
-                      "std_diff", "n_people", "n_obs", "converged", "expected", "period_test", "fit_note",
+                      "std_diff", "n_people", "n_obs", "converged", "expected", "period_test", "favors_walkers", "fit_note",
                       "dropped_visits")], "contrasts")
 
 # ---- The divergence rule ---------------------------------------------------------------------
@@ -251,7 +273,7 @@ kl <- rbind(
 # One family: the share's p counts once, however many KL groups its rows show
 kl$p_holm <- NA_real_
 tested <- which(kl$analysis != "within_kl" & !duplicated(kl[c("analysis", "measure")]))
-kl$p_holm[tested] <- stats::p.adjust(kl$p[tested], method = "holm")
+kl$p_holm[tested] <- stats::p.adjust(kl$p[tested], method = "holm", n = 1L + length(kl_measures))
 share_rows <- kl$analysis == "walker_share"
 kl$p_holm[share_rows] <- kl$p_holm[share_rows][1]
 kl$kl_groups_used <- paste(kl_used, collapse = ",")
@@ -271,10 +293,17 @@ dose_rows <- lapply(names(amount_columns), function(grouping) {
     k <- oaimodels::group_contrasts(y, g, covariates = at_96[covariates], adjust = "none")
     ok <- !is.na(y) & !is.na(g)
     tab <- table(factor(g[ok], levels = levels(g)), factor(y[ok], levels = c(FALSE, TRUE)))
+    # An unbounded OR comes back as a huge number with a clean fit, so it is checked here
+    constant <- vapply(k$level, function(lv) length(unique(y[ok & g == lv])) < 2L, logical(1)) |
+      length(unique(y[ok & g == "no"])) < 2L
+    unbounded <- !is.finite(k$adj_estimate) | !is.finite(k$adj_lo) | !is.finite(k$adj_hi)
+    note <- ifelse(constant, "outcome constant in this level or in not-Walkers; no estimate",
+                   ifelse(unbounded, "non-finite estimate or CI; no estimate", NA_character_))
+    blank <- ifelse(constant | unbounded, NA_real_, 1)
     data.frame(grouping = grouping, level = k$level,
                label = answer_labels[[grouping]][as.integer(k$level)], n = k$n, n_ref = k$n_ref,
-               estimate = k$adj_estimate, lo = k$adj_lo, hi = k$adj_hi, adj_n = k$adj_n,
-               trend_p = stats::prop.trend.test(tab[, "TRUE"], rowSums(tab))$p.value, fit_note = NA_character_)
+               estimate = k$adj_estimate * blank, lo = k$adj_lo * blank, hi = k$adj_hi * blank, adj_n = k$adj_n,
+               trend_p = stats::prop.trend.test(tab[, "TRUE"], rowSums(tab))$p.value, fit_note = note)
   }, error = function(e) {
     data.frame(grouping = grouping, level = NA_character_, label = NA_character_, n = NA_integer_,
                n_ref = NA_integer_, estimate = NA_real_, lo = NA_real_, hi = NA_real_, adj_n = NA_integer_,
