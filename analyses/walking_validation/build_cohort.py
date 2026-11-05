@@ -25,6 +25,8 @@ from wv import (
 
 from oai.assumptions import current
 from oai.config import get_settings
+from oai.derive.construct import MEASURES as CONSTRUCT_MEASURES
+from oai.derive.construct import kl_group, visit_measures, womac_pain
 from oai.derive.knee import find_col, frequent_knee_pain, xray_readings
 from oai.derive.pase import pase_visit, pase_walking_answers, score_pase
 from oai.derive.walking import walker_status, walking_answers, walking_sessions
@@ -140,6 +142,72 @@ pase_people = (
     .sort("ID")
 )
 
+# The long frame for the construct-validity analyses: one row per person, visit and measure, for
+# the same people as pase_frame. Person columns repeat on each row.
+person = (
+    pase_people.select("ID", "walk_item", "amount_times", "amount_years", "age", "sex", "bmi")
+    .with_columns((pl.col("walk_item") == 1).alias("walker_yes"))  # any yes, as pase_walking.R
+    .join(
+        kl.with_columns(kl_group(pl.col("kl_max0"), A["construct.kl_groups"]).alias("kl_group0")),
+        on="ID",
+        how="left",
+    )
+    .join(select(read_table("enrollees"), ID="ID", cohort="V00COHORT"), on="ID", how="left")
+)
+long_parts = []
+for visit in A["pase.all_visits"]:
+    table = read_table("allclinical", visit)
+    part = visit_measures(
+        table,
+        visit,
+        CONSTRUCT_MEASURES,
+        walking=A["pase.walking_scoring"],
+        hours_threshold=A["pase_walking.hours_threshold"],
+        sitting_long_code=A["construct.sitting_long_code"],
+    ).join(womac_pain(table, visit).select("ID", "womac_pain_t"), on="ID", how="left")
+    long_parts.append(part)
+pain0 = womac_pain(read_table("allclinical", "00"), "00").select(
+    "ID", pl.col("womac_pain_t").alias("womac_pain0")
+)
+construct_frame = (
+    pl.concat(long_parts)
+    .join(person, on="ID", how="inner")
+    .join(pain0, on="ID", how="left")
+    .with_columns(
+        pl.col("visit").map_elements(nominal_month, return_dtype=pl.Int64).alias("month"),
+        pl.col("age").cast(pl.Float64),
+        pl.col("bmi").cast(pl.Float64),
+    )
+    .with_columns((pl.col("age") + pl.col("month") / 12).alias("age_at_visit"))
+    .select(
+        "ID",
+        "visit",
+        "month",
+        "measure",
+        "value",
+        "walker_yes",
+        "walk_item",
+        "amount_times",
+        "amount_years",
+        "age",
+        "sex",
+        "bmi",
+        "age_at_visit",
+        "kl_max0",
+        "kl_group0",
+        "womac_pain0",
+        "womac_pain_t",
+        "cohort",
+    )
+    .sort("ID", "visit", "measure")
+)
+construct_counts = (
+    construct_frame.filter(pl.col("value").is_not_null())
+    .group_by("visit", "month", "measure")
+    .agg(pl.len().alias("n"))
+    .sort("month", "measure")
+)
+
 
 def pase_counts(frame: pl.DataFrame) -> pl.DataFrame:
     """Per visit and PASE measure: people with a value, by walking answer, and the median month
@@ -194,6 +262,7 @@ metrics_table = pl.DataFrame(
 # Everything above can stop the step; nothing is written until it has all succeeded.
 persons.write_parquet(frames / "frame.parquet")
 pase_people.write_parquet(frames / "pase_frame.parquet")
+construct_frame.write_parquet(frames / "construct_frame.parquet")
 lo_knees.write_parquet(frames / "lo_knees.parquet")
 (frames / "lo_model.json").write_text(json.dumps(lo_model_spec, indent=2))
 for name, content in lo_results.items():
@@ -201,5 +270,6 @@ for name, content in lo_results.items():
 flow.write_csv(results / "flow.csv")
 metrics_table.write_csv(results / "metrics_cohort.csv")
 pase_visits.write_csv(results / "pase_visits.csv")
+construct_counts.write_csv(results / "construct_counts.csv")
 print(flow)
 print(f"measures: {', '.join(MEASURES)}; outcomes: {', '.join(OUTCOMES)}")

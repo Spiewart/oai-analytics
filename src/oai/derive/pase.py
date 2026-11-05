@@ -114,3 +114,58 @@ def pase_visit(
         )
         out = out.join(days, on="ID", how="left")
     return out
+
+
+LEISURE_WEIGHTS = {2: 20.0, 3: 21.0, 4: 23.0, 5: 23.0, 6: 30.0}  # Washburn items 2-6
+HOUSEHOLD_WEIGHTS = (25.0, 25.0, 30.0, 36.0, 20.0, 35.0)  # HOUACT1-6
+WORK_WEIGHT = 21.0  # x hours worked in the past 7 days / 7
+
+
+def work_active(workamt: pl.Expr, work7: pl.Expr) -> pl.Expr:
+    """True when working in the past 7 days at more than sitting (WORKAMT 2-4); False when not
+    working (WORK7 == 0) or mainly sitting (WORKAMT 1); null when working with the amount
+    unanswered (88 don't know or missing)."""
+    return (
+        pl.when(work7 == 0)
+        .then(False)
+        .when(work7 == 1)
+        .then(pl.when(workamt.is_in([1])).then(False).when(workamt.is_in([2, 3, 4])).then(True))
+    )
+
+
+def pase_rebuilt(
+    allclinical: pl.DataFrame, visit: str, walking: Mapping = DEFAULT_WALKING
+) -> pl.DataFrame:
+    """ID and pase_rebuilt_<v>: the PASE total from the Washburn weights, item by item.
+
+    Items 2-6 are weight x days/7 x hours (the walking scoring's day and hour values); HOUACT1-6
+    are weight x yes; work is 21 x hours worked in the past 7 days / 7, counted only when
+    working (WORK7 == 1) at more than sitting (WORKAMT > 1). Null if any component is
+    unanswered (refused and don't-know codes included).
+    """
+    _check_scoring(walking)
+    v = visit.removeprefix("V")
+    col = partial(find_col, allclinical, where=f"allclinical{v}")
+    parts: list[pl.Expr] = []
+    for item, weight in LEISURE_WEIGHTS.items():
+        days = pl.col(col(f"V{v}PASE{item}")).replace_strict(
+            dict(enumerate(walking["days"])), default=None, return_dtype=pl.Float64
+        )
+        hours = pl.col(col(f"V{v}PASE{item}HR")).replace_strict(
+            {code + 1: h for code, h in enumerate(walking["hours"])},
+            default=None,
+            return_dtype=pl.Float64,
+        )
+        parts.append(pl.when(days == 0).then(0.0).otherwise(weight * days / 7 * hours))
+    for k, weight in enumerate(HOUSEHOLD_WEIGHTS, start=1):
+        yes = pl.col(col(f"V{v}HOUACT{k}")).cast(pl.Int64)
+        parts.append(pl.when(yes.is_in([0, 1])).then(yes * weight))
+    active = work_active(
+        pl.col(col(f"V{v}WORKAMT")).cast(pl.Int64), pl.col(col(f"V{v}WORK7")).cast(pl.Int64)
+    )
+    hours_worked = pl.col(col(f"V{v}WKHR7CV")).cast(pl.Float64)
+    parts.append(pl.when(active).then(WORK_WEIGHT * hours_worked / 7).when(~active).then(0.0))
+    total = pl.when(pl.all_horizontal([p.is_not_null() for p in parts])).then(
+        pl.sum_horizontal(parts)
+    )
+    return allclinical.select(pl.col(col("ID")).alias("ID"), total.alias(f"pase_rebuilt_{v}"))

@@ -20,7 +20,9 @@ from pypdf import PdfReader
 
 from oai.assumptions import load_assumptions
 from oai.config import ConfigError, Settings, load_settings
+from oai.derive.pase import pase_rebuilt
 from oai.export.egress import check_egress
+from oai.loader import read_table
 from oai.manifest import Analysis, find_analysis
 from oai.pdfcheck import find_terms, max_right_edge
 from oai.report import ReportError, find_quarto, render_report
@@ -932,3 +934,63 @@ def test_components_deattenuation_needs_a_positive_reliability(step_copy):
     assert corrected.height > 0
     assert corrected["estimate"].is_null().all()  # NA, not NaN
     assert not rows["estimate"].is_nan().any()
+
+
+@pytest.mark.realdata
+def test_pase_rebuilt_matches_the_released_total():
+    """Item by item, the Washburn weights reproduce the released PASE total (within rounding)."""
+    for visit in ("00", "10"):
+        table = read_table("allclinical", visit)
+        rebuilt = pase_rebuilt(table, visit).join(
+            table.select("ID", pl.col(f"V{visit}PASE").alias("released")), on="ID"
+        )
+        both = rebuilt.drop_nulls()
+        close = ((both[f"pase_rebuilt_{visit}"] - both["released"]).abs() <= 1).mean()
+        assert close >= 0.995, (visit, close)
+
+
+def _construct(fast_run, name: str = "construct_frame.parquet") -> pl.DataFrame:
+    return pl.read_parquet(
+        fast_run.settings.work_dir / fast_run.analysis.name / fast_run.out.name / name
+    )
+
+
+@pytest.mark.realdata
+def test_construct_frame_keeps_the_abstract_population(fast_run):
+    frame = _construct(fast_run)
+    assert frame["ID"].n_unique() == 2582
+    assert frame.height == frame.select("ID", "visit", "measure").unique().height
+    # people (not rows) by worse-knee KL grade 0-4 at project 15; 28 more have no reading
+    grades = frame.unique("ID").group_by("kl_max0").len().drop_nulls("kl_max0")
+    assert [dict(grades.iter_rows())[float(k)] for k in range(5)] == [784, 435, 758, 434, 143]
+    groups = frame.unique("ID").group_by("kl_group0").len().drop_nulls("kl_group0")
+    assert dict(groups.iter_rows()) == {"0-1": 784 + 435, "2-3": 758 + 434, "4": 143}
+    # the two files describe the same people, and the PASE frame is unchanged by this step
+    pase_frame = _construct(fast_run, "pase_frame.parquet")
+    assert set(pase_frame["ID"]) == set(frame["ID"])
+    assert "cohort" not in pase_frame.columns and "womac_pain0" not in pase_frame.columns
+
+
+@pytest.mark.realdata
+def test_construct_counts_has_no_walker_column(fast_run):
+    counts = pl.read_csv(
+        fast_run.out / "construct_counts.csv", schema_overrides={"visit": pl.String}
+    )
+    assert counts.columns == ["visit", "month", "measure", "n"]
+    assert {"total", "walking_any", "womac_walk"} <= set(counts["measure"])
+    # the 20-m pace has no rows at visit 13; visit 14 asked only the walking item
+    assert counts.filter(pl.col("measure") == "pace_20m", pl.col("visit") == "13").is_empty()
+    assert set(counts.filter(pl.col("visit") == "14")["measure"]) <= {
+        "walking_any",
+        "hours_5plus",
+        "womac_function",
+        "womac_walk",
+    }
+    egress = fast_run.settings.project["egress"]
+    report = check_egress(
+        fast_run.out,
+        min_cell=egress["min_cell"],
+        small_cell=egress["small_cell"],
+        ignore_id_pattern_columns=egress["ignore_id_pattern_columns"],
+    )
+    assert report.ok, report.problems
