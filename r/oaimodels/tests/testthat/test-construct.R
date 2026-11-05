@@ -369,23 +369,232 @@ test_that("an error from the model itself is caught, with its message", {
 })
 
 test_that("a GEE that does not converge reports it", {
-  # Nobody has the outcome at one visit, so the per-visit log odds run away
   set.seed(125)
+  b <- sim_binary(100, constant(2))
+  local_mocked_bindings(walker_in_child = function(fun, timeout) list(error = 1L))
+  r <- walker_model(b, character(), "overall", "binomial", periods)
+  expect_false(r$converged)
+  expect_true(is.na(r$estimate))
+  expect_match(attr(r, "fit_error"), "converge")
+})
+
+test_that("a visit with no events or no non-events is left out of a GEE and named", {
+  set.seed(127)
+  b <- sim_binary(200, constant(2))
+  none <- b
+  none$value[none$visit == "13"] <- 0L
+  every <- b
+  every$value[every$visit == "13"] <- 1L
+  kept <- b[b$visit != "13", ]
+  for (d in list(none, every)) {
+    for (s in c("overall", "period", "visit")) {
+      r <- walker_model(d, character(), s, "binomial", periods)
+      expect_equal(attr(r, "dropped_visits"), "13")
+      expect_true(all(r$converged))
+      expect_equal(r$n_obs[1], 800L)
+      # The same as a fit without those rows
+      expect_equal(r$estimate, walker_model(kept, character(), s, "binomial", periods)$estimate)
+    }
+  }
+  expect_equal(walker_model(none, character(), "visit", "binomial", periods)$term, c("00", "01", "10", "14"))
+  expect_equal(walker_model(b, character(), "overall", "binomial", periods) |> attr("dropped_visits"),
+               character())
+
+  # A period left with no visits gets no row
+  at_gone <- b
+  at_gone$value[at_gone$visit == "10"] <- 0L
+  r <- walker_model(at_gone, character(), "period", "binomial", periods)
+  expect_equal(r$term, c("before", "after"))
+  expect_equal(attr(r, "dropped_visits"), "10")
+  expect_false(is.na(attr(r, "period_test")))
+
+  # Gaussian models drop nothing
+  g <- sim_gaussian(50, constant(10))
+  g$value[g$visit == "13"] <- 1
+  r <- walker_model(g, character(), "overall", "gaussian", periods)
+  expect_equal(r$n_obs, 250L)
+  expect_equal(attr(r, "dropped_visits"), character())
+})
+
+test_that("a sparse outcome with a zero-event visit returns instead of stalling", {
+  # geeglm alone did not return from this, and tryCatch cannot interrupt it
+  set.seed(6)
   b <- sim_binary(300, constant(2))
-  b$value[b$visit == "13"] <- 0L
-  by_visit <- walker_model(b, character(), "visit", "binomial", periods)
-  expect_false(by_visit$converged)
-  expect_true(is.na(by_visit$estimate))
-  expect_match(attr(by_visit, "fit_error"), "converge")
+  b$value <- as.integer(b$value == 1 & stats::runif(nrow(b)) < 0.02)
+  b$value[b$visit == "10"] <- 0L
+  expect_lt(sum(b$value), 30)
+  for (s in c("overall", "period", "visit")) {
+    r <- walker_model(b, "age", s, "binomial", periods, fit_timeout = 60)
+    expect_true("10" %in% attr(r, "dropped_visits"))
+    expect_false(s != "overall" && "10" %in% r$term)
+    expect_false(any(r$estimate > 1e4, na.rm = TRUE))
+  }
+})
+
+# Sets one Walker group's value at one visit, leaving the other group as simulated.
+separate_at <- function(d, visit, walker, value) {
+  d$value[d$visit == visit & d$walker_yes == walker] <- value
+  d
+}
+
+test_that("a separated cell gets a visible row and the other levels are still estimated", {
+  set.seed(128)
+  b <- sim_binary(400, constant(2))
+  cases <- expand.grid(walker = c(TRUE, FALSE), value = c(0L, 1L))
+  for (i in seq_len(nrow(cases))) {
+    d <- separate_at(b, "10", cases$walker[i], cases$value[i])
+    without <- d[d$visit != "10", ]
+
+    by_period <- walker_model(d, "age", "period", "binomial", periods)
+    expect_equal(by_period$term, c("before", "at", "after"))
+    at <- by_period[by_period$term == "at", ]
+    expect_false(at$converged)
+    expect_true(all(is.na(c(at$estimate, at$lo, at$hi, at$p))))
+    expect_equal(at$fit_note, "separated")
+    others <- by_period[by_period$term != "at", ]
+    expect_true(all(others$converged))
+    expect_true(all(is.na(others$fit_note)))
+    expect_true(all(others$estimate > 1.2 & others$estimate < 3.5))
+    # Its rows are out of the fit, so the others are what they would be without them
+    expect_equal(others$estimate,
+                 walker_model(without, "age", "period", "binomial", periods)$estimate)
+    expect_equal(by_period$n_obs[1], nrow(without))
+    expect_null(attr(by_period, "fit_error"))
+    # No test of equal gaps while one of them is unbounded
+    expect_true(is.na(attr(by_period, "period_test")))
+    expect_match(attr(by_period, "period_test_error"), "separated")
+
+    by_visit <- walker_model(d, "age", "visit", "binomial", periods)
+    expect_equal(by_visit$term, visits)
+    expect_equal(by_visit$converged, visits != "10")
+    expect_equal(by_visit$fit_note[by_visit$term == "10"], "separated")
+    expect_true(is.na(by_visit$estimate[by_visit$term == "10"]))
+    expect_true(all(by_visit$estimate[by_visit$term != "10"] > 1.1 &
+                      by_visit$estimate[by_visit$term != "10"] < 4))
+
+    # One Walker term over the mixed rows stays bounded and is fitted
+    overall <- walker_model(d, "age", "overall", "binomial", periods)
+    expect_true(overall$converged)
+    expect_lt(overall$estimate, 10)
+    expect_gt(overall$estimate, 0.1)
+  }
+})
+
+test_that("a period cell is separated only when the whole period is", {
+  set.seed(129)
+  b <- sim_binary(400, constant(2))
+  d <- separate_at(b, "13", TRUE, 1L)
+  by_period <- walker_model(d, character(), "period", "binomial", periods)
+  expect_true(all(by_period$converged))
+  expect_true(all(is.na(by_period$fit_note)))
+  by_visit <- walker_model(d, character(), "visit", "binomial", periods)
+  expect_equal(by_visit$fit_note[by_visit$term == "13"], "separated")
+  expect_equal(sum(!by_visit$converged), 1L)
+})
+
+test_that("every level separated gives only visible rows, with no fit behind them", {
+  set.seed(130)
+  b <- sim_binary(100, constant(2))
+  b$value[b$walker_yes] <- 1L
+  r <- walker_model(b, character(), "period", "binomial", periods)
+  expect_equal(r$term, c("before", "at", "after"))
+  expect_false(any(r$converged))
+  expect_equal(r$fit_note, rep("separated", 3))
+  expect_equal(r$n_obs, rep(0L, 3))
+})
+
+test_that("overall with a Walker group all 0 or all 1 is the failure row", {
+  set.seed(131)
+  b <- sim_binary(200, constant(2))
+  cases <- expand.grid(walker = c(TRUE, FALSE), value = c(0L, 1L))
+  for (i in seq_len(nrow(cases))) {
+    d <- b
+    d$value[d$walker_yes == cases$walker[i]] <- cases$value[i]
+    r <- walker_model(d, character(), "overall", "binomial", periods)
+    expect_equal(nrow(r), 1L)
+    expect_false(r$converged)
+    expect_true(is.na(r$estimate))
+    expect_equal(r$fit_note, "separated")
+    expect_match(attr(r, "fit_error"), "separated")
+  }
+  # Fitted rows only: a group that is all 0 after a visit is left out
+  d <- b
+  d$value[d$walker_yes & d$visit != "10"] <- 0L
+  d$value[d$visit == "10"] <- 1L
+  r <- walker_model(d, character(), "overall", "binomial", periods)
+  expect_equal(attr(r, "dropped_visits"), "10")
+  expect_equal(r$fit_note, "separated")
+})
+
+test_that("a GEE past fit_timeout is the failure row, naming the timeout", {
+  set.seed(132)
+  b <- sim_binary(300, constant(2))
+  for (s in c("overall", "period", "visit")) {
+    r <- walker_model(b, "age", s, "binomial", periods, fit_timeout = 0.001)
+    expect_equal(nrow(r), 1L)
+    expect_false(r$converged)
+    expect_true(is.na(r$estimate))
+    expect_match(attr(r, "fit_error"), "timed out after 0.001 seconds")
+    expect_true(is.na(attr(r, "period_test")))
+  }
+  expect_true(walker_model(b, "age", "overall", "binomial", periods, fit_timeout = 60)$converged)
+  expect_error(walker_model(b, "age", "overall", "binomial", periods, fit_timeout = 0), "fit_timeout")
+  expect_error(walker_model(b, "age", "overall", "binomial", periods, fit_timeout = "soon"), "fit_timeout")
+})
+
+test_that("the child process is killed on timeout and passes back values, errors and warnings", {
+  pid_file <- tempfile()
+  on.exit(unlink(pid_file))
+  started <- Sys.time()
+  expect_error(walker_in_child(function() {
+    writeLines(as.character(Sys.getpid()), pid_file)
+    Sys.sleep(60)
+  }, 2), "timed out after 2 seconds")
+  expect_lt(as.numeric(Sys.time() - started, units = "secs"), 20)
+  expect_false(tools::pskill(as.integer(readLines(pid_file)), 0L))
+
+  expect_equal(walker_in_child(function() 1 + 1, 30), 2)
+  expect_error(walker_in_child(function() stop("inside the child"), 30), "inside the child")
+  expect_warning(value <- walker_in_child(function() {
+    warning("careful")
+    3
+  }, 30), "careful")
+  expect_equal(value, 3)
+  expect_error(walker_in_child(function() tools::pskill(Sys.getpid(), tools::SIGKILL), 30), "without a result")
+})
+
+test_that("a GEE leaves the caller's random-number stream alone", {
+  set.seed(133)
+  b <- sim_binary(100, constant(2))
+  before <- .Random.seed
+  walker_model(b, character(), "overall", "binomial", periods)
+  expect_identical(.Random.seed, before)
+})
+
+test_that("zero-row input is the failure row, with or without periods", {
+  set.seed(134)
+  g <- sim_gaussian(5, constant(10))[0, ]
+  b <- sim_binary(5, constant(2))[0, ]
+  for (p in list(NULL, periods)) {
+    for (s in c("overall", "visit")) {
+      r <- expect_no_error(walker_model(g, "age", s, "gaussian", p))
+      expect_false(r$converged)
+      expect_equal(r$n_obs, 0L)
+      r <- expect_no_error(walker_model(b, "age", s, "binomial", p))
+      expect_false(r$converged)
+      expect_equal(r$n_people, 0L)
+      expect_equal(attr(r, "dropped_visits"), character())
+    }
+  }
 })
 
 test_that("a failed fit for the period test alone leaves the rows and says why", {
   set.seed(126)
   d <- sim_gaussian(50, constant(10))
   real_fit <- walker_fit
-  local_mocked_bindings(walker_fit = function(frame, covariates, structure, family, corstr) {
+  local_mocked_bindings(walker_fit = function(frame, covariates, structure, family, corstr, fit_timeout) {
     if (structure == "period") stop("period fit failed", call. = FALSE)
-    real_fit(frame, covariates, structure, family, corstr)
+    real_fit(frame, covariates, structure, family, corstr, fit_timeout)
   })
   r <- walker_model(d, character(), "overall", "gaussian", periods)
   expect_true(r$converged)
