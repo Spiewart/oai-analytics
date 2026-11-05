@@ -266,6 +266,10 @@ standardized_difference <- function(estimate, data, reference = "first_visit") {
 #' runs from there up to and including or_moderate (d_moderate), and "larger" is above that. An NA
 #' estimate, or an NA std_diff on the "difference" scale, gives an NA band.
 #'
+#' `narrows` is direction-specific where `band` is not: it counts only narrow_items with OR at or
+#' above or_little, since the conclusion concerns generally active people, so an inverse association
+#' gets its band but does not count. Every narrow item must be on the "or" scale.
+#'
 #' `relative_met`, on the koos_sport row when womac_walk is also present, says whether |std_diff| is
 #' smaller for koos_sport than for womac_walk. It is NA on every other row.
 #'
@@ -273,8 +277,7 @@ standardized_difference <- function(estimate, data, reference = "first_visit") {
 #' @param rule List with `or_little`, `or_moderate`, `d_little`, `d_moderate`, `narrow_items` and
 #'   `narrow_min_items`.
 #' @return `contrasts` with `band` and `relative_met` added, and attributes `narrows` (at least
-#'   narrow_min_items of narrow_items reach the little-or-no-link cutoff), `narrow_count` (how many
-#'   did) and `narrow_evaluable` (how many had an estimate). Items with no estimate do not count.
+#'   narrow_min_items of narrow_items have OR >= or_little), `narrow_count` (how many did) and `narrow_evaluable` (how many had an estimate). Items with no estimate do not count.
 apply_divergence_rule <- function(contrasts, rule) {
   for (column in c("measure", "scale", "estimate", "std_diff")) {
     if (!column %in% names(contrasts)) {
@@ -314,8 +317,14 @@ apply_divergence_rule <- function(contrasts, rule) {
     contrasts$relative_met[koos] <- abs(contrasts$std_diff[koos]) < abs(contrasts$std_diff[womac])
   }
 
-  listed <- contrasts$measure %in% unlist(rule$narrow_items) & !is.na(magnitude)
-  count <- sum(contrasts$band[listed] != "little_or_none")
+  listed <- contrasts$measure %in% unlist(rule$narrow_items)
+  not_or <- contrasts$measure[listed & !is_or]
+  if (length(not_or)) {
+    stop("apply_divergence_rule(): narrow items must be on the 'or' scale: ",
+         paste(not_or, collapse = ", "), call. = FALSE)
+  }
+  listed <- listed & !is.na(contrasts$estimate)
+  count <- sum(contrasts$estimate[listed] >= rule$or_little)
   attr(contrasts, "narrows") <- count >= rule$narrow_min_items
   attr(contrasts, "narrow_count") <- count
   attr(contrasts, "narrow_evaluable") <- sum(listed)
