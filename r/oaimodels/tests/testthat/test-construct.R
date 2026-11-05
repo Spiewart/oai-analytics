@@ -792,3 +792,112 @@ test_that("apply_divergence_rule stops on bad arguments", {
   expect_error(apply_divergence_rule(contrasts_of("a", -1), rule), "positive")
   expect_error(apply_divergence_rule(contrasts_of("a", 1), rule[-1]), "or_little")
 })
+
+# Walker x group. Seeds were set once before the first run and not searched.
+sim_group <- function(n, gap_by_group, binary = FALSE) {
+  groups <- names(gap_by_group)
+  id <- rep(seq_len(n), each = length(visits))
+  walker <- rep(stats::rbinom(n, 1, 0.5) == 1, each = length(visits))
+  group <- rep(sample(groups, n, replace = TRUE), each = length(visits))
+  age <- rep(stats::rnorm(n, 60, 8), each = length(visits))
+  person <- rep(stats::rnorm(n), each = length(visits))
+  visit <- rep(visits, n)
+  linear <- walker * unname(gap_by_group[group])
+  value <- if (binary) {
+    stats::rbinom(length(id), 1, stats::plogis(-0.2 + 0.1 * match(visit, visits) + linear + 0.8 * person))
+  } else {
+    50 + match(visit, visits) + 0.3 * (age - 60) + 8 * person + linear + stats::rnorm(length(id), 0, 5)
+  }
+  data.frame(ID = id, visit = visit, value = value, walker_yes = walker, age = age, kl = group)
+}
+
+test_that("walker_interaction_test finds a true gaussian interaction and not a null one", {
+  set.seed(501)
+  true <- sim_group(400, c(low = 0, high = 8))
+  p <- walker_interaction_test(true, "age", "kl", "gaussian")
+  expect_lt(p, 0.05)
+  set.seed(502)
+  none <- sim_group(400, c(low = 4, high = 4))
+  p <- walker_interaction_test(none, "age", "kl", "gaussian")
+  expect_gt(p, 0.05)
+  expect_null(attr(p, "test_error"))
+  expect_equal(attr(p, "df"), 1)
+  expect_equal(attr(p, "n_people"), 400)
+  expect_equal(attr(p, "n_obs"), 400 * length(visits))
+})
+
+test_that("walker_interaction_test finds a true binomial interaction and not a null one", {
+  set.seed(503)
+  true <- sim_group(500, c(low = 0, mid = 0.5, high = 1.5), binary = TRUE)
+  p <- walker_interaction_test(true, "age", "kl", "binomial")
+  expect_lt(p, 0.05)
+  expect_equal(attr(p, "df"), 2)
+  set.seed(504)
+  none <- sim_group(500, c(low = 0.7, mid = 0.7, high = 0.7), binary = TRUE)
+  expect_gt(walker_interaction_test(none, "age", "kl", "binomial"), 0.05)
+})
+
+test_that("the gaussian interaction test is the likelihood ratio between ML fits", {
+  set.seed(505)
+  d <- sim_group(120, c(a = 1, b = 3, c = 5))
+  d$walker <- as.numeric(d$walker_yes)
+  null <- nlme::lme(value ~ walker + factor(visit) + age + kl, random = ~ 1 | ID, data = d, method = "ML")
+  alt <- nlme::lme(value ~ walker + factor(visit) + age + kl + walker:kl, random = ~ 1 | ID, data = d,
+                   method = "ML")
+  by_hand <- anova(null, alt)$`p-value`[2]
+  expect_equal(as.numeric(walker_interaction_test(d, "age", "kl", "gaussian")), by_hand, tolerance = 1e-6)
+})
+
+test_that("the binomial interaction test is the robust joint Wald test", {
+  set.seed(506)
+  d <- sim_group(300, c(a = 0, b = 0.6, c = 1.2), binary = TRUE)
+  d$walker <- as.numeric(d$walker_yes)
+  d <- d[order(d$ID, d$visit), ]
+  fit <- geepack::geeglm(value ~ walker + factor(visit) + age + kl + walker:kl, id = ID, data = d,
+                         family = stats::binomial, corstr = "exchangeable")
+  at <- grep("^walker:kl", names(stats::coef(fit)))
+  b <- stats::coef(fit)[at]
+  v <- fit$geese$vbeta[at, at]
+  by_hand <- stats::pchisq(drop(t(b) %*% solve(v, b)), 2, lower.tail = FALSE)
+  expect_equal(as.numeric(walker_interaction_test(d, "age", "kl", "binomial")), by_hand, tolerance = 1e-5)
+})
+
+test_that("a single visit has no visit terms, and rows with no group are dropped", {
+  set.seed(507)
+  d <- sim_group(200, c(low = 0, high = 8))
+  one <- d[d$visit == "10", ]
+  p <- walker_interaction_test(one, "age", "kl", "gaussian")
+  expect_null(attr(p, "test_error"))
+  expect_equal(attr(p, "n_obs"), 200)
+  d$kl[d$ID == 1] <- NA
+  expect_equal(attr(walker_interaction_test(d, "age", "kl", "gaussian"), "n_people"), 199)
+})
+
+test_that("what cannot be tested is NA with the reason as an attribute", {
+  set.seed(508)
+  d <- sim_group(120, c(low = 0, high = 1), binary = TRUE)
+  expect_na_because <- function(p, why) {
+    expect_true(is.na(p))
+    expect_match(attr(p, "test_error"), why)
+  }
+  one_level <- d; one_level$kl <- "low"
+  expect_na_because(walker_interaction_test(one_level, "age", "kl", "gaussian"), "two levels")
+  one_group <- d; one_group$walker_yes[one_group$kl == "high"] <- TRUE
+  expect_na_because(walker_interaction_test(one_group, "age", "kl", "binomial"), "only one walker_yes group")
+  separated <- d; separated$value[separated$kl == "high" & separated$walker_yes] <- 1
+  expect_na_because(walker_interaction_test(separated, "age", "kl", "binomial"), "separated")
+  no_rows <- d[0, ]
+  expect_na_because(walker_interaction_test(no_rows, "age", "kl", "binomial"), "no rows")
+  constant <- d; constant$value <- 1
+  expect_na_because(walker_interaction_test(constant, "age", "kl", "binomial"), "no rows")
+  flat <- sim_group(60, c(low = 0, high = 1)); flat$age <- NA_real_
+  expect_na_because(walker_interaction_test(flat, "age", "kl", "gaussian"), "no rows")
+})
+
+test_that("walker_interaction_test stops on bad arguments", {
+  set.seed(509)
+  d <- sim_group(40, c(low = 0, high = 1))
+  expect_error(walker_interaction_test(d, "age", "nope", "gaussian"), "nope")
+  expect_error(walker_interaction_test(d, "age", c("kl", "age"), "gaussian"), "group")
+  expect_error(walker_interaction_test(d, c("age", "kl"), "kl", "gaussian"), "group")
+})

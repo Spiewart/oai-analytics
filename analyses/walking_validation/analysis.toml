@@ -47,6 +47,13 @@ entry = "pase_walking.R"
 needs = ["cohort"]
 
 [[steps]]
+id = "construct_validity"
+lang = "r"
+stage = "local"
+entry = "construct_validity.R"
+needs = ["cohort"]
+
+[[steps]]
 id = "bias"
 lang = "r"
 stage = "local"

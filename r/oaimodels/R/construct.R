@@ -336,6 +336,94 @@ walker_period_test <- function(fit_of, family) {
   stats::pchisq(statistic, nrow(contrast), lower.tail = FALSE)
 }
 
+#' Whether the Walker contrast differs across the levels of a group, on one measure's long rows.
+#'
+#' Terms as in `walker_model()` "overall", with the group as a factor: `factor(visit)` (with more
+#' than one visit), the covariates, one Walker term and the group's main effect. Gaussian: a
+#' likelihood-ratio test of the added `walker_yes:group` terms, both models `nlme::lme` by ML on the
+#' same rows with a random intercept per person. Binomial: a joint Wald test that those terms are
+#' zero, from `geepack::geeglm`'s robust covariance matrix, on rows screened as `walker_model()`
+#' does (a visit with no events or no non-events is left out).
+#'
+#' @param data Long rows with `ID`, `visit`, `value`, `walker_yes`, the covariates and the group.
+#'   Rows with a null in any of them are dropped.
+#' @param covariates Names of the covariate columns.
+#' @param group Name of the group column.
+#' @param family "gaussian" or "binomial".
+#' @param corstr Working correlation (geepack; ignored for gaussian).
+#' @param fit_timeout Seconds allowed for the GEE fit (ignored for gaussian).
+#' @return The p-value, with attributes `df`, `n_people`, `n_obs` and `dropped_visits`. It is NA with
+#'   the reason as attribute `test_error` when the test cannot be made: no rows, fewer than two
+#'   levels, a level with one Walker group, a Walker group all 0 or all 1 within a level (binomial),
+#'   or a fit that fails or times out. Bad arguments stop.
+walker_interaction_test <- function(data, covariates = character(), group,
+                                    family = c("gaussian", "binomial"), corstr = "exchangeable",
+                                    fit_timeout = 300) {
+  family <- match.arg(family)
+  covariates <- as.character(covariates)
+  if (!is.character(group) || length(group) != 1L || is.na(group)) {
+    stop("walker_interaction_test(): group must be one column name", call. = FALSE)
+  }
+  if (group %in% covariates) {
+    stop("walker_interaction_test(): group ", group, " is also a covariate", call. = FALSE)
+  }
+  frame <- walker_frame(data, c(covariates, group), family, NULL, "overall")
+  group_column <- utils::tail(walker_covariate_names(length(covariates) + 1L), 1L)
+  frame[[group_column]] <- factor(as.character(frame[[group_column]]))
+  dropped_visits <- character()
+  if (family == "binomial") {
+    dropped_visits <- walker_constant_visits(frame)
+    frame <- frame[!frame$visit %in% dropped_visits, , drop = FALSE]
+    frame[[group_column]] <- droplevels(frame[[group_column]])
+  }
+  result <- tryCatch(walker_interaction_fit(frame, covariates, group_column, family, corstr, fit_timeout),
+                     error = function(e) e)
+  failed <- inherits(result, "error")
+  p <- if (failed) NA_real_ else stats::pchisq(result$statistic, result$df, lower.tail = FALSE)
+  attr(p, "df") <- if (failed) NA_integer_ else result$df
+  attr(p, "n_people") <- length(unique(frame$ID))
+  attr(p, "n_obs") <- nrow(frame)
+  attr(p, "dropped_visits") <- dropped_visits
+  if (failed) attr(p, "test_error") <- conditionMessage(result)
+  p
+}
+
+# The test's statistic and df. Any reason it cannot be made is an error.
+walker_interaction_fit <- function(frame, covariates, group_column, family, corstr, fit_timeout) {
+  if (!nrow(frame)) stop("no rows left to fit", call. = FALSE)
+  level <- as.character(frame[[group_column]])
+  if (length(unique(level)) < 2L) stop("group has fewer than two levels in the fitted rows", call. = FALSE)
+  for (lv in unique(level)) {
+    here <- level == lv
+    if (length(unique(frame$.walker[here])) < 2L) {
+      stop("group level ", lv, " holds only one walker_yes group", call. = FALSE)
+    }
+    if (family == "binomial" && walker_group_constant(frame$value[here], frame$.walker[here])) {
+      stop("separated: a walker_yes group is all 0 or all 1 in group level ", lv, call. = FALSE)
+    }
+  }
+  controls <- c(if (length(unique(frame$visit)) > 1L) "factor(visit)",
+                walker_covariate_names(length(covariates) + 1L))
+  null_terms <- paste(c(".walker", controls), collapse = " + ")
+  interaction <- paste0(".walker:", group_column)
+  null_formula <- stats::as.formula(paste("value ~", null_terms))
+  alternative <- stats::as.formula(paste("value ~", null_terms, "+", interaction))
+
+  if (family == "gaussian") {
+    ll_null <- stats::logLik(nlme::lme(fixed = null_formula, random = ~ 1 | ID, data = frame, method = "ML"))
+    ll_alternative <- stats::logLik(nlme::lme(fixed = alternative, random = ~ 1 | ID, data = frame, method = "ML"))
+    df <- attr(ll_alternative, "df") - attr(ll_null, "df")
+    return(list(statistic = max(0, 2 * (as.numeric(ll_alternative) - as.numeric(ll_null))), df = df))
+  }
+  gee <- walker_in_child(function() walker_gee(alternative, frame, corstr), fit_timeout)
+  if (!identical(as.integer(gee$error), 0L)) stop("geeglm did not converge", call. = FALSE)
+  at <- which(startsWith(names(gee$beta), interaction))
+  gap <- gee$beta[at]
+  variance <- gee$vcov[at, at, drop = FALSE]
+  if (!all(is.finite(c(gap, variance)))) stop("the interaction estimate is not finite", call. = FALSE)
+  list(statistic = drop(t(gap) %*% solve(variance, gap)), df = length(at))
+}
+
 #' An adjusted difference over the pooled within-Walker-group SD of `value` at the earliest visit
 #' with a value (visits sorted as strings), so a measure missing at enrollment starts where it
 #' starts. NA if that SD is zero or undefined, including when only one group has values there.
