@@ -16,7 +16,7 @@ import pytest
 from oai import loader
 from oai.assumptions import load_assumptions
 from oai.config import get_settings
-from oai.derive import knee, pase, walking
+from oai.derive import construct, knee, pase, walking
 
 ANALYSIS = Path(__file__).resolve().parents[1] / "analyses" / "walking_validation"
 sys.path.insert(0, str(ANALYSIS))
@@ -88,7 +88,13 @@ def cohort(tmp_path, monkeypatch, capsys):
 
     def table(name, visit=None, **_):
         if name == "enrollees":
-            return pl.DataFrame({"ID": list(ANSWERS), "P02SEX": ["2"] * len(ANSWERS)})
+            return pl.DataFrame(
+                {
+                    "ID": list(ANSWERS),
+                    "P02SEX": ["2"] * len(ANSWERS),
+                    "V00COHORT": [1] * len(ANSWERS),
+                }
+            )
         assert name == "allclinical", name  # also read for the PASE scores (replaced below)
         return pl.DataFrame(
             {"ID": list(ANSWERS), "V00AGE": [60] * len(ANSWERS), "P01BMI": [27.0] * len(ANSWERS)}
@@ -113,6 +119,21 @@ def cohort(tmp_path, monkeypatch, capsys):
         knee,
         "frequent_knee_pain",
         lambda *a, **k: pl.DataFrame({"ID": [1, 2], "frequent_pain": [True, None]}),
+    )
+    # the construct measures are tested on their own (test_derive_construct); stand-ins here
+    monkeypatch.setattr(
+        construct,
+        "visit_measures",
+        lambda df, visit, *a, **k: pl.DataFrame(
+            {"ID": [1, 2], "visit": [visit] * 2, "measure": ["total"] * 2, "value": [90.0, None]}
+        ),
+    )
+    monkeypatch.setattr(
+        construct,
+        "womac_pain",
+        lambda df, visit: pl.DataFrame(
+            {"ID": [1, 2], "visit": [visit] * 2, "womac_pain_t": [4.0, 6.0]}
+        ),
     )
     monkeypatch.setenv("OAI_FRAME_DIR", str(frames))
     monkeypatch.setenv("OAI_RESULTS_DIR", str(results))
@@ -154,6 +175,7 @@ def written(folder: Path) -> list[str]:
 def test_cohort_step_writes_the_frames_results_and_flow(cohort):
     cohort()
     assert written(cohort.frames) == [
+        "construct_frame.parquet",
         "device.parquet",
         "frame.parquet",
         "lo_knees.parquet",
@@ -161,7 +183,8 @@ def test_cohort_step_writes_the_frames_results_and_flow(cohort):
         "pase_frame.parquet",
     ]
     assert written(cohort.results) == [
-        "flow.csv", "lo2022_t2.csv", "lo2022_table2.csv", "metrics_cohort.csv", "pase_visits.csv",
+        "construct_counts.csv", "flow.csv", "lo2022_t2.csv", "lo2022_table2.csv",
+        "metrics_cohort.csv", "pase_visits.csv",
     ]  # fmt: skip
     # PASE at every visit, for everyone with a walking answer (device data or not)
     visits = LEDGER.items["pase.all_visits"].value
@@ -172,6 +195,21 @@ def test_cohort_step_writes_the_frames_results_and_flow(cohort):
     assert counts["visit"].to_list() == visits  # the fake tables have the walking item only
     assert counts["month"].to_list() == [0, 12, 24, 36, 48, 72, 96, 168, 192]
     assert counts["n"].to_list() == [2] * len(visits)  # pase_days is answered by IDs 1 and 2
+    construct_frame = pl.read_parquet(cohort.frames / "construct_frame.parquet")
+    assert construct_frame.height == 2 * len(visits)  # IDs 1 and 2 per visit; only 1 has a value
+    assert construct_frame.columns == [
+        "ID", "visit", "month", "measure", "value", "walker_yes", "walk_item", "amount_times",
+        "amount_years", "age", "sex", "bmi", "age_at_visit", "kl_max0", "kl_group0",
+        "womac_pain0", "womac_pain_t", "cohort",
+    ]  # fmt: skip
+    first = construct_frame.filter(pl.col("ID") == 1, pl.col("visit") == "06").row(0, named=True)
+    assert first["age_at_visit"] == 60 + 48 / 12 and first["walker_yes"] is True
+    assert first["womac_pain0"] == 4.0 and first["kl_group0"] == "2-3"
+    counts = pl.read_csv(
+        cohort.results / "construct_counts.csv", schema_overrides={"visit": pl.String}
+    )
+    assert counts.columns == ["visit", "month", "measure", "n"]
+    assert counts["n"].to_list() == [1] * len(visits)
     assert pl.read_csv(cohort.results / "lo2022_t2.csv")["metric"].to_list() == [
         "t2.new_pain.or_adj"
     ]
