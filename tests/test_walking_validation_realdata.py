@@ -982,7 +982,7 @@ def test_e2e_construct_step_waits_for_review(fast_run):
     # The whole run passed with the gate closed, and nothing compares the walker groups.
     status = pl.read_csv(fast_run.out / "construct_status.csv")
     assert status["status"].to_list() == ["awaiting_review"]
-    for name in ("contrasts", "rule", "kl", "dose", "attrition"):
+    for name in ("contrasts", "rule", "kl", "dose", "attrition", "characteristics"):
         assert not (fast_run.out / f"construct_{name}.csv").exists(), name
 
 

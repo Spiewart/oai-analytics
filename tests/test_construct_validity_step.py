@@ -18,12 +18,12 @@ import pytest
 
 from oai.config import load_settings
 from oai.derive.construct import MEASURES
-from oai.export.egress import check_egress
+from oai.export.egress import COUNT_COLUMN, check_egress
 from oai.manifest import find_analysis
 from oai.runner import process_env, r_profile_env, resolve_assumptions, select_steps, step_command
 
 REPO = Path(__file__).resolve().parents[1]
-COMPUTED = ("contrasts", "rule", "kl", "dose", "attrition")
+COMPUTED = ("contrasts", "rule", "kl", "dose", "attrition", "characteristics")
 EARLY = ("00", "01", "03", "05", "06", "08", "10")
 ALL_MONTHS = {
     "00": 0,
@@ -422,7 +422,7 @@ def test_kl_table_has_each_analysis_with_its_reporting_place(approved):
     ]
     assert kl["kl_groups_used"].unique().to_list() == ["0-1,2-4"]  # few KL 4 non-walkers here
     share = kl.filter(analysis="walker_share")
-    assert share["group"].to_list() == ["2-4"]
+    assert share["group"].to_list() == ["0-1", "2-4"]
     assert set(share["reporting"]) == {"table"}
     # by hand: the number of people with a KL group
     assert (
@@ -441,6 +441,126 @@ def test_kl_table_has_each_analysis_with_its_reporting_place(approved):
     assert sorted(tests["measure"]) == ["total", "walking_any"]
     assert set(tests["reporting"]) == {"supplement"}
     assert tests.drop_nulls("p").height == 2
+
+
+def test_walker_share_has_counts_for_every_group_and_a_stated_reference(approved):
+    frame, results = approved
+    kl = read(results, "kl")
+    share = kl.filter(analysis="walker_share")
+    people = frame.unique("ID").with_columns(
+        pl.when(pl.col("kl_group0") == "0-1")
+        .then(pl.lit("0-1"))
+        .otherwise(pl.lit("2-4"))
+        .alias("g")
+    )
+    for group in ("0-1", "2-4"):
+        here = people.filter(g=group)
+        row = share.filter(group=group).row(0, named=True)
+        assert row["n_group"] == here.height
+        assert row["n_walkers"] == here["walker_yes"].sum()
+        assert row["share_crude"] == pytest.approx(here["walker_yes"].mean())
+    reference = share.filter(group="0-1").row(0, named=True)
+    assert reference["term"] == "reference"
+    assert (reference["estimate"], reference["lo"], reference["hi"]) == (1.0, None, None)
+    other = share.filter(group="2-4").row(0, named=True)
+    assert other["term"] == "or_vs_0-1"
+    assert other["lo"] < other["estimate"] < other["hi"]
+    # the count behind combining KL 4, whichever group a row is about
+    behind = people.filter(pl.col("kl_group0") == "4", ~pl.col("walker_yes")).height
+    assert kl["n_kl4_nonwalkers"].unique().to_list() == [behind]
+    assert behind < ledger("construct.kl4_min_nonwalkers")
+    for column in ("n_group", "n_walkers", "n_kl4_nonwalkers"):
+        assert COUNT_COLUMN.match(column), column
+
+
+def test_walker_share_keeps_its_counts_when_the_model_fails(tmp_path):
+    # every person lacks BMI, so no one is fitted: the groups stay visible with the reason
+    frame = synthetic_frame(people=60, measures=("total",)).with_columns(
+        bmi=pl.lit(None, dtype=pl.Float64)
+    )
+    done, results = run_step(tmp_path, frame, approved=True)
+    assert done.returncode == 0, done.stderr
+    share = read(results, "kl").filter(analysis="walker_share")
+    assert share["group"].to_list() == ["0-1", "2-4"]
+    assert share["n_group"].to_list() == [0, 0]
+    assert share["estimate"].null_count() == 2
+    assert share["fit_note"].null_count() == 0
+
+
+def test_characteristics_describe_each_walker_group_with_counts_and_no_p_values(approved):
+    frame, results = approved
+    got = pl.read_csv(
+        results / "construct_characteristics.csv",
+        null_values="NA",
+        infer_schema_length=None,
+        schema_overrides={"visit": pl.String, "level": pl.String},
+    )
+    assert got.columns == [
+        "group",
+        "characteristic",
+        "level",
+        "visit",
+        "statistic",
+        "value",
+        "n",
+        "n_with",
+    ]
+    assert COUNT_COLUMN.match("n")
+    assert COUNT_COLUMN.match("n_with")
+    assert set(got["group"]) == {"walkers", "not_walkers"}
+    people = frame.unique("ID")
+
+    def one(group, characteristic, statistic, level=None, visit=None):
+        rows = got.filter(group=group, characteristic=characteristic, statistic=statistic)
+        rows = rows.filter(
+            pl.col("level").is_null() if level is None else pl.col("level") == level,
+            pl.col("visit").is_null() if visit is None else pl.col("visit") == visit,
+        )
+        assert rows.height == 1, (group, characteristic, statistic, level, visit)
+        return rows.row(0, named=True)
+
+    for group, is_walker in (("walkers", True), ("not_walkers", False)):
+        who = people.filter(pl.col("walker_yes") == is_walker)
+        assert one(group, "people", "n")["value"] == who.height
+        for characteristic, column in (
+            ("age", "age"),
+            ("bmi", "bmi"),
+            ("womac_pain_enrollment", "womac_pain0"),
+        ):
+            assert one(group, characteristic, "mean")["value"] == pytest.approx(who[column].mean())
+            assert one(group, characteristic, "sd")["value"] == pytest.approx(who[column].std())
+            assert one(group, characteristic, "mean")["n"] == who.height
+        female = one(group, "sex", "share", level="female")
+        assert female["value"] == pytest.approx((who["sex"] == 2).mean())
+        assert female["n_with"] == (who["sex"] == 2).sum()
+        assert female["n"] == who.height
+        assert one(group, "sex", "share", level="male")["n_with"] == (who["sex"] == 1).sum()
+        low = one(group, "kl_group", "share", level="0-1")
+        assert low["n_with"] == who.filter(kl_group0="0-1").height
+        high = one(group, "kl_group", "share", level="2-4")
+        assert low["n_with"] + high["n_with"] == who.height
+        for code, label in ledger("construct.code_labels")["cohort"].items():
+            row = one(group, "subcohort", "share", level=label)
+            assert row["n_with"] == who.filter(cohort=int(code)).height
+
+        rows = frame.filter(pl.col("walker_yes") == is_walker)
+        for visit in ("00", "10"):
+            total = rows.filter(measure="total", visit=visit)["value"]
+            assert one(group, "total", "mean", visit=visit)["value"] == pytest.approx(total.mean())
+            assert one(group, "total", "sd", visit=visit)["value"] == pytest.approx(total.std())
+            garden = rows.filter(measure="garden", visit=visit)["value"]
+            row = one(group, "garden", "share", level="yes", visit=visit)
+            assert row["value"] == pytest.approx(garden.mean())
+            assert row["n_with"] == garden.sum()
+            assert row["n"] == garden.len()
+        # no enrollment rows in this frame: still a visible row, with no value
+        empty = one(group, "koos_sport", "mean", visit="00")
+        assert (empty["value"], empty["n"]) == (None, 0)
+        assert one(group, "koos_sport", "mean", visit="10")["n"] > 0
+    measures = set(got.filter(pl.col("visit").is_not_null())["characteristic"])
+    assert measures == set(MEASURES)
+    assert set(got.filter(pl.col("visit").is_not_null())["visit"]) == {"00", "10"}
+    assert not any(c.startswith("p") for c in got.columns)
 
 
 def test_dose_has_each_level_against_not_walkers_and_a_trend(approved):
@@ -532,7 +652,7 @@ def test_enroll_disease_and_walker_share_match_models_written_by_hand(approved):
     gap, share_or, share_p = (float(v) for v in done.stdout.split()[-3:])
     got = read(results, "contrasts").filter(model="enroll_disease", measure="total", term="overall")
     assert got["estimate"][0] == pytest.approx(gap, rel=1e-6)
-    share = read(results, "kl").filter(analysis="walker_share")
+    share = read(results, "kl").filter(analysis="walker_share", group="2-4")
     assert share["estimate"][0] == pytest.approx(share_or, rel=1e-6)
     assert share["p"][0] == pytest.approx(share_p, rel=1e-6)
 
@@ -544,7 +664,7 @@ def test_kl4_combines_below_the_minimum(tmp_path, count, used):
     assert done.returncode == 0, done.stderr
     kl = read(results, "kl")
     assert kl["kl_groups_used"].unique().to_list() == [used]
-    assert kl.filter(analysis="walker_share")["group"].to_list() == used.split(",")[1:]
+    assert kl.filter(analysis="walker_share")["group"].to_list() == used.split(",")
     within = kl.filter(analysis="within_kl", measure="total")
     assert within["group"].to_list() == used.split(",")
 
@@ -698,6 +818,8 @@ def test_ledger_entries_behind_the_step_are_present():
         "womac_walk",
         "sitting_long",
     }
+    assert ledger("construct.lme_optimizer") == "optim"
+    assert ledger("construct.code_labels")["sex"] == {"1": "male", "2": "female"}
     assert json.dumps(ledger("construct.sensitivity_covariates"), sort_keys=True) == json.dumps(
         {"enroll_disease": ["kl_group0", "womac_pain0", "cohort"], "time_pain": ["womac_pain_t"]},
         sort_keys=True,

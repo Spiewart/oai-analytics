@@ -249,9 +249,9 @@ Measure sources:
 
 - [ ] **Step 1: Apply any changes she asks for** to the ledger, repeating Tasks 3–5's relevant tests. Record each change's source as her review, with the date.
 
-- [ ] **Step 2: Flip the gate.** Set `construct.scope_approved = true`, with a source naming Grace Lo and the approval date the user gave. Update the Task 1 ledger test to expect true, and commit this alone, before any run, with message `chore(walking_validation): record co-author approval of the brief report scope`.
+- [ ] **Step 2: Flip the gate.** Set `construct.scope_approved = true`, with a source naming Grace Lo and the approval date the user gave. Update the Task 1 ledger test to expect true, and pin all rule values (`or_little`, `or_moderate`, `d_little`, `d_moderate`, `narrow_min_items`, `narrow_items`) and the whole `construct.expected` map in it, so a later edit to them fails a test. Commit this alone, before any run, with message `chore(walking_validation): record co-author approval of the brief report scope`.
 
-- [ ] **Step 3: Run.** `uv run oai run walking_validation`, then `--variant pase_without_bmi`. Expected: `construct_status.csv` says `computed`, and all `converged` are true for `base`. Report any that are not to the user without changing the model.
+- [ ] **Step 3: Run.** `uv run oai run walking_validation`, then `--variant pase_without_bmi`. Expected: `construct_status.csv` says `computed`, and all `converged` are true for `base`. Report any that are not to the user without changing the model. Also scan CI widths for huge finite ORs in every OR row (`construct_contrasts.csv`, `construct_kl.csv`, `construct_dose.csv`), since an unbounded estimate can come back as a large number with a clean fit; report any to the user.
 
 - [ ] **Step 4: Replace the waiting test** with `test_e2e_construct_contrasts_reconcile`, on `fast_run`: `total` per-visit rows agree in direction with the abstract's `pase_walking_contrasts.csv`; every facet measure has a `base` overall row; `n_people` for `total` is at most 2,582.
 
@@ -280,6 +280,18 @@ Measure sources:
 - The text reads the early-visit gap as a stable habit, and notes people under 50 and recent starters.
 - Group differences are not presented as individual accuracy.
 - Cover material discloses the OARSI 2027 abstract.
+- The supplement's per-item table is grouped by domain: recreation, household, work.
+- KL 4, if shown alone, carries a wide-interval caveat.
+- The text states why no direction is predicted for Walker share: walking may affect OA, and severe knees may have stopped people walking.
+- KOOS missingness is stated, including that the reason running and jumping are blank is not documented.
+- "A wide interval under the cutoff is not evidence of no link" appears where divergent results are read.
+- Discussion order: the visits before the survey carry the argument, then divergent evidence, discriminative evidence, limitations.
+- `time_pain` is labeled secondary wherever it appears.
+- `n_people` and `n_obs` are model-level on period rows, so a table does not read them as that period's count.
+- Confirm sex coding before labeling tables (`construct.code_labels` records `formats.pdf`; check the frame still reads it that way).
+- Read Lo 2022's full text before the Discussion relies on it; only its abstract has been read.
+- Add `pase_without_bmi` to `[report].runs` if the supplement reports it.
+- Run a small-complement check on attrition before release: a group's count subtracted from a total must not reveal a small cell.
 
 - [ ] **Step 1: Write the failing `oaireport` test** for `word_budget`: under limits it returns counts; 2,001 main words stop with a message naming "main text"; 3 displays stop.
 
