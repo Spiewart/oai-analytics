@@ -347,6 +347,11 @@ value = 4
 status = "assumed"
 source = "Spec 'Analyses' item 2: documented dichotomy for sitting, PASE1HR code 4 (more than 4 hours a day) versus less"
 
+[construct.work_active_rule]
+value = "WORK7 == 0 is false; WORK7 == 1 with WORKAMT 2-4 is true; WORK7 == 1 with WORKAMT 1 is false; WORKAMT 88 or null with WORK7 == 1 is null"
+status = "confirmed"
+source = "WORKAMT code meanings (1 Sitting; 2-4 active; 88 Don't know) confirmed in formats.pdf p.128 and BRIEF_REPORT_FACTS.md; treating a working person with an unknown amount as unknown (not false) is the builder's choice"
+
 [construct.kl_groups]
 value = { "0-1" = [0, 1], "2-3" = [2, 3], "4" = [4] }
 status = "assumed"

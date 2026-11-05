@@ -944,9 +944,15 @@ def test_pase_rebuilt_matches_the_released_total():
         rebuilt = pase_rebuilt(table, visit).join(
             table.select("ID", pl.col(f"V{visit}PASE").alias("released")), on="ID"
         )
-        both = rebuilt.drop_nulls()
-        close = ((both[f"pase_rebuilt_{visit}"] - both["released"]).abs() <= 1).mean()
+        released = rebuilt.filter(pl.col("released").is_not_null())
+        got = released.filter(pl.col(f"pase_rebuilt_{visit}").is_not_null())
+        close = ((got[f"pase_rebuilt_{visit}"] - got["released"]).abs() <= 1).mean()
+        null_share = 1 - got.height / released.height
         assert close >= 0.995, (visit, close)
+        assert null_share <= 0.01, (visit, null_share)
+        print(
+            f"visit {visit}: {released.height} released, close {close:.4f}, null {null_share:.4f}"
+        )
 
 
 def _construct(fast_run, name: str = "construct_frame.parquet") -> pl.DataFrame:
