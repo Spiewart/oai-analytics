@@ -3,8 +3,9 @@
 
 #' The Walker contrast on one measure's long rows, overall or for each period or visit.
 #'
-#' Gaussian: `nlme::lme` with a random intercept per person, fitted by ML. Estimates are
-#' differences, with t-based 95% CIs and p from the model's denominator degrees of freedom.
+#' Gaussian: `nlme::lme` with a random intercept per person, fitted by ML with `lme_optimizer`.
+#' Estimates are differences, with t-based 95% CIs and p from the model's denominator degrees of
+#' freedom.
 #' Binomial: `geepack::geeglm`, clustered on person, rows sorted by person and visit. Estimates are
 #' odds ratios, with robust Wald 95% CIs and p.
 #'
@@ -41,6 +42,8 @@
 #'   visit in `data` outside it is an error.
 #' @param corstr Working correlation (geepack; ignored for gaussian).
 #' @param fit_timeout Seconds allowed for each GEE fit (ignored for gaussian).
+#' @param lme_optimizer `lmeControl(opt = )` for gaussian fits, "optim" or "nlminb". The default is
+#'   "optim", since nlminb stopped with false convergence on some fits at about 2,600 people.
 #' @return Data frame with `term`, `estimate`, `lo`, `hi`, `p`, `scale` ("difference" or "or"),
 #'   `n_people`, `n_obs` (of the model as fitted, so the same on every row), `converged` and
 #'   `fit_note` (NA or "separated"). A fit that fails, times out or does not converge gives one row
@@ -48,10 +51,11 @@
 #'   as attribute `fit_error`. The attribute `dropped_visits` is always present.
 walker_model <- function(data, covariates = character(), structure = c("overall", "period", "visit"),
                          family = c("gaussian", "binomial"), periods = NULL,
-                         corstr = "exchangeable", fit_timeout = 300) {
+                         corstr = "exchangeable", fit_timeout = 300, lme_optimizer = "optim") {
   structure <- match.arg(structure)
   family <- match.arg(family)
   covariates <- as.character(covariates)
+  check_lme_optimizer(lme_optimizer, "walker_model")
   if (!is.numeric(fit_timeout) || length(fit_timeout) != 1L || is.na(fit_timeout) || fit_timeout <= 0) {
     stop("walker_model(): fit_timeout must be a positive number of seconds", call. = FALSE)
   }
@@ -65,7 +69,7 @@ walker_model <- function(data, covariates = character(), structure = c("overall"
 
   fits <- list()
   fit_of <- function(s) {
-    if (is.null(fits[[s]])) fits[[s]] <<- walker_fit(frame, covariates, s, family, corstr, fit_timeout)
+    if (is.null(fits[[s]])) fits[[s]] <<- walker_fit(frame, covariates, s, family, corstr, fit_timeout, lme_optimizer)
     fits[[s]]
   }
 
@@ -170,6 +174,18 @@ walker_frame <- function(data, covariates, family, periods, structure) {
 
 walker_covariate_names <- function(n) if (n) paste0(".c", seq_len(n)) else character()
 
+check_lme_optimizer <- function(optimizer, caller) {
+  if (!is.character(optimizer) || length(optimizer) != 1L || !optimizer %in% c("optim", "nlminb")) {
+    stop(caller, "(): lme_optimizer must be 'optim' or 'nlminb'", call. = FALSE)
+  }
+}
+
+# A random intercept per person, by ML, so nested fits can be compared.
+walker_lme <- function(formula, frame, optimizer) {
+  nlme::lme(fixed = formula, random = ~ 1 | ID, data = frame, method = "ML",
+            control = nlme::lmeControl(opt = optimizer))
+}
+
 check_walker_yes <- function(x, caller) {
   if (!(is.numeric(x) || is.logical(x)) || !all(x[!is.na(x)] %in% c(0, 1))) {
     stop(caller, "(): walker_yes must be logical or 0/1", call. = FALSE)
@@ -199,7 +215,7 @@ walker_group_constant <- function(value, walker) {
 # Fits one structure. Returns the contrast table on the model's own scale, with a row for each
 # separated level, the Walker coefficient names, what the fit needs for the period test, and the
 # counts of what was fitted. Any failure is an error, which walker_model() catches.
-walker_fit <- function(frame, covariates, structure, family, corstr, fit_timeout) {
+walker_fit <- function(frame, covariates, structure, family, corstr, fit_timeout, lme_optimizer) {
   if (!nrow(frame)) stop("no rows left to fit", call. = FALSE)
   if (length(unique(frame$.walker)) < 2L) {
     stop("walker_yes has only one group in the fitted rows", call. = FALSE)
@@ -242,7 +258,7 @@ walker_fit <- function(frame, covariates, structure, family, corstr, fit_timeout
   formula <- stats::as.formula(paste("value ~", paste(c(walker_columns, controls), collapse = " + ")))
 
   if (family == "gaussian") {
-    model <- nlme::lme(fixed = formula, random = ~ 1 | ID, data = frame, method = "ML")
+    model <- walker_lme(formula, frame, lme_optimizer)
     coefs <- summary(model)$tTable[walker_columns, , drop = FALSE]
     half_width <- stats::qt(0.975, coefs[, "DF"]) * coefs[, "Std.Error"]
     p <- coefs[, "p-value"]
@@ -352,15 +368,17 @@ walker_period_test <- function(fit_of, family) {
 #' @param family "gaussian" or "binomial".
 #' @param corstr Working correlation (geepack; ignored for gaussian).
 #' @param fit_timeout Seconds allowed for the GEE fit (ignored for gaussian).
+#' @param lme_optimizer As in `walker_model()`.
 #' @return The p-value, with attributes `df`, `n_people`, `n_obs` and `dropped_visits`. It is NA with
 #'   the reason as attribute `test_error` when the test cannot be made: no rows, fewer than two
 #'   levels, a level with one Walker group, a Walker group all 0 or all 1 within a level (binomial),
 #'   or a fit that fails or times out. Bad arguments stop.
 walker_interaction_test <- function(data, covariates = character(), group,
                                     family = c("gaussian", "binomial"), corstr = "exchangeable",
-                                    fit_timeout = 300) {
+                                    fit_timeout = 300, lme_optimizer = "optim") {
   family <- match.arg(family)
   covariates <- as.character(covariates)
+  check_lme_optimizer(lme_optimizer, "walker_interaction_test")
   if (!is.character(group) || length(group) != 1L || is.na(group)) {
     stop("walker_interaction_test(): group must be one column name", call. = FALSE)
   }
@@ -376,7 +394,8 @@ walker_interaction_test <- function(data, covariates = character(), group,
     frame <- frame[!frame$visit %in% dropped_visits, , drop = FALSE]
     frame[[group_column]] <- droplevels(frame[[group_column]])
   }
-  result <- tryCatch(walker_interaction_fit(frame, covariates, group_column, family, corstr, fit_timeout),
+  result <- tryCatch(walker_interaction_fit(frame, covariates, group_column, family, corstr, fit_timeout,
+                                            lme_optimizer),
                      error = function(e) e)
   failed <- inherits(result, "error")
   p <- if (failed) NA_real_ else stats::pchisq(result$statistic, result$df, lower.tail = FALSE)
@@ -389,7 +408,8 @@ walker_interaction_test <- function(data, covariates = character(), group,
 }
 
 # The test's statistic and df. Any reason it cannot be made is an error.
-walker_interaction_fit <- function(frame, covariates, group_column, family, corstr, fit_timeout) {
+walker_interaction_fit <- function(frame, covariates, group_column, family, corstr, fit_timeout,
+                                   lme_optimizer) {
   if (!nrow(frame)) stop("no rows left to fit", call. = FALSE)
   level <- as.character(frame[[group_column]])
   if (length(unique(level)) < 2L) stop("group has fewer than two levels in the fitted rows", call. = FALSE)
@@ -410,8 +430,8 @@ walker_interaction_fit <- function(frame, covariates, group_column, family, cors
   alternative <- stats::as.formula(paste("value ~", null_terms, "+", interaction))
 
   if (family == "gaussian") {
-    ll_null <- stats::logLik(nlme::lme(fixed = null_formula, random = ~ 1 | ID, data = frame, method = "ML"))
-    ll_alternative <- stats::logLik(nlme::lme(fixed = alternative, random = ~ 1 | ID, data = frame, method = "ML"))
+    ll_null <- stats::logLik(walker_lme(null_formula, frame, lme_optimizer))
+    ll_alternative <- stats::logLik(walker_lme(alternative, frame, lme_optimizer))
     df <- attr(ll_alternative, "df") - attr(ll_null, "df")
     return(list(statistic = max(0, 2 * (as.numeric(ll_alternative) - as.numeric(ll_null))), df = df))
   }

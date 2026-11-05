@@ -581,6 +581,9 @@ def test_construct_ledger_fixes_the_rule_before_computing():
     assert set(facets.values()) <= {"primary", "convergent", "divergent"}
     assert set(facets) == set(expected)
     assert expected["sitting_long"] == "none_stated"
+    assert expected["total_minus_walking"] == "none_stated"
+    assert values["construct.lme_optimizer"] == "optim"
+    assert LEDGER.items["construct.work_active_rule"].status == "assumed"
     # a measure sits in one facet by construction (one key each); the narrow items are divergent
     assert all(facets[m] == "divergent" for m in values["construct.rule.narrow_items"])
     assert LEDGER.items["construct.rule.or_little"].status == "confirmed"

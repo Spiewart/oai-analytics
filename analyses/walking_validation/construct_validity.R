@@ -11,7 +11,12 @@
 #   construct_kl.csv         Walker share by KL (person-level, adjusted; a likelihood-ratio p for the
 #                            KL term, repeated on its rows), the contrasts within each KL group
 #                            (CIs only), and the walker x KL tests. The share p and the two tests are
-#                            one Holm family of 3. n_people is the model's, on every row.
+#                            one Holm family of 3. n_people is the model's, on every row. Each KL
+#                            group used has a walker_share row with n_group, n_walkers and
+#                            share_crude among the model's people, including the reference group,
+#                            whose term is "reference" and whose estimate is 1 with no CI.
+#                            n_kl4_nonwalkers, on every row, is the count behind combining KL 4, among
+#                            everyone in the frame.
 #   construct_dose.csv       At 96 months, walking_any by each amount level against not-Walkers
 #                            (adjusted ORs with CIs) and a Cochran-Armitage trend, as pase_walking.R.
 #                            A level with a constant outcome or a non-finite CI has no estimate and
@@ -19,6 +24,9 @@
 #   construct_attrition.csv  Who had a PASE total at 96 and at 168 months, and enrollment
 #                            characteristics of those with one at 96 months, with and without one at
 #                            168. No p-values.
+#   construct_characteristics.csv  By Walker group: people, age, sex, BMI, KL group, enrollment WOMAC
+#                            pain and subcohort, then every measure at enrollment and at 96 months.
+#                            Long, with mean and sd, or share with n_with having it of n. No p-values.
 # A model that fails leaves a row with converged FALSE and the reason in fit_note; other measures go on.
 A <- oaimodels::assumptions()
 out_dir <- Sys.getenv("OAI_RESULTS_DIR")
@@ -26,7 +34,7 @@ out_path <- function(name) file.path(out_dir, paste0("construct_", name, ".csv")
 write_out <- function(rows, name) utils::write.csv(rows, out_path(name), row.names = FALSE)
 
 # Nothing left from an earlier run can pass for this one's results
-unlink(out_path(c("status", "contrasts", "rule", "kl", "dose", "attrition")))
+unlink(out_path(c("status", "contrasts", "rule", "kl", "dose", "attrition", "characteristics")))
 
 # The gate. Keep this above anything that touches the frame.
 if (!isTRUE(A[["construct.scope_approved"]])) {
@@ -43,6 +51,8 @@ expected <- unlist(A[["construct.expected"]])
 higher_is_better <- unlist(A[["construct.higher_is_better"]])
 continuous <- unlist(A[["construct.continuous_measures"]])
 corstr <- A[["construct.gee_corstr"]]
+lme_optimizer <- A[["construct.lme_optimizer"]]
+code_labels <- lapply(A[["construct.code_labels"]], unlist)
 sd_reference <- A[["construct.sd_reference"]]
 age_min <- A[["construct.age_sensitivity_min"]]
 kl_measures <- c("total", "walking_any")
@@ -52,7 +62,8 @@ answer_labels <- lapply(A[["components.answer_labels"]], unlist)
 frame <- oaimodels::read_frame(
   file.path(Sys.getenv("OAI_FRAME_DIR"), "construct_frame.parquet"),
   required = c("ID", "visit", "measure", "value", "walker_yes", "walk_item", "amount_times", "amount_years",
-               "age", "sex", "bmi", "age_at_visit", "kl_max0", "kl_group0", covariates, unlist(sensitivity))
+               "age", "sex", "bmi", "age_at_visit", "kl_max0", "kl_group0", "womac_pain0", "cohort",
+               covariates, unlist(sensitivity))
 )
 if (!nrow(frame)) stop("construct_frame.parquet has no rows", call. = FALSE)
 unknown <- setdiff(unique(frame$measure), names(facets))
@@ -115,7 +126,7 @@ run_model <- function(d, measure, model, structure) {
     data <- fitted_rows(spec$keep(d), spec$covariates)
     fit <- oaimodels::walker_model(data, spec$covariates, structure, family,
                                    periods = if (structure == "period" || wants_period_test) periods,
-                                   corstr = corstr)
+                                   corstr = corstr, lme_optimizer = lme_optimizer)
     out <- with_notes(fit)
     if (wants_period_test && !is.null(attr(fit, "period_test_error"))) {
       out$fit_note <- paste("period test:", attr(fit, "period_test_error"))
@@ -203,8 +214,8 @@ person <- frame[!duplicated(frame$ID), , drop = FALSE]
 kl_grades <- lapply(A[["construct.kl_groups"]], unlist)
 kl_names <- names(kl_grades)
 top_two <- utils::tail(kl_names, 2L)
-top_alone <- sum(person$kl_group0 %in% top_two[2] & person$walker_yes %in% FALSE) >=
-  A[["construct.kl4_min_nonwalkers"]]
+kl4_nonwalkers <- sum(person$kl_group0 %in% top_two[2] & person$walker_yes %in% FALSE)
+top_alone <- kl4_nonwalkers >= A[["construct.kl4_min_nonwalkers"]]
 merged <- paste0(min(unlist(kl_grades[top_two])), "-", max(unlist(kl_grades[top_two])))
 kl_used <- if (top_alone) kl_names else c(setdiff(kl_names, top_two), merged)
 use_kl <- function(x) {
@@ -217,16 +228,26 @@ person$kl_used <- use_kl(person$kl_group0)
 
 kl_row <- function(analysis, group = NA_character_, measure = NA_character_, term = NA_character_,
                    estimate = NA_real_, lo = NA_real_, hi = NA_real_, p = NA_real_, n_people = NA_integer_,
-                   fit_note = NA_character_) {
+                   fit_note = NA_character_, n_group = NA_integer_, n_walkers = NA_integer_,
+                   share_crude = NA_real_) {
   data.frame(analysis = analysis, group = group, measure = measure, term = term, estimate = estimate,
-             lo = lo, hi = hi, p = p, n_people = n_people, fit_note = fit_note)
+             lo = lo, hi = hi, p = p, n_people = n_people, fit_note = fit_note, n_group = n_group,
+             n_walkers = n_walkers, share_crude = share_crude)
 }
 
+# One row for each KL group used, with its counts whether or not the model fits
 walker_share <- function() {
-  term <- paste0("or_vs_", kl_used[1])
+  people <- person[stats::complete.cases(person[c("walker_yes", "kl_used", covariates)]), , drop = FALSE]
+  people$kl_used <- factor(people$kl_used, levels = intersect(kl_used, people$kl_used))
+  reference <- levels(people$kl_used)[1]
+  n_group <- vapply(kl_used, function(lv) sum(people$kl_used %in% lv), integer(1))
+  n_walkers <- vapply(kl_used, function(lv) sum(people$kl_used %in% lv & people$walker_yes), integer(1))
+  rows <- kl_row("walker_share", kl_used, "walker_yes",
+                 ifelse(kl_used %in% reference, "reference", paste0("or_vs_", reference)),
+                 n_people = nrow(people), n_group = unname(n_group), n_walkers = unname(n_walkers),
+                 share_crude = ifelse(n_group > 0L, unname(n_walkers / n_group), NA_real_))
+  rows$fit_note[n_group == 0L] <- "no people with complete data in this group"
   tryCatch({
-    people <- person[stats::complete.cases(person[c("walker_yes", "kl_used", covariates)]), , drop = FALSE]
-    people$kl_used <- factor(people$kl_used, levels = intersect(kl_used, people$kl_used))
     null <- stats::glm(stats::reformulate(covariates, "walker_yes"), family = stats::binomial, data = people)
     fit <- stats::update(null, . ~ . + kl_used)
     lr_p <- stats::pchisq(stats::deviance(null) - stats::deviance(fit),
@@ -235,18 +256,25 @@ walker_share <- function() {
     levels_shown <- levels(people$kl_used)[-1]
     at <- paste0("kl_used", levels_shown)
     half_width <- stats::qnorm(0.975) * coefs[at, "Std. Error"]
-    kl_row("walker_share", levels_shown, "walker_yes", term, exp(coefs[at, "Estimate"]),
-           exp(coefs[at, "Estimate"] - half_width), exp(coefs[at, "Estimate"] + half_width), lr_p,
-           nrow(people))
-  }, error = function(e) kl_row("walker_share", measure = "walker_yes", term = term,
-                                fit_note = conditionMessage(e)))
+    shown <- match(levels_shown, rows$group)
+    rows$estimate[shown] <- exp(coefs[at, "Estimate"])
+    rows$lo[shown] <- exp(coefs[at, "Estimate"] - half_width)
+    rows$hi[shown] <- exp(coefs[at, "Estimate"] + half_width)
+    rows$estimate[rows$term == "reference"] <- 1
+    rows$p <- lr_p
+    rows
+  }, error = function(e) {
+    rows$fit_note <- conditionMessage(e)
+    rows
+  })
 }
 
 within_kl <- function(measure, level) {
   tryCatch({
     d <- frame[frame$measure == measure & frame$kl_used %in% level, , drop = FALSE]
     fit <- with_notes(oaimodels::walker_model(fitted_rows(d, covariates), covariates, "overall",
-                                              family_of(measure), corstr = corstr))
+                                              family_of(measure), corstr = corstr,
+                                              lme_optimizer = lme_optimizer))
     # a CI only: no significance is claimed within a KL group
     kl_row("within_kl", level, measure, "overall", fit$estimate, fit$lo, fit$hi, NA_real_, fit$n_people,
            fit$fit_note)
@@ -256,7 +284,8 @@ within_kl <- function(measure, level) {
 walker_x_kl <- function(measure) {
   tryCatch({
     d <- frame[frame$measure == measure, , drop = FALSE]
-    p <- oaimodels::walker_interaction_test(d, covariates, "kl_used", family_of(measure), corstr)
+    p <- oaimodels::walker_interaction_test(d, covariates, "kl_used", family_of(measure), corstr,
+                                            lme_optimizer = lme_optimizer)
     kl_row("walker_x_kl", measure = measure, term = "walker_x_kl", p = as.numeric(p),
            n_people = attr(p, "n_people"),
            fit_note = if (is.null(attr(p, "test_error"))) NA_character_ else attr(p, "test_error"))
@@ -277,9 +306,11 @@ kl$p_holm[tested] <- stats::p.adjust(kl$p[tested], method = "holm", n = 1L + len
 share_rows <- kl$analysis == "walker_share"
 kl$p_holm[share_rows] <- kl$p_holm[share_rows][1]
 kl$kl_groups_used <- paste(kl_used, collapse = ",")
+kl$n_kl4_nonwalkers <- kl4_nonwalkers
 kl$reporting <- ifelse(kl$analysis == A[["construct.reporting.kl_table"]], "table", "supplement")
 write_out(kl[c("analysis", "group", "measure", "term", "estimate", "lo", "hi", "p", "p_holm", "n_people",
-               "kl_groups_used", "reporting", "fit_note")], "kl")
+               "kl_groups_used", "reporting", "n_group", "n_walkers", "share_crude", "n_kl4_nonwalkers",
+               "fit_note")], "kl")
 
 # ---- Dose at 96 months -----------------------------------------------------------------------
 at_96 <- frame[frame$measure == "walking_any" & frame$visit == at_visit & !is.na(frame$value), , drop = FALSE]
@@ -352,6 +383,56 @@ write_out(rbind(attrition_row("all", "pase_total_96", "n", length(has_96), lengt
                 describe("with_168", intersect(has_96, has_168)),
                 describe("without_168", setdiff(has_96, has_168))),
           "attrition")
+
+# ---- Participant characteristics by Walker group ---------------------------------------------
+characteristic_row <- function(group, characteristic, statistic, value, n, level = NA_character_,
+                               visit = NA_character_, n_with = NA_integer_) {
+  data.frame(group = group, characteristic = characteristic, level = level, visit = visit,
+             statistic = statistic, value = value, n = n, n_with = n_with)
+}
+characteristic_numeric <- function(group, characteristic, x, visit = NA_character_) {
+  x <- x[!is.na(x)]
+  rbind(characteristic_row(group, characteristic, "mean", if (length(x)) mean(x) else NA_real_, length(x),
+                           visit = visit),
+        characteristic_row(group, characteristic, "sd", if (length(x) > 1L) stats::sd(x) else NA_real_,
+                           length(x), visit = visit))
+}
+# `labels`: the level to report for each value, named by the value as a string
+characteristic_shares <- function(group, characteristic, x, labels, visit = NA_character_) {
+  x <- as.character(x)
+  x <- x[!is.na(x)]
+  do.call(rbind, lapply(names(labels), function(code) {
+    n_with <- sum(x == code)
+    characteristic_row(group, characteristic, "share", if (length(x)) n_with / length(x) else NA_real_,
+                       length(x), level = labels[[code]], visit = visit, n_with = n_with)
+  }))
+}
+kl_labels <- stats::setNames(kl_used, kl_used)
+describe_group <- function(group, is_walker) {
+  who <- person[person$walker_yes %in% is_walker, , drop = FALSE]
+  rows <- frame[frame$walker_yes %in% is_walker, , drop = FALSE]
+  by_measure <- lapply(measures, function(measure) {
+    lapply(c("00", at_visit), function(visit) {
+      x <- rows$value[rows$measure == measure & rows$visit == visit]
+      if (measure %in% continuous) {
+        characteristic_numeric(group, measure, x, visit)
+      } else {
+        characteristic_shares(group, measure, x, c(`1` = "yes"), visit)
+      }
+    })
+  })
+  do.call(rbind, c(
+    list(characteristic_row(group, "people", "n", nrow(who), nrow(who)),
+         characteristic_numeric(group, "age", who$age),
+         characteristic_shares(group, "sex", who$sex, code_labels$sex),
+         characteristic_numeric(group, "bmi", who$bmi),
+         characteristic_shares(group, "kl_group", who$kl_used, kl_labels),
+         characteristic_numeric(group, "womac_pain_enrollment", who$womac_pain0),
+         characteristic_shares(group, "subcohort", who$cohort, code_labels$cohort)),
+    unlist(by_measure, recursive = FALSE)
+  ))
+}
+write_out(rbind(describe_group("walkers", TRUE), describe_group("not_walkers", FALSE)), "characteristics")
 
 # Last, so a run that stopped part way never says computed
 write_out(data.frame(status = "computed"), "status")

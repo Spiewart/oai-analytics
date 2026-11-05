@@ -592,9 +592,10 @@ test_that("a failed fit for the period test alone leaves the rows and says why",
   set.seed(126)
   d <- sim_gaussian(50, constant(10))
   real_fit <- walker_fit
-  local_mocked_bindings(walker_fit = function(frame, covariates, structure, family, corstr, fit_timeout) {
+  local_mocked_bindings(walker_fit = function(frame, covariates, structure, family, corstr, fit_timeout,
+                                              lme_optimizer) {
     if (structure == "period") stop("period fit failed", call. = FALSE)
-    real_fit(frame, covariates, structure, family, corstr, fit_timeout)
+    real_fit(frame, covariates, structure, family, corstr, fit_timeout, lme_optimizer)
   })
   r <- walker_model(d, character(), "overall", "gaussian", periods)
   expect_true(r$converged)
@@ -900,4 +901,72 @@ test_that("walker_interaction_test stops on bad arguments", {
   expect_error(walker_interaction_test(d, "age", "nope", "gaussian"), "nope")
   expect_error(walker_interaction_test(d, "age", c("kl", "age"), "gaussian"), "group")
   expect_error(walker_interaction_test(d, c("age", "kl"), "kl", "gaussian"), "group")
+})
+
+# ---- The optimizer, at the real sample size ------------------------------------------------------
+# PASE-like values on 2,582 people with people leaving over time. nlminb stops with false convergence
+# on seeds 9, 12 and 30 of this simulation, and on about one in ten seeds overall.
+sim_full_size <- function(seed, n = 2582) {
+  set.seed(seed)
+  walker <- stats::runif(n) < 0.79
+  age <- pmin(79, pmax(45, stats::rnorm(n, 61, 9)))
+  sex <- sample(1:2, n, TRUE)
+  bmi <- stats::rnorm(n, 28, 4.5)
+  person <- stats::rnorm(n, 0, 50)
+  visit_codes <- c("00", "01", "03", "05", "06", "08", "10", "13")
+  stays <- pmin(8, stats::rgeom(n, 0.08) + 1)
+  do.call(rbind, lapply(seq_along(visit_codes), function(i) {
+    k <- which(stays >= i)
+    data.frame(ID = sprintf("P%04d", k), visit = visit_codes[i],
+               value = pmax(0, 160 + 20 * walker[k] + person[k] - age[k] + stats::rgamma(length(k), 2, 1 / 35) - 70),
+               walker_yes = walker[k], age = age[k], sex = sex[k], bmi = bmi[k])
+  }))
+}
+full_size_periods <- list(before = c("00", "01", "03", "05", "06", "08"), at = "10", after = "13")
+full_size_covariates <- c("age", "sex", "bmi")
+
+test_that("the default optimizer fits full-size frames, overall, by period and with the period test", {
+  for (seed in c(9, 12, 30)) {
+    d <- sim_full_size(seed)
+    overall <- walker_model(d, full_size_covariates, "overall", "gaussian", full_size_periods)
+    expect_true(overall$converged, info = seed)
+    expect_gt(overall$estimate, 10) # the floor at 0 pulls the true gap of 20 in a little
+    expect_lt(overall$estimate, 30)
+    expect_null(attr(overall, "period_test_error"))
+    expect_true(is.finite(attr(overall, "period_test")))
+    by_period <- walker_model(d, full_size_covariates, "period", "gaussian", full_size_periods)
+    expect_true(all(by_period$converged), info = seed)
+  }
+})
+
+test_that("the default optimizer makes the walker by group test at full size", {
+  d <- sim_full_size(9)
+  d$kl <- ifelse(as.integer(substr(d$ID, 2, 5)) %% 2L == 0L, "low", "high")
+  p <- walker_interaction_test(d, full_size_covariates, "kl", "gaussian")
+  expect_null(attr(p, "test_error"))
+  expect_true(is.finite(p))
+})
+
+test_that("these frames are the ones that stop nlminb", {
+  fit <- walker_model(sim_full_size(9), full_size_covariates, "overall", "gaussian",
+                      lme_optimizer = "nlminb")
+  if (fit$converged) skip("nlminb no longer fails on this frame, so the tests above no longer reproduce the failure")
+  expect_match(attr(fit, "fit_error"), "false convergence|nlminb")
+})
+
+test_that("optim and nlminb agree where both fit", {
+  d <- sim_full_size(1, n = 600)
+  a <- walker_model(d, full_size_covariates, "overall", "gaussian", full_size_periods)
+  b <- walker_model(d, full_size_covariates, "overall", "gaussian", full_size_periods, lme_optimizer = "nlminb")
+  expect_true(b$converged)
+  expect_equal(a$estimate, b$estimate, tolerance = 1e-4)
+  expect_equal(a$hi - a$lo, b$hi - b$lo, tolerance = 1e-4)
+  expect_equal(attr(a, "period_test"), attr(b, "period_test"), tolerance = 1e-3)
+})
+
+test_that("an unknown optimizer stops", {
+  d <- sim_gaussian(20, constant(1))
+  expect_error(walker_model(d, "age", "overall", "gaussian", lme_optimizer = "newton"), "lme_optimizer")
+  d$kl <- rep(c("a", "b"), length.out = nrow(d))
+  expect_error(walker_interaction_test(d, "age", "kl", "gaussian", lme_optimizer = NULL), "lme_optimizer")
 })
