@@ -302,28 +302,28 @@ source = "Spec 'Analyses' items 2-3, recorded before computing. WOMAC function i
 
 [construct.rule.or_little]
 value = 1.44
-status = "open"
-source = "Spec 'Analyses' item 2, decision rule: OR under about 1.44 means little or no link. Chinn 2000 logistic conversion; citation to be checked (Task 2)"
+status = "confirmed"
+source = "Spec 'Analyses' item 2, decision rule: OR under about 1.44 means little or no link. Chinn 2000 (Stat Med 19:3127-31, PMID 11113947) confirmed: ln(OR) / 1.81 gives the effect size, so d = 0.2 and 0.5 correspond to OR 1.44 and 2.47"
 
 [construct.rule.or_moderate]
 value = 2.47
-status = "open"
-source = "Spec 'Analyses' item 2: OR about 1.44 to 2.47 means a moderate link. Chinn 2000 logistic conversion; citation to be checked (Task 2)"
+status = "confirmed"
+source = "Spec 'Analyses' item 2: OR about 1.44 to 2.47 means a moderate link. Chinn 2000 (Stat Med 19:3127-31, PMID 11113947) confirmed: ln(OR) / 1.81 gives the effect size, so d = 0.2 and 0.5 correspond to OR 1.44 and 2.47"
 
 [construct.rule.d_little]
 value = 0.2
-status = "open"
-source = "Spec 'Analyses' item 2: standardized difference under 0.2 means little or no link (Chinn 2000; check, Task 2)"
+status = "confirmed"
+source = "Spec 'Analyses' item 2: standardized difference under 0.2 means little or no link. Chinn 2000 (Stat Med 19:3127-31, PMID 11113947) confirmed: ln(OR) / 1.81 gives the effect size, so d = 0.2 and 0.5 correspond to OR 1.44 and 2.47"
 
 [construct.rule.d_moderate]
 value = 0.5
-status = "open"
-source = "Spec 'Analyses' item 2: standardized difference 0.2 to 0.5 means a moderate link (Chinn 2000; check, Task 2)"
+status = "confirmed"
+source = "Spec 'Analyses' item 2: standardized difference 0.2 to 0.5 means a moderate link. Chinn 2000 (Stat Med 19:3127-31, PMID 11113947) confirmed: ln(OR) / 1.81 gives the effect size, so d = 0.2 and 0.5 correspond to OR 1.44 and 2.47"
 
 [construct.rule.narrow_min_items]
 value = 4
-status = "open"
-source = "Spec 'Analyses' item 2: if at least half (four or more) of the seven household and work items reach OR 1.44, the conclusion narrows to generally active people. Chinn 2000; check, Task 2"
+status = "assumed"
+source = "Spec 'Analyses' item 2: if at least half (four or more) of the seven household and work items reach OR 1.44, the conclusion narrows to generally active people. The OR 1.44 cutoff is the confirmed Chinn 2000 conversion of d = 0.2; the count of four (at least half of seven) is the spec's own choice, not from the citation"
 
 [construct.rule.narrow_items]
 value = ["light_housework", "heavy_housework", "home_repairs", "yard", "garden", "caring", "work_active"]
@@ -355,7 +355,7 @@ source = "Spec 'Analyses' item 4: worse-knee enrollment KL groups"
 [construct.kl4_min_nonwalkers]
 value = 20
 status = "assumed"
-source = "Spec 'Analyses' item 4: below this many non-walkers in KL 4, combine to KL 2-4 instead of showing KL 4 alone"
+source = "Builder choice, fixed before computing: below this many non-walkers in KL 4, combine to KL 2-4 instead of showing KL 4 alone. The spec only asks for a wide-interval caveat when KL 4 is shown alone and gives no number"
 
 [construct.reporting.kl_table]
 value = "walker_share"
@@ -381,9 +381,9 @@ status = "assumed"
 source = "Spec 'Analyses' item 6: sensitivity analysis limited to visits at this age or older"
 
 [construct.excluded.walk_400m]
-value = "Not used: given only at 0, 24, 48 and 96 months; recorded time falls from 2,437 to 1,919 of 2,582 people; 400MTIM is the time at 400 m or at stop, so non-completers' times are not comparable; completion code 4 rises from 60 to 235 people between enrollment and 96 months. An endurance measure, not judged uninformative"
-status = "open"
-source = "Spec 'The 400-meter walk': rationale rests on schedule, follow-up and non-comparable values, not on walker results; open until PERFCOMP codes (formats.pdf) and eligibility (protocol) are confirmed in Task 2"
+value = "Not used: given only at 0, 24, 48 and 96 months; recorded time falls from 2,437 to 1,919 of 2,582 people; 400MTIM is the time at 400 m or at stop, so non-completers' times are not comparable; completion code 4 (not attempted, excluded) rises from 60 to 235 people between enrollment and 96 months. An endurance measure, not judged uninformative"
+status = "confirmed"
+source = "Spec 'The 400-meter walk'; rationale rests on schedule, follow-up and non-comparable values, not on walker results. Confirmed 2026-11-05: PERFCOMP codes 1-5 and 77 (formats.pdf p.178); who was not tested or ineligible (400EXCL reasons: could not complete the 20-m walk, heart rate, systolic or diastolic blood pressure, other, walker or cane, angina or shortness of breath, recent hospitalization, surgery or cardiovascular event, felt unsafe) from AllClinical00_Comments.pdf p.145 (400MTRExcG.sas); counts in BRIEF_REPORT_FACTS.md. The numeric thresholds behind the reasons come from the OAI protocol, which was not reachable (TODO.md)"
 
 [variants.wave48]
 description = "Device = 48-month wave only"
