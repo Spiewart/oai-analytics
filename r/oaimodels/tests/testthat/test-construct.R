@@ -519,9 +519,29 @@ test_that("only listed items count toward narrowing, and at the or_little bounda
   expect_true(attr(apply_divergence_rule(listed, rule), "narrows"))
 })
 
-test_that("inverse items count toward narrowing by magnitude", {
-  r <- apply_divergence_rule(contrasts_of(rule$narrow_items[1:4], 1 / 1.5), rule)
-  expect_true(attr(r, "narrows"))
+test_that("only the Walker direction counts toward narrowing, though bands use magnitude", {
+  inverse <- apply_divergence_rule(contrasts_of(rule$narrow_items[1:4], 0.67), rule)
+  expect_equal(inverse$band, rep("moderate", 4))
+  expect_false(attr(inverse, "narrows"))
+  expect_equal(attr(inverse, "narrow_count"), 0L)
+  expect_equal(attr(inverse, "narrow_evaluable"), 4L)
+
+  direct <- apply_divergence_rule(contrasts_of(rule$narrow_items[1:4], 1.5), rule)
+  expect_equal(direct$band, rep("moderate", 4))
+  expect_true(attr(direct, "narrows"))
+  expect_equal(attr(direct, "narrow_count"), 4L)
+
+  # Three in the Walker direction and one inverse fall short of four
+  mixed <- apply_divergence_rule(contrasts_of(rule$narrow_items[1:4], c(1.5, 1.5, 1.5, 0.67)), rule)
+  expect_false(attr(mixed, "narrows"))
+  expect_equal(attr(mixed, "narrow_count"), 3L)
+})
+
+test_that("a narrow item on another scale stops, even with no estimate", {
+  expect_error(apply_divergence_rule(contrasts_of("garden", 1.5, "difference", 0.3), rule), "garden")
+  expect_error(apply_divergence_rule(contrasts_of("garden", NA_real_, "difference", NA_real_), rule), "garden")
+  # A measure outside the list may be a difference
+  expect_no_error(apply_divergence_rule(contrasts_of("koos_sport", 1, "difference", 0.3), rule))
 })
 
 test_that("items with NA estimates or not present are not evaluable and do not count", {
