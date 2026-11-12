@@ -902,12 +902,117 @@ def reading_section(runs: dict[str, Run]) -> list[str]:
         rev_text,
         " ".join(lit),
         "- **Design limit:** with two device waves, these models show which measure moves "
-        "first, not why. Residual confounding (for example by occupation, prior injury or "
-        "activity type) is not addressed.",
+        "first, not why. Residual confounding (for example by occupation or activity type) is "
+        "not addressed; knee injury and selective reading are examined post hoc below.",
         sel_text,
         small_text,
         "",
     ]
+
+
+# ------------------------------------------------------------------ post hoc
+def pct(x: float | None) -> str:
+    return "—" if x is None else f"{100 * x:.0f}%"
+
+
+def posthoc_section(run: Run) -> list[str]:
+    """Post hoc checks on P1 (posthoc_models.R), when the run has them."""
+    folder = run.folder
+    if not (folder / "posthoc_p1.csv").is_file():
+        return []
+    rows = read_csv(folder / "posthoc_p1.csv")
+    share = read_csv(folder / "posthoc_read_share.csv")
+    weights = read_csv(folder / "posthoc_weights.csv")
+    for r in rows:
+        r["_kind"] = "ratio"
+
+    def get(check: str, subset: str, term: str, model: str = "m1") -> dict[str, str]:
+        for r in rows:
+            if (r["check"], r["subset"], r["term"], r["model"]) == (check, subset, term, model):
+                return r
+        raise KeyError((check, subset, term, model))
+
+    def p(r: dict[str, str]) -> str:
+        v = num(r["p"])
+        return "—" if v is None else ("< 0.001" if v < 0.001 else f"{v:.2f}")
+
+    VISIT_MONTHS = {"08": "72 months", "10": "96 months", "12": "120 months"}
+    top_label = BAND_LABEL[BANDS[-1]]
+    low_label = BAND_LABEL[BANDS[0]]
+    out = [
+        "### Post hoc checks on P1",
+        "",
+        "Run after the primary results were seen (user request 2026-11-12), so they are "
+        "exploratory. Same knees and models as P1 (`posthoc_frame.py`, `posthoc_models.R`; "
+        "ledger `posthoc.*`). Model 1 unless marked.",
+        "",
+        "**Which knees were read, by step band at 48 months** (incident-ROA sample):",
+        "",
+        "| Steps/day | Knees | Any later reading | Status known at the horizon | Incidence among "
+        "known | Women | Injured knee by 48 mo | KL 1 | Mean age |",
+        "|---|---|---|---|---|---|---|---|---|",
+    ]
+    for s in share:
+        out.append(
+            f"| {BAND_LABEL[s['steps_band']]} | {n0(num(s['knees']))} | {pct(num(s['share_read']))} "
+            f"| {pct(num(s['share_known']))} | {pct(num(s['incidence_known']))} "
+            f"| {pct(num(s['share_women']))} | {pct(num(s['share_injury']))} "
+            f"| {pct(num(s['share_kl1']))} | {num(s['mean_age']):.1f} |"
+        )
+    known = get("read", "status_known", "per_1000")
+    known2 = get("read", "status_known", "per_1000", "m2")
+    w1 = get("reweight", "weighted", "per_1000")
+    w2 = get("reweight", "weighted", "per_1000", "m2")
+    wtop = get("reweight", "weighted", "band_top")
+    p1 = get("p1", "all", "per_1000")
+    p1top = get("p1", "all", "band_top")
+    wmax = max(num(w["weight_max"]) for w in weights)
+    inter = [w for w in weights if w["model"] == "m1"]
+    read_or = ", ".join(
+        f"{VISIT_MONTHS[w['interval_end']]}: {ci({**w, 'estimate': w['or_per_1000']})}"
+        for w in inter
+    )
+    sx = get("sex", "all", "steps_x_women")
+    men, women = get("sex", "men", "per_1000"), get("sex", "women", "per_1000")
+    inj_adj = get("injury", "adjusted", "per_1000")
+    inj_adj2 = get("injury", "adjusted", "per_1000", "m2")
+    inj_known = get("injury", "flag_known", "per_1000")
+    inj_coef = get("injury", "adjusted", "injury_48")
+    unin, injd = get("injury", "uninjured", "per_1000"), get("injury", "injured", "per_1000")
+    sxi = get("injury", "all", "steps_x_injury")
+    out += [
+        "",
+        f"- **Reading:** each 1,000 steps/day more at 48 months goes with higher odds that the "
+        f"knee's status is known at the horizon: OR {ci(known)} (Model 2 {ci(known2)}). "
+        + (
+            f"Knees with fewer steps were read less often, so P1 rests most on assumptions "
+            f"about the unread knees in the {low_label} band."
+            if excludes_null(known) and num(known["estimate"]) > 1
+            else "Reading did not clearly differ by steps."
+        ),
+        f"- **Reweighting for being read:** weights from a model of being read at each interval "
+        f"end (steps, Model 1 or 2 covariates, and that knee's WOMAC pain, frequent pain and a "
+        f"missed-visit indicator at the interim visit before; OR for being read per 1,000 "
+        f"steps/day {read_or}; "
+        f"largest weight {wmax:.1f}) give HR {ci(w1)} (Model 2 {ci(w2)}) against "
+        f"{ci(p1)} unweighted, and {top_label} vs {low_label} {ci(wtop)} against {ci(p1top)}. "
+        + (
+            "Weighting on what was measured leaves P1 close to the unweighted estimate"
+            if abs(math.log(num(w1["estimate"]) / num(p1["estimate"]))) < 0.01
+            else "Weighting on what was measured moves P1"
+        )
+        + "; it cannot speak to unread knees that differ in ways those measures miss.",
+        f"- **Sex:** the steps × women interaction is {ci(sx)} (p = {p(sx)}). Fitted "
+        f"separately, HR {ci(men)} in men ({nev(men)} knees / events) and {ci(women)} in "
+        f"women ({nev(women)}); the separate fits let every covariate differ by sex, and the "
+        f"interaction does not.",
+        f"- **Knee injury by 48 months** (`posthoc.injury`): adding it moves P1 from "
+        f"{ci(inj_known)} to {ci(inj_adj)} (Model 2 {ci(inj_adj2)}; injury itself HR "
+        f"{ci(inj_coef)}). The association is {ci(unin)} in uninjured knees ({nev(unin)}) and "
+        f"{ci(injd)} in injured knees ({nev(injd)}); steps × injury {ci(sxi)} (p = {p(sxi)}).",
+        "",
+    ]
+    return out
 
 
 def build(results: Path, ledger: dict) -> str:
@@ -949,6 +1054,7 @@ def build(results: Path, ledger: dict) -> str:
     lines += reverse_section(d)
     lines += variant_section(runs, ledger)
     lines += reading_section(runs)
+    lines += posthoc_section(d)
     lines.append(END)
     return "\n".join(lines) + "\n"
 

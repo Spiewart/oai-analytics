@@ -376,3 +376,16 @@ source = "Mirrors device.min_valid_days: a person counts when at least this many
 rationale = "Keeps the per-person shares on the same footing as the release's valid-person rule."
 alternatives = [1]
 choices = [1, 4]
+
+[posthoc.injury]
+value = "baseline_or_interim"
+status = "assumed"
+source = "Post hoc (user request 2026-11-12, after the primary results): a knee counts as injured by 48 months when the baseline 'ever injured badly enough to limit walking' item (P01INJ{R,L}) or any 12-month injury item at 12, 24, 36 or 48 months (V##INJ{R,L}12) is yes"
+rationale = "A missed interim visit counts as no reported injury; a blank baseline answer with no later yes is unknown (left out of the injury models). Baseline knee surgery (P01KSURG{R,L}) is added in one model."
+choices = ["baseline_or_interim"]
+
+[posthoc.weight_predictors]
+value = ["interim_womac", "interim_freq_pain", "interim_missed"]
+status = "assumed"
+source = "Post hoc (user request 2026-11-12): the weight model for being read at 72 (96) months uses steps at 48 months, the outcome model's covariates, and that knee's WOMAC pain and frequent pain at the interim visit before (60 or 84 months), with an indicator for missing it"
+rationale = "Weights on the outcome model's own covariates alone leave P1 unchanged by construction; interim-visit pain carries information about knees after 48 months that the outcome model does not use."

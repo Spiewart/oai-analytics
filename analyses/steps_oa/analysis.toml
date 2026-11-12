@@ -5,7 +5,8 @@ description = "GT1M steps at 48 and 72 months and incident and progressive knee 
 # The per-minute steps are not a release table: they are read from OAI_STEPS_DIR (oai.steps).
 tables = [
     "enrollees", "outcomes:99",
-    "allclinical:05", "allclinical:06", "allclinical:08", "allclinical:10", "allclinical:12",
+    "allclinical:00", "allclinical:01", "allclinical:03",
+    "allclinical:05", "allclinical:06", "allclinical:07", "allclinical:08", "allclinical:09", "allclinical:10", "allclinical:12",
     "allclinical:13", "allclinical:14",
     "acceldatabymin:06", "acceldatabymin:08",
     "kxr_sq_bu:05", "kxr_sq_bu:06", "kxr_sq_bu:08", "kxr_sq_bu:10", "kxr_sq_bu:12",
@@ -25,8 +26,24 @@ stage = "local"
 entry = "models.R"
 needs = ["cohort"]
 
+# Post hoc checks on P1 (user request 2026-11-12, after the primary results): which knees were
+# read, knee injury, sex, and reweighting for being read
+[[steps]]
+id = "posthoc_frame"
+lang = "python"
+stage = "local"
+entry = "posthoc_frame.py"
+needs = ["cohort"]
+
+[[steps]]
+id = "posthoc"
+lang = "r"
+stage = "local"
+entry = "posthoc_models.R"
+needs = ["posthoc_frame"]
+
 [outputs]
 aggregate = [
-    "flow.csv", "descriptives.csv", "table_*.csv", "curve_*.csv", "metrics_*.csv",
+    "flow.csv", "descriptives.csv", "table_*.csv", "curve_*.csv", "metrics_*.csv", "posthoc_*.csv",
     "assumptions.resolved.json",
 ]
