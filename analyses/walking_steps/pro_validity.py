@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 import polars as pl
-from devices import COUNT_MEASURES, combine, step_bout_measures, walker_definitions
+from devices import COUNT_MEASURES, combine, either_week, step_bout_measures, walker_definitions
 from pro import accuracy, auc_with_ci, spearman
 
 from oai.assumptions import current
@@ -48,7 +48,18 @@ wave = {
     w: with_walkers(device.filter(pl.col("valid") & (pl.col("wave") == w))) for w in ("06", "08")
 }
 wave["mean"] = with_walkers(combine(device, measures))
-DEVICE_LABEL = {"06": "48-month wave", "08": "72-month wave", "mean": "mean of valid waves"}
+# Either week: a device walker when any valid wave meets the definition (for the self-reports
+# paired with the mean of both waves). Same people as "mean": the combined step measures exist.
+names = [name for name, _, _ in definitions]
+wave["either"] = either_week(pl.concat([wave["06"], wave["08"]], how="diagonal"), names).join(
+    wave["mean"].select("ID"), on="ID", how="semi"
+)
+DEVICE_LABEL = {
+    "06": "48-month wave",
+    "08": "72-month wave",
+    "mean": "mean of valid waves",
+    "either": "either valid wave",
+}
 
 # --- self-reports: ID, yes (Boolean), score (PASE walking subscore; null for the item)
 answered = walking_answers().with_columns(
@@ -109,6 +120,19 @@ for i, (pro_id, pro_label, visit, frame) in enumerate(pros):
         auc_rows.append({**base, "measure": m, **r})
         if pro_id.endswith("_any"):  # the subscore is the same for both PASE codings
             rho_rows.append({**base, "measure": m, **spearman(joined["score"], joined[m])})
+
+    if w == "mean":  # the same self-report, crediting a walker from either valid wave
+        either = frame.join(wave["either"], on="ID", how="inner")
+        eb = {**base, "device": DEVICE_LABEL["either"]}
+        for name, family, _ in definitions:
+            acc_rows.append(
+                {
+                    **eb,
+                    "definition": name,
+                    "family": family,
+                    **accuracy(either["yes"], either[name]),
+                }
+            )
 
 acc = pl.DataFrame(acc_rows)
 acc.write_csv(results / "pro_accuracy.csv")

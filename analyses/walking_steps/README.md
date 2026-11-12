@@ -46,7 +46,7 @@ Wear, valid days, intensity and bouts follow the release's rules (the `device.*`
 
 ## Part 2: self-reports against device walking
 
-Self-reports: the 96-month walking-for-exercise item (coded as in walking_validation), and PASE item 2 at 48, 72 and 96 months as any walking and as walking on 3 or more days. Device walkers: the walking_validation rules (bout on at least 2 days a week; any bout; at least 150 bout minutes a week), each applied to count MV bouts and to step walking bouts at `reference.step_cadences` (the MV bout rule with steps in place of counts). Every definition in a comparison uses the same people. PASE at 48 and 72 months pairs with its own wave; the item and PASE at 96 months with the mean over valid waves (`pase.device_pairing`).
+Self-reports: the 96-month walking-for-exercise item (coded as in walking_validation), and PASE item 2 at 48, 72 and 96 months as any walking and as walking on 3 or more days. Device walkers: the walking_validation rules (bout on at least 2 days a week; any bout; at least 150 bout minutes a week), each applied to count MV bouts and to step walking bouts at `reference.step_cadences` (the MV bout rule with steps in place of counts). Every definition in a comparison uses the same people. PASE at 48 and 72 months pairs with its own wave; the item and PASE at 96 months with the mean over valid waves (`pase.device_pairing`). The 96-month self-reports are also compared with an *either-wave* device walker (`device = "either valid wave"` in `pro_accuracy.csv`): a walker when any valid wave meets the definition.
 
 | File | Contents |
 |---|---|
