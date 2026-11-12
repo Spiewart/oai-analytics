@@ -108,42 +108,66 @@ ggplot(bars, aes(band, mean, fill = what)) +
 - **Most MV is walking.** At 40 or more steps a minute, `r pct(sh("mv_minutes_walking"))` of MV minutes are walking minutes.
 - **Most walking is not MV.** Only `r pct(band_mean("60-79", "share_minutes_mv"))` of minutes at 60–79 steps a minute are MV.
 
-# Self-reported walking against device walking
+# Device walkers
 
-A **device walker** has a walking bout on at least `r min_days` days a week (no published standard; a 1-day rule is also shown). A **walking bout** lasts 10 or more minutes, 8 of every 10 at or above a threshold: `r mv_cut` counts a minute (an MV bout) or `r paste(cads, collapse = ", ")` steps a minute (a step bout; 100 is roughly moderate intensity). PASE at 48 and 72 months is compared with that visit's device week; 96-month self-reports with the mean of both weeks (or, for the Walking Question, either week).
+A **device walker** is defined by a bout type and a frequency rule, none of them a published standard for walking. **Bout:** 10 or more minutes, 8 of every 10 at or above `r mv_cut` counts a minute (an MV bout) or `r paste(cads, collapse = ", ")` steps a minute (a step bout; 100 is roughly moderate intensity). **Frequency:** a bout on at least 1 or 2 days a week, or at least `r count(assumption("reference.min_bout_minutes_per_week"))` bout minutes a week.
 
-```{r fig-accuracy, fig.height = 4.0, fig.cap = paste0("Sensitivity and specificity (95% CI) of each self-report against device walkers (a walking bout on ", min_days, "+ days a week). MV bouts: ≥ ", mv_cut, " counts a minute (moderate-to-vigorous); step bouts: ≥ 40, 60 or 100 steps a minute. Walking Question: walked for exercise since age 50. PASE: walked outside the home on any day, or on 3+ days, in the past week.")}
-family_labels <- c(counts_mv = paste0("MV bouts (≥ ", mv_cut, " counts/min)"),
-                   setNames(c(paste0("Step bouts ≥ ", cads[1]), paste0("≥ ", cads[-1])), paste0("steps_", cads)))
-pro_order <- c("item96", "item96_either", "pase06_any", "pase06_frequent", "pase08_any", "pase08_frequent", "pase10_any", "pase10_frequent")
-pro_short <- c(item96 = "Walking Question, 96 mo", item96_either = "Walking Q, 96 mo (either wk)", pase06_any = "PASE any, 48 mo", pase06_frequent = "PASE 3+ d, 48 mo",
-               pase08_any = "PASE any, 72 mo", pase08_frequent = "PASE 3+ d, 72 mo",
-               pase10_any = "PASE any, 96 mo", pase10_frequent = "PASE 3+ d, 96 mo")
-d <- acc[grepl(":bout_days$", acc$definition) & (acc$device != EITHER | acc$pro == "item96"), ]
-d$pro[d$device == EITHER] <- "item96_either"
-d$family <- factor(family_labels[d$family], levels = family_labels)
-d$pro <- factor(pro_short[d$pro], levels = rev(pro_short[pro_order]))
-long <- rbind(data.frame(d[c("pro", "family")], stat = "Sensitivity", est = d$sensitivity, lo = d$sensitivity_lo, hi = d$sensitivity_hi),
-              data.frame(d[c("pro", "family")], stat = "Specificity", est = d$specificity, lo = d$specificity_lo, hi = d$specificity_hi))
-ggplot(long, aes(est, pro, colour = family)) +
-  geom_pointrange(aes(xmin = lo, xmax = hi), position = position_dodge(width = 0.65), size = 0.3, linewidth = 0.5) +
-  facet_wrap(~stat, scales = "free_x") +
-  scale_colour_manual(values = c(colours[["pase"]], "#7aa6d6", colours[["item"]], colours[["navy"]]), name = NULL) +
-  guides(colour = guide_legend(nrow = 1)) +
-  labs(x = NULL, y = NULL) +
-  theme_minimal(base_size = 11) +
-  theme(legend.position = "top", legend.text = element_text(size = 8.5), legend.margin = margin(0, 0, 0, 0), panel.grid.minor = element_blank(),
-        panel.border = element_rect(fill = NA, colour = "grey60", linewidth = 0.4),
-        panel.spacing.x = unit(1.2, "lines"))
+```{r accuracy-helpers}
+rule_labels <- c(any_bout = "≥ 1 day/wk", bout_days = "≥ 2 days/wk", bout_minutes = "≥ 150 min/wk")
+bout_labels <- c(counts_mv = "MV bouts", setNames(paste0("Steps ≥ ", cads), paste0("steps_", cads)))
+as_long <- function(rows, colour) {
+  rows$rule <- factor(rule_labels[sub(".*:", "", rows$definition)], levels = rule_labels)
+  rows$bout <- factor(bout_labels[rows$family], levels = rev(bout_labels))
+  rows$colour <- colour
+  rbind(data.frame(rows[c("rule", "bout", "colour")], stat = "Sensitivity", est = rows$sensitivity, lo = rows$sensitivity_lo, hi = rows$sensitivity_hi),
+        data.frame(rows[c("rule", "bout", "colour")], stat = "Specificity", est = rows$specificity, lo = rows$specificity_lo, hi = rows$specificity_hi))
+}
+accuracy_plot <- function(long, values, cols) {
+  ggplot(long, aes(est, bout, colour = colour)) +
+    geom_pointrange(aes(xmin = lo, xmax = hi), position = position_dodge(width = 0.6), size = 0.25, linewidth = 0.5) +
+    facet_grid(as.formula(paste("rule ~", cols)), scales = "free_x") +
+    scale_colour_manual(values = values, name = NULL) +
+    scale_x_continuous(breaks = scales::breaks_pretty(n = 3)) +
+    labs(x = NULL, y = NULL) +
+    theme_minimal(base_size = 10.5) +
+    theme(legend.position = "top", legend.margin = margin(0, 0, 0, 0), panel.grid.minor = element_blank(),
+          panel.border = element_rect(fill = NA, colour = "grey60", linewidth = 0.4),
+          panel.spacing = unit(0.8, "lines"), strip.text.y = element_text(angle = 0, hjust = 0))
+}
+span <- function(x) paste0(num(min(x)), "–", num(max(x)))
+item <- acc[acc$pro == "item96", ]
+pase <- acc[grepl("^pase", acc$pro), ]
+pase$coding <- ifelse(grepl("_any$", pase$pro), "Any walking", "3+ days")
+pase$visit <- c("06" = "48 mo", "08" = "72 mo", "10" = "96 mo")[substr(pase$pro, 5, 6)]
 ```
 
-## The 96-month Walking Question
+# The 96-month Walking Question
 
-Specificity is `r sp("item96", "counts_mv")` against MV bouts and `r sp("item96", low)` against step bouts at `r min(cads)` steps a minute, which count slow walking. Most of the least active participants still answer yes. A 1-day rule gives `r range_sp("item96", families, "any_bout")` across bout types (2+ days: `r range_sp("item96", families)`). Counting a walker when either device week meets the 2+ day rule gives specificity `r range_sp("item96", families, device = EITHER)` (sensitivity `r se("item96", "counts_mv", device = EITHER)` against MV bouts).
+```{r fig-item, fig.height = 3.6, fig.cap = paste0("Walking Question (walked for exercise since age 50, asked at 96 months): sensitivity and specificity (95% CI) against each device definition of a walker, with device measures averaged over both device weeks or met in either week (the same for ≥ 1 day/wk: a bout in either week). MV: ≥ ", mv_cut, " counts a minute (moderate-to-vigorous).")}
+item$week <- factor(ifelse(item$device == EITHER, "Either week", "Mean of both weeks"), levels = c("Mean of both weeks", "Either week"))
+long <- as_long(item, item$week)
+long$colour <- factor(long$colour, levels = c("Mean of both weeks", "Either week"))
+accuracy_plot(long, c(colours[["navy"]], colours[["pase"]]), "stat")
+```
 
-## PASE walking (48, 72 and 96 months)
+Sensitivity is high (`r span(item$sensitivity)`) and specificity low (`r span(item$specificity)`) under every definition: most participants with little device walking still answer yes. No bout type or frequency rule changes this much; the loosest rules (any bout, either week) raise specificity only slightly.
 
-"Any walking" behaves like the Walking Question: specificity `r range_sp(pase_any, families)` across bout types (1-day rule: `r range_sp(pase_any, families, "any_bout")`). Walking on 3+ days roughly doubles specificity (`r range_sp(pase_freq, low)` against step bouts at `r min(cads)`), at some cost in sensitivity.
+# PASE walking (48, 72 and 96 months)
+
+```{r fig-pase, fig.height = 4.0, fig.cap = paste0("PASE item 2 (walked outside the home in the past week, on any day or on 3+ days): sensitivity and specificity (95% CI) against each device definition of a walker. 48- and 72-month PASE is compared with that visit's device week, 96-month PASE with the mean of both weeks. MV: ≥ ", mv_cut, " counts a minute (moderate-to-vigorous).")}
+p <- pase[pase$device != EITHER, ]
+long <- as_long(p, p$visit)
+long$coding <- factor(rep(p$coding, 2), levels = c("Any walking", "3+ days"))
+long$stat <- factor(paste(long$coding, long$stat, sep = "\n"),
+                    levels = c("Any walking\nSensitivity", "Any walking\nSpecificity", "3+ days\nSensitivity", "3+ days\nSpecificity"))
+accuracy_plot(long, c("#9fb6cf", colours[["item"]], colours[["navy"]]), "stat")
+```
+
+```{r pase-ranges}
+pa <- p[p$coding == "Any walking", ]; pf <- p[p$coding == "3+ days", ]
+```
+
+"Any walking" looks like the Walking Question (sensitivity `r span(pa$sensitivity)`, specificity `r span(pa$specificity)`). Walking on 3+ days trades sensitivity (`r span(pf$sensitivity)`) for specificity (`r span(pf$specificity)`). Results are similar at all three visits.
 
 # Impression
 
