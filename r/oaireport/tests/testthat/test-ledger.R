@@ -128,3 +128,58 @@ test_that("widths must be positive numbers, and a ledger with no table to apply 
   expect_error(ledger_markdown(path, widths = list(c(1, 1), c(1, 1))), "different lengths")
   expect_error(ledger_markdown(write_ledger(c("# A", "nothing here")), widths = c(1, 1)), "no table")
 })
+
+test_that("exclude_prefixes leaves out those keys and recounts what is left", {
+  lines <- c(
+    "# Assumptions: demo",
+    "",
+    "2 confirmed \u00b7 3 assumed \u00b7 1 open",
+    "",
+    "## Confirmed (2)",
+    "",
+    "| Key | Value | Source | Rationale |",
+    "|---|---|---|---|",
+    "| `cohort.min_age` | `50` | p.1 | |",
+    "| `construct.rule` | `1` | names `cohort.min_age` | |",
+    "",
+    "## Assumed (3)",
+    "",
+    "| Key | Value | Source | Rationale |",
+    "|---|---|---|---|",
+    "| `construct.a` | `1` | x | |",
+    "| `construct.b.c` | `2` | x | |",
+    "| `constructs.kept` | `3` | not the prefix | |",
+    "",
+    "## Open (1)",
+    "",
+    "| Key | Value | Source | Rationale |",
+    "|---|---|---|---|",
+    "| `device.x` | `4` | names `construct.a` | |",
+    "",
+    "## Variants",
+    "",
+    "| Variant | Sets | Description |",
+    "|---|---|---|",
+    "| `construct.named` | `construct.a = 2` | a variant is not a key |"
+  )
+  path <- write_ledger(lines)
+  out <- ledger_markdown(path, exclude_prefixes = "construct.")
+  expect_false(any(grepl(paste0("construct.", zwsp, "rule"), out, fixed = TRUE)))
+  expect_false(any(grepl(paste0("construct.", zwsp, "b"), out, fixed = TRUE)))
+  expect_true(any(grepl(paste0("cohort.", zwsp, "min"), out, fixed = TRUE)))
+  expect_true(any(grepl("not the prefix", out, fixed = TRUE)))
+  expect_true(any(grepl("names", out, fixed = TRUE) & grepl("device", out, fixed = TRUE)))
+  # counts follow what is shown
+  expect_true("1 confirmed \u00b7 1 assumed \u00b7 1 open" %in% out)
+  expect_true("## Confirmed (1)" %in% out)
+  expect_true("## Assumed (1)" %in% out)
+  expect_true("## Open (1)" %in% out)
+  # the Variants table is not a list of keys
+  expect_true(any(grepl("a variant is not a key", out, fixed = TRUE)))
+  # with none given the output is unchanged
+  expect_identical(ledger_markdown(path), ledger_markdown(path, exclude_prefixes = character()))
+  expect_true("## Assumed (3)" %in% ledger_markdown(path))
+  # table widths still apply to what is left
+  widths <- ledger_markdown(path, widths = list(c(5, 5, 9, 4), c(1, 1, 1)), exclude_prefixes = "construct.")
+  expect_true(any(grepl("^\\|-{5,}\\|", widths)))
+})

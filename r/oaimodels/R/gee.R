@@ -6,7 +6,8 @@
 #'   model frame).
 #' @param term Coefficient whose odds ratio is returned.
 #' @param corstr Working correlation (geepack).
-#' @param id Cluster column, with no missing values; rows are ordered by it before fitting.
+#' @param id Cluster column of any type, with no missing values; rows are ordered by it before
+#'   fitting.
 #' @return Named numeric: or, lo, hi (95% Wald), log_or, se.
 fit_knee_gee <- function(data, rhs, outcome = "y", term = "walkerTRUE",
                          corstr = "exchangeable", id = "ID") {
@@ -26,9 +27,12 @@ fit_knee_gee <- function(data, rhs, outcome = "y", term = "walkerTRUE",
     stop("fit_knee_gee(): outcome ", outcome, " must be 0/1", call. = FALSE)
   }
   data <- data[order(data[[id]]), , drop = FALSE]
-  # geeglm() reads `id` from `data`, so the cluster gets a column name no existing column has
+  # geeglm() reads `id` from `data`, so the cluster gets a column name no existing column has.
+  # It holds integers because geepack finds clusters from diff(as.numeric(id)): a character ID
+  # that does not parse as a number becomes NA and every such row joins one cluster, with only a
+  # coercion warning and a wrong (often near-zero or NaN) standard error.
   cluster <- make.unique(c(names(data), ".cluster"))[ncol(data) + 1L]
-  data[[cluster]] <- data[[id]]
+  data[[cluster]] <- match(data[[id]], unique(data[[id]]))
   model <- eval(bquote(geepack::geeglm(.(stats::as.formula(paste(outcome, "~", rhs))),
                                        id = .(as.name(cluster)), data = data,
                                        family = stats::binomial, corstr = corstr)))

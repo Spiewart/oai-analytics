@@ -1,0 +1,170 @@
+---
+title: "Walking in OAI accelerometry: a step-count view"
+subtitle: "A first look at the 48- and 72-month per-minute steps"
+mainfont: Arial
+fontsize: 11.5pt
+brand:
+  typography:
+    headings:
+      color: "#0b2e59"
+format:
+  typst:
+    papersize: us-letter
+    margin:
+      x: 0.8in
+      y: 0.7in
+    include-in-header:
+      text: |
+        #set text(hyphenate: false)
+        #set page(footer: context align(center, text(size: 8pt, fill: luma(90))[Exploratory results — page #counter(page).display()]))
+execute:
+  echo: false
+  warning: false
+  message: false
+knitr:
+  opts_chunk:
+    dev: cairo_pdf
+    fig-width: 7
+---
+
+```{r setup}
+library(ggplot2)
+run <- oaireport::load_results()$default
+colours <- oaireport::brief_colours
+assumption <- function(key) run$assumptions$assumptions[[key]]$value
+num <- function(x, digits = 2) formatC(x, format = "f", digits = digits, big.mark = ",")
+count <- function(x) formatC(x, format = "d", big.mark = ",")
+pct <- function(x) paste0(num(100 * x, 0), "%")
+wave <- function(x) sprintf("%02d", as.integer(x))
+one <- function(df, ...) {
+  cond <- list(...)
+  keep <- Reduce(`&`, Map(function(col, value) !is.na(df[[col]]) & df[[col]] == value, names(cond), cond))
+  row <- df[keep, , drop = FALSE]
+  if (nrow(row) != 1) stop("expected one row for ", paste(names(cond), unlist(cond), sep = " = ", collapse = ", "),
+                           ", found ", nrow(row), call. = FALSE)
+  row
+}
+share <- run$walking_share; share$visit <- wave(share$visit)
+pb <- run$cadence_bands_person; pb$visit <- wave(pb$visit)
+acc <- run$pro_accuracy
+rho <- run$pro_spearman
+dflow <- run$device_flow; dflow$wave <- wave(dflow$wave)
+cads <- unlist(assumption("reference.step_cadences"))
+low <- paste0("steps_", min(cads))
+mv_cut <- count(assumption("device.mv_cutpoint"))
+min_days <- assumption("reference.min_bout_days_per_week")
+
+sh <- function(measure, cadence = 40) one(share, visit = "06", cadence_ge = cadence, measure = measure)$pooled
+band_mean <- function(band, measure) one(pb, visit = "06", band = band, measure = measure)$mean
+MEAN <- "mean of valid waves"; EITHER <- "either valid wave"
+a <- function(pro, family, rule = "bout_days", device = NULL) {
+  rows <- acc[acc$pro == pro & acc$definition == paste0(family, ":", rule), ]
+  if (is.null(device)) device <- if (MEAN %in% rows$device) MEAN else unique(rows$device)
+  one(rows, device = device)
+}
+sp <- function(pro, family, rule = "bout_days", device = NULL) num(a(pro, family, rule, device)$specificity)
+se <- function(pro, family, rule = "bout_days", device = NULL) num(a(pro, family, rule, device)$sensitivity)
+range_sp <- function(pros, families, rule = "bout_days", device = NULL) {
+  x <- unlist(lapply(pros, function(p) vapply(families, function(f) a(p, f, rule, device)$specificity, 0)))
+  paste0(num(min(x)), "–", num(max(x)))
+}
+families <- c("counts_mv", paste0("steps_", cads))
+pase_any <- c("pase06_any", "pase08_any", "pase10_any")
+pase_freq <- c("pase06_frequent", "pase08_frequent", "pase10_frequent")
+```
+
+Per-minute step counts for the 48- and 72-month accelerometry weeks (prepared by the Northwestern accelerometry group) match the public minute files. `r count(one(dflow, wave = "06")$valid_with_step_measures)` and `r count(one(dflow, wave = "08")$valid_with_step_measures)` participants with valid wear have steps; the 72-month steps are new.
+
+**MV** (moderate-to-vigorous activity): a minute with at least `r mv_cut` activity counts, the release's cut-point.
+
+# How much of the activity counts is walking
+
+```{r fig-bands, fig.height = 4.2, fig.cap = paste0("Mean share of each participant's wear minutes and activity counts by steps a minute. Grey lines: middle 50% of participants. Labels: mean share of a band's minutes that are MV (≥ ", mv_cut, " counts a minute).")}
+b <- pb
+b$band <- factor(b$band, levels = unique(b$band))
+b$wave <- factor(ifelse(b$visit == "06", "48 months", "72 months"), levels = c("48 months", "72 months"))
+bars <- b[b$measure %in% c("share_of_minutes", "share_of_counts"), ]
+bars$what <- factor(ifelse(bars$measure == "share_of_minutes", "Wear minutes", "Activity counts"),
+                    levels = c("Wear minutes", "Activity counts"))
+mv <- b[b$measure == "share_minutes_mv", ]
+top <- aggregate(q3 ~ band + wave, data = bars, FUN = max)
+mv <- merge(mv, setNames(top, c("band", "wave", "top")), by = c("band", "wave"))
+dodge <- position_dodge(width = 0.75)
+ggplot(bars, aes(band, mean, fill = what)) +
+  geom_col(position = dodge, width = 0.7) +
+  geom_errorbar(aes(ymin = q1, ymax = q3), position = dodge, width = 0.3, colour = "grey50", linewidth = 0.35) +
+  geom_text(data = mv, aes(band, top + 0.06, label = paste0(round(100 * mean), "% MV")),
+            inherit.aes = FALSE, size = 3.2, colour = colours[["label"]]) +
+  facet_wrap(~wave, ncol = 1) +
+  scale_fill_manual(values = c(colours[["muted"]], colours[["navy"]]), name = NULL) +
+  scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), expand = expansion(mult = c(0, 0.12))) +
+  labs(x = "Steps a minute", y = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "top", panel.grid.major.x = element_blank(),
+        strip.text = element_text(face = "bold", hjust = 0))
+```
+
+- **Most activity counts are not walking.** The largest share of a participant's counts comes from minutes with 1–19 steps (mean `r pct(band_mean("1-19", "share_of_counts"))` at 48 months).
+- **Most MV is walking.** At 40 or more steps a minute, `r pct(sh("mv_minutes_walking"))` of MV minutes are walking minutes.
+- **Most walking is not MV.** Only `r pct(band_mean("60-79", "share_minutes_mv"))` of minutes at 60–79 steps a minute are MV.
+
+# Device walkers
+
+A **device walker** is defined by a bout type and a frequency rule, none of them a published standard for walking. **Bout:** 10 or more minutes, 8 of every 10 at or above `r mv_cut` counts a minute (an MV bout) or `r paste(cads, collapse = ", ")` steps a minute (a step bout; 100 is roughly moderate intensity). **Frequency:** a bout on at least 1 or 2 days a week, or at least `r count(assumption("reference.min_bout_minutes_per_week"))` bout minutes a week.
+
+```{r accuracy-helpers}
+rule_labels <- c(any_bout = "≥ 1 day/wk", bout_days = "≥ 2 days/wk", bout_minutes = "≥ 150 min/wk")
+bout_labels <- c(counts_mv = "MV bouts", setNames(paste0("Steps ≥ ", cads), paste0("steps_", cads)))
+as_long <- function(rows, colour) {
+  rows$rule <- factor(rule_labels[sub(".*:", "", rows$definition)], levels = rule_labels)
+  rows$bout <- factor(bout_labels[rows$family], levels = rev(bout_labels))
+  rows$colour <- colour
+  rbind(data.frame(rows[c("rule", "bout", "colour")], stat = "Sensitivity", est = rows$sensitivity, lo = rows$sensitivity_lo, hi = rows$sensitivity_hi),
+        data.frame(rows[c("rule", "bout", "colour")], stat = "Specificity", est = rows$specificity, lo = rows$specificity_lo, hi = rows$specificity_hi))
+}
+accuracy_plot <- function(long, values, cols) {
+  ggplot(long, aes(est, bout, colour = colour)) +
+    geom_pointrange(aes(xmin = lo, xmax = hi), position = position_dodge(width = 0.6), size = 0.25, linewidth = 0.5) +
+    facet_grid(as.formula(paste("rule ~", cols)), scales = "free_x") +
+    scale_colour_manual(values = values, name = NULL) +
+    scale_x_continuous(breaks = scales::breaks_pretty(n = 3)) +
+    labs(x = NULL, y = NULL) +
+    theme_minimal(base_size = 10.5) +
+    theme(legend.position = "top", legend.margin = margin(0, 0, 0, 0), panel.grid.minor = element_blank(),
+          panel.border = element_rect(fill = NA, colour = "grey60", linewidth = 0.4),
+          panel.spacing = unit(0.8, "lines"), strip.text.y = element_text(angle = 0, hjust = 0))
+}
+span <- function(x) paste0(num(min(x)), "–", num(max(x)))
+item <- acc[acc$pro == "item96", ]
+pase <- acc[grepl("^pase", acc$pro), ]
+pase$coding <- ifelse(grepl("_any$", pase$pro), "Any walking", "3+ days")
+pase$visit <- c("06" = "48 mo", "08" = "72 mo", "10" = "96 mo")[substr(pase$pro, 5, 6)]
+```
+
+# The 96-month Walking Question
+
+```{r fig-item, fig.height = 3.6, fig.cap = paste0("Walking Question (walked for exercise since age 50, asked at 96 months): sensitivity and specificity (95% CI) against each device definition of a walker, with device measures averaged over both device weeks or met in either week (the same for ≥ 1 day/wk: a bout in either week). MV: ≥ ", mv_cut, " counts a minute (moderate-to-vigorous).")}
+item$week <- factor(ifelse(item$device == EITHER, "Either week", "Mean of both weeks"), levels = c("Mean of both weeks", "Either week"))
+long <- as_long(item, item$week)
+long$colour <- factor(long$colour, levels = c("Mean of both weeks", "Either week"))
+accuracy_plot(long, c(colours[["navy"]], colours[["pase"]]), "stat")
+```
+
+Sensitivity is high (`r span(item$sensitivity)`) and specificity low (`r span(item$specificity)`) under every definition: most participants with little device walking still answer yes. No bout type or frequency rule changes this much; the loosest rules (any bout, either week) raise specificity only slightly.
+
+# PASE walking (48, 72 and 96 months)
+
+```{r fig-pase, fig.height = 4.0, fig.cap = paste0("PASE item 2 (walked outside the home in the past week, on any day or on 3+ days): sensitivity and specificity (95% CI) against each device definition of a walker. 48- and 72-month PASE is compared with that visit's device week, 96-month PASE with the mean of both weeks. MV: ≥ ", mv_cut, " counts a minute (moderate-to-vigorous).")}
+p <- pase[pase$device != EITHER, ]
+long <- as_long(p, p$visit)
+long$coding <- factor(rep(p$coding, 2), levels = c("Any walking", "3+ days"))
+long$stat <- factor(paste(long$coding, long$stat, sep = "\n"),
+                    levels = c("Any walking\nSensitivity", "Any walking\nSpecificity", "3+ days\nSensitivity", "3+ days\nSpecificity"))
+accuracy_plot(long, c("#9fb6cf", colours[["item"]], colours[["navy"]]), "stat")
+```
+
+```{r pase-ranges}
+pa <- p[p$coding == "Any walking", ]; pf <- p[p$coding == "3+ days", ]
+```
+
+"Any walking" looks like the Walking Question (sensitivity `r span(pa$sensitivity)`, specificity `r span(pa$specificity)`). Walking on 3+ days trades sensitivity (`r span(pf$sensitivity)`) for specificity (`r span(pf$specificity)`). Results are similar at all three visits.

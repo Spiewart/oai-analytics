@@ -287,3 +287,86 @@ def test_release_valid_persons_uses_the_rules_minimum(monkeypatch):
     assert release_valid_persons("06") == 2  # the default rules: at least 4 valid days
     assert release_valid_persons("06", DeviceRules(min_valid_days=5)) == 1
     assert release_valid_persons("06", DeviceRules(min_valid_days=3)) == 3
+
+
+def _minute_frame():
+    return pl.LazyFrame(
+        {
+            "ID": [1, 1, 2],
+            "V06PAStudyDay": [1, 1, 1],
+            "V06MinSequence": [1, 2, 1],
+            "V06MINCnt": [5, 7, 0],
+        }
+    )
+
+
+def test_read_minutes_with_steps_joins_on_the_minute_keys(monkeypatch):
+    monkeypatch.setattr(accel, "read_table", lambda name, visit, lazy=False: _minute_frame())
+    st = pl.DataFrame({"ID": [1, 1], "day": [1, 1], "minute": [1, 2], "steps": [3.0, None]})
+    monkeypatch.setattr(accel, "read_steps", lambda visit: st)
+    out = read_minutes("06", steps=True)
+    assert out.columns == ["ID", "day", "minute", "cnt", "steps"]
+    assert out["steps"].to_list() == [3.0, None, None]  # ID 2 has no step data: null, not zero
+
+
+def test_read_minutes_rejects_step_rows_without_a_count_minute(monkeypatch):
+    monkeypatch.setattr(accel, "read_table", lambda name, visit, lazy=False: _minute_frame())
+    st = pl.DataFrame({"ID": [1, 3], "day": [1, 1], "minute": [1, 1], "steps": [3.0, 4.0]})
+    monkeypatch.setattr(accel, "read_steps", lambda visit: st)
+    with pytest.raises(ValueError, match="1 step minute"):
+        read_minutes("06", steps=True)
+
+
+# step measures: daily_summary() with a `steps` column (oai.steps)
+def step_frame(counts, steps, pid=1, day=1):
+    f = minutes_frame({day: counts}, pid)
+    return f.with_columns(pl.Series("steps", steps, dtype=pl.Float64))
+
+
+def test_step_measures_count_wear_minutes_only():
+    # 90 zero-count minutes are non-wear: the 40 steps logged there must not count
+    counts = [500.0] * 600 + [0.0] * 90
+    steps = [10.0] * 500 + [110.0] * 100 + [0.0] * 50 + [40.0] + [0.0] * 39
+    day = daily_summary(step_frame(counts, steps)).row(0, named=True)
+    assert day["wear_min"] == 600
+    assert day["steps"] == 500 * 10 + 100 * 110
+    assert day["cadence100_min"] == 100
+    assert day["peak_cadence"] == 110.0
+    assert day["step_missing_min"] == 0
+
+
+def test_peak_cadence_and_cutpoints_follow_the_rules():
+    step_rules = accel.StepRules(cadence_cutpoints=(60, 120), peak_cadence_minutes=2)
+    steps = [130.0, 70.0, 50.0] + [0.0] * 597
+    day = daily_summary(step_frame([500.0] * 600, steps), RULES, step_rules).row(0, named=True)
+    assert day["peak_cadence"] == 100.0
+    assert (day["cadence60_min"], day["cadence120_min"]) == (2, 1)
+
+
+def test_a_day_with_no_steps_captured_has_null_step_measures():
+    day = daily_summary(step_frame([500.0] * 600, [None] * 600)).row(0, named=True)
+    assert day["step_missing_min"] == 600
+    assert all(day[c] is None for c in accel.step_columns())
+    assert day["valid"]  # wear is judged from counts, so the day stays valid
+
+
+def test_minutes_without_steps_keep_the_count_measures_unchanged():
+    counts = [500.0] * 600
+    with_steps = daily_summary(step_frame(counts, [None] * 600)).drop(
+        ["step_missing_min", *accel.step_columns()]
+    )
+    assert with_steps.equals(daily_summary(minutes_frame({1: counts})))
+
+
+def test_step_day_usable_accepts_complete_days_and_rejects_empty_ones():
+    f = pl.DataFrame({"missing": [0, 600, 0], "wear": [600, 600, 900]})
+    out = f.select(accel.step_day_usable(pl.col("missing"), pl.col("wear")))
+    assert out.to_series().to_list() == [True, False, True]
+
+
+def test_person_step_means_use_the_wear_chosen_days_with_usable_steps():
+    complete = step_frame([500.0] * 600, [10.0] * 600, day=1)
+    empty = step_frame([500.0] * 600, [None] * 600, day=2)
+    person = person_summary(daily_summary(pl.concat([complete, empty]))).row(0, named=True)
+    assert (person["valid_days"], person["step_days"]) == (2, 1)
+    assert person["steps"] == 6000.0

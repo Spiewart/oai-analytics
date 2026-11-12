@@ -16,6 +16,7 @@ def test_expected_analyses_exist():
     assert ANALYSES == [
         "activity_agreement",
         "crepitus",
+        "crepitus_activity",
         "crepitus_soa_longterm",
         "exam_crepitus_soa",
         "genetics_progression",
@@ -23,6 +24,7 @@ def test_expected_analyses_exist():
         "lo2022_walking",
         "luyten_early_oa",
         "progression_definitions",
+        "walking_steps",
         "walking_validation",
     ]
 

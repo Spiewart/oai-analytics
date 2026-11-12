@@ -36,6 +36,16 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 - **Request OAI GT1M step data for walking_validation** — <!-- skip --> Steps are not in the public release or in NDA's accelerometry structures (counts only). Lo et al. 2015 (Arthritis Rheumatol 67:2897-904) used OAI step counts with the OAI accelerometry investigators at Northwestern; ask for per-minute steps (for cadence) at 48 and 72 months. When received, place them outside the repo, alongside the release (see the data-root item under Tooling), and add a steps criterion to `oai.derive.accel` and a ledger variant.
   [src/oai/derive/accel.py](src/oai/derive/accel.py)
+  **Received 2026-11-12** (per-minute steps at 48 and 72 months; 72 months never analysed before). Kept outside the repo and apart from the public release; never commit them. Profiled: one row per ID × study day × minute with the same keys and exactly the same rows as the public `Acceldatabymin06/08` files (2,011 and 1,433 people); steps are integers 0–200 per minute; minute-level Spearman with counts ≈ 0.95. Steps were not captured for everyone: 2 people at 48 months and 9 at 72 months have all-null steps, plus 3 and 1 with partial gaps. Use null, not zero, for those. Loader built: `OAI_STEPS_DIR`, `oai.steps.read_steps`, `read_minutes(visit, steps=True)`, and day/person step measures (steps per day, peak-30 cadence, minutes at >= 100 steps/min; `StepRules`) in `oai.derive.accel`. Partly missing step days are dropped (strict `step_day_usable`, decided 2026-11-12; 4 valid days affected). Still open: a steps-based analysis with its own ledger entries. Publications using these files carry the provider's authorship terms; see the study team.
+
+- **Get the OAI 400-meter walk protocol thresholds for the brief report** — <!-- skip --> The release comments (AllClinical00_Comments.pdf p.145) give the exclusion reasons but not the numeric cutoffs (heart rate, systolic and diastolic blood pressure); variable names suggest 110 and 135 bpm, 180/199 and 100/109 mmHg, unconfirmed. The OAI operations manual and `oai.ucsf.edu/datarelease/AdditionalVarComments/CALLDOC.pdf` were unreachable on 2026-11-05 (connection refused). The Methods sentence does not need the cutoffs; add them if a reviewer asks.
+  [analyses/walking_validation/BRIEF_REPORT_FACTS.md](analyses/walking_validation/BRIEF_REPORT_FACTS.md)
+
+- **Confirm the Osteoarthritis and Cartilage limits for the brief report** — <!-- skip --> The journal's guide for authors returned 403 to automated fetches on 2026-11-05, so the word, abstract, reference, display and supplement limits and the abstract headings are still the user's pasted figures. Open the guide in a browser before Task 8 and compare with the spec.
+  [analyses/walking_validation/BRIEF_REPORT_FACTS.md](analyses/walking_validation/BRIEF_REPORT_FACTS.md)
+
+- **Ask why KOOS sport items for running and jumping are blank at enrollment** — <!-- skip --> `V00KOOSFSR` is missing for 581 of 2,582 (22.5%) because 3 or more of its 5 items are blank, and running and jumping are blank for about half (51% and 55%). The release comments do not say why. Ask the OAI coordinating center, or state it as unexplained in the manuscript.
+  [analyses/walking_validation/BRIEF_REPORT_FACTS.md](analyses/walking_validation/BRIEF_REPORT_FACTS.md)
 
 - **Report the device-reference bias analysis as unstable, or replace it** — <!-- skip --> Every probabilistic bias analysis cell exceeded the pre-specified 10% discard threshold (37–99% discarded), because the item's device-based specificity (~0.26) puts Se + Sp near 1. Decide with the study team whether the paper keeps the PBA as a pre-specified sensitivity analysis or uses only the tipping-point grid, and whether a better reference (step-based cadence) is needed first. Part of the instability is transport: the priors come from the 767 validated participants, whose "yes" share is 78%, but they are applied to knee frames whose "yes" share is lower (about 71% among new-pain cases), and with Se + Sp − 1 ≈ 0.13 a 1-point shift in the "yes" share moves the implied true prevalence by about 8 points. A differential tipping display (Se fixed, Sp varied separately in cases and non-cases) would address differential misclassification without relying on the device.
   [analyses/walking_validation/bias.R](analyses/walking_validation/bias.R)
@@ -48,6 +58,11 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 - **Finish the amendment-12 outputs that are computed but not reported** — <!-- skip --> Two follow-ups from the answer-level sub-analyses, neither of them presentation: (1) the 12c correction-factor rows (Se, Sp, J and 1/J) for the months-per-year definitions as well as the times-per-month ones (their J is already in `validity_components_item.csv`); (2) statistics the components step computes but the report does not yet show: the Jonckheere–Terpstra trend across the weekly-walking bins and PPV and NPV at the guideline volume (12a), and the Lo 2022 subset's item shares and trend tests (12b). Report presentation polish is planned in the report redesign, not here.
   [analyses/walking_validation/components.R](analyses/walking_validation/components.R)
+
+### Walking share of the activity counts (`analyses/walking_steps`)
+
+- **Choose the headline walking-minute threshold** — <!-- skip --> `walking.primary_cadence` is `open` (default 40 steps/min; variants 60 and 100). No published threshold defines a walking minute; 60 is the lowest NHANES walking band and 100 is moderate intensity (Tudor-Locke & Rowe 2012). Every threshold is in the CSVs, so this only sets the headline sentence. Decide with the study team before results are shared.
+  [analyses/walking_steps/assumptions.toml](analyses/walking_steps/assumptions.toml)
 
 ### Analyst questions (resolve when each project starts)
 
@@ -120,6 +135,11 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 - **Get the Mahmoudian 2021 full text** — <!-- skip --> *Semin Arthritis Rheum* 2021;51:285–91 (doi 10.1016/j.semarthrit.2020.11.002) is not open access, so `published.toml` holds only the abstract's group size, age and BMI. The Methods and Table 1 decide what is still guessed: how "structural" and "clinical" progression were defined (the abstract's ORs are ranges, 1.1–1.4 and 2.1–2.5), where the KOOS daily-living score came from (the release has none; we rescale WOMAC function), which KL reading, how missing KOOS or exam items were handled, and the KL 0–1 denominator behind "27%". We find 1,098 knees (21.8%); no ledger variant closes the gap (the highest share is 23.5%, right knees only), so the difference is a choice outside the ledger. The abstract's 27% also implies a KL 0–1 denominator of about 4,870 (we have 5,028), so the gap is not only in the numerator. Candidates: patellar tenderness counted as a sign, or KOOS taken from another visit. Then extend `published.toml` and settle the `luyten.*` keys.
   [analyses/luyten_early_oa/README.md](analyses/luyten_early_oa/README.md)
+
+### Crepitus and device-measured activity (`analyses/crepitus_activity`)
+
+- **Settle Northwestern's authorship terms before any write-up** — <!-- skip --> The per-minute steps (48 and 72 months) come from Northwestern (Alison Chang). Their terms: Jing, who retrieved and cleaned the data, is a co-author on publications that use them, and the PARR group (Physical Activity in Rheumatology Research) offers scientific input. Raise both before drafting an abstract or author list from this analysis.
+  [analyses/crepitus_activity/README.md](analyses/crepitus_activity/README.md)
 
 ### Future studies ([docs/study-ideas.md](docs/study-ideas.md))
 

@@ -1,0 +1,35 @@
+name = "walking_steps"
+description = "Walking from per-minute GT1M steps at 48 and 72 months: how much of the activity counts is walking, and how self-reported walking (96-month item, PASE walking at 48/72/96 months) agrees with count-based and step-based device walking."
+
+[inputs]
+# The per-minute steps are not a release table: they are read from OAI_STEPS_DIR (oai.steps).
+tables = [
+    "enrollees", "allclinical:06", "allclinical:08", "allclinical:10",
+    "acceldatabymin:06", "acceldatabymin:08",
+]
+
+[[steps]]
+id = "share"
+lang = "python"
+stage = "local"
+entry = "walking_share.py"
+
+[[steps]]
+id = "persons"
+lang = "python"
+stage = "local"
+entry = "persons.py"
+
+[[steps]]
+id = "pro_validity"
+lang = "python"
+stage = "local"
+entry = "pro_validity.py"
+needs = ["persons"]
+
+[outputs]
+aggregate = ["*.csv", "*.md", "assumptions.resolved.json"]
+
+[report]
+documents = ["report.qmd"]
+runs = ["default"]
