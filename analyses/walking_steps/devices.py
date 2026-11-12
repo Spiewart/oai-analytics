@@ -153,3 +153,11 @@ DEVICE_KEYS = (
 def device_rules(assumptions) -> DeviceRules:
     """DeviceRules from the ledger's device.* entries."""
     return DeviceRules(**{k: assumptions[f"device.{k}"] for k in DEVICE_KEYS})
+
+
+def either_week(per_wave: pl.DataFrame, names: list[str]) -> pl.DataFrame:
+    """Per person: each walker definition is true when any of their valid waves meets it.
+
+    `per_wave` has one row per person and valid wave, with a Boolean column per name.
+    """
+    return per_wave.group_by("ID").agg(pl.col(n).any() for n in names).sort("ID")

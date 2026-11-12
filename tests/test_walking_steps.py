@@ -208,3 +208,9 @@ def test_person_bands_average_each_persons_shares():
     assert mv.row(0, named=True)["persons"] == 1  # only person 1 has minutes in the band
     counts = out.filter((pl.col("band") == "1-99") & (pl.col("measure") == "share_of_counts"))
     assert counts.row(0, named=True)["mean"] == pytest.approx(0.5)  # 0 and 1
+
+
+def test_either_week_credits_a_walker_from_any_wave():
+    per_wave = pl.DataFrame({"ID": [1, 1, 2, 2, 3], "w": [True, False, False, False, False]})
+    out = dv.either_week(per_wave, ["w"])
+    assert out["w"].to_list() == [True, False, False]
