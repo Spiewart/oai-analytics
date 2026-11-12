@@ -1,8 +1,8 @@
 ---
-title: "Walking in the OAI accelerometry, seen through step counts"
+title: "Walking in OAI accelerometry: a step-count view"
 subtitle: "A first look at the 48- and 72-month per-minute steps"
 mainfont: Arial
-fontsize: 10pt
+fontsize: 11.5pt
 brand:
   typography:
     headings:
@@ -11,8 +11,8 @@ format:
   typst:
     papersize: us-letter
     margin:
-      x: 0.85in
-      y: 0.75in
+      x: 0.8in
+      y: 0.7in
     include-in-header:
       text: |
         #set text(hyphenate: false)
@@ -44,21 +44,20 @@ one <- function(df, ...) {
                            ", found ", nrow(row), call. = FALSE)
   row
 }
-flow <- run$flow; flow$visit <- wave(flow$visit)
 share <- run$walking_share; share$visit <- wave(share$visit)
-bands <- run$cadence_bands; bands$visit <- wave(bands$visit)
+pb <- run$cadence_bands_person; pb$visit <- wave(pb$visit)
 acc <- run$pro_accuracy
 rho <- run$pro_spearman
 dflow <- run$device_flow; dflow$wave <- wave(dflow$wave)
 cads <- unlist(assumption("reference.step_cadences"))
 low <- paste0("steps_", min(cads))
-mv_cut <- assumption("device.mv_cutpoint")
+mv_cut <- count(assumption("device.mv_cutpoint"))
 min_days <- assumption("reference.min_bout_days_per_week")
 
-sh <- function(measure, cadence = 40, visit = "06") one(share, visit = visit, cadence_ge = cadence, measure = measure)$pooled
+sh <- function(measure, cadence = 40) one(share, visit = "06", cadence_ge = cadence, measure = measure)$pooled
+band_mean <- function(band, measure) one(pb, visit = "06", band = band, measure = measure)$mean
 a <- function(pro, family, rule = "bout_days") one(acc, pro = pro, definition = paste0(family, ":", rule))
 sp <- function(pro, family, rule = "bout_days") num(a(pro, family, rule)$specificity)
-se <- function(pro, family, rule = "bout_days") num(a(pro, family, rule)$sensitivity)
 range_sp <- function(pros, families, rule = "bout_days") {
   x <- unlist(lapply(pros, function(p) vapply(families, function(f) a(p, f, rule)$specificity, 0)))
   paste0(num(min(x)), "–", num(max(x)))
@@ -66,44 +65,51 @@ range_sp <- function(pros, families, rule = "bout_days") {
 families <- c("counts_mv", paste0("steps_", cads))
 pase_any <- c("pase06_any", "pase08_any", "pase10_any")
 pase_freq <- c("pase06_frequent", "pase08_frequent", "pase10_frequent")
-count_rho <- rho[rho$measure %in% c("purposeful_min", "mv_min", "counts_per_day"), "rho"]
-step_rho <- rho[!rho$measure %in% c("purposeful_min", "mv_min", "counts_per_day", "light_min"), "rho"]
 ```
 
-Per-minute GT1M step counts for the 48- and 72-month accelerometry waves, retrieved and prepared by the Northwestern accelerometry group, match the public minute files row for row (`r count(one(flow, visit = "06")$persons_in_files)` and `r count(one(flow, visit = "08")$persons_in_files)` participants); `r count(one(dflow, wave = "06")$valid_with_step_measures)` and `r count(one(dflow, wave = "08")$valid_with_step_measures)` participants with valid wear have step data. The 72-month steps have not been analysed before. Wear time, valid days and MV activity follow the release's rules. This is an exploratory look, not a finished analysis.
+Per-minute step counts for the 48- and 72-month accelerometry weeks (prepared by the Northwestern accelerometry group) match the public minute files. `r count(one(dflow, wave = "06")$valid_with_step_measures)` and `r count(one(dflow, wave = "08")$valid_with_step_measures)` participants with valid wear have steps; the 72-month steps are new.
+
+**MV** (moderate-to-vigorous activity): a minute with at least `r mv_cut` activity counts, the release's cut-point.
 
 # How much of the activity counts is walking
 
-```{r fig-bands, fig.height = 3.0, fig.cap = "Share of wear minutes and of activity counts by steps a minute (48 months; 72 months is within a point). Labels: share of the band's minutes that reach the MV cut-point."}
-b <- bands[bands$visit == "06", ]
-b$band <- factor(b$band, levels = b$band)
-long <- rbind(data.frame(band = b$band, what = "Wear minutes", share = b$share_of_minutes),
-              data.frame(band = b$band, what = "Activity counts", share = b$share_of_counts))
-long$what <- factor(long$what, levels = c("Wear minutes", "Activity counts"))
-ggplot(long, aes(band, share, fill = what)) +
-  geom_col(position = position_dodge(width = 0.75), width = 0.7) +
-  geom_text(data = b, aes(band, pmax(share_of_minutes, share_of_counts) + 0.035,
-                          label = paste0(round(100 * share_minutes_mv), "% MV")),
-            inherit.aes = FALSE, size = 2.8, colour = colours[["label"]]) +
+```{r fig-bands, fig.height = 2.9, fig.cap = paste0("Mean share (bars, with 95% CI) of each participant's wear minutes and activity counts by steps a minute, 48 months (72 months is similar). Thin grey lines: middle 50% of participants. Labels: mean share of a band's minutes that are MV (≥ ", mv_cut, " counts a minute).")}
+b <- pb[pb$visit == "06", ]
+lev <- unique(b$band)
+b$band <- factor(b$band, levels = lev)
+bars <- b[b$measure %in% c("share_of_minutes", "share_of_counts"), ]
+bars$what <- factor(ifelse(bars$measure == "share_of_minutes", "Wear minutes", "Activity counts"),
+                    levels = c("Wear minutes", "Activity counts"))
+mv <- b[b$measure == "share_minutes_mv", ]
+top <- aggregate(q3 ~ band, data = bars, FUN = max)
+mv <- merge(mv, setNames(top, c("band", "top")), by = "band")
+dodge <- position_dodge(width = 0.75)
+ggplot(bars, aes(band, mean, fill = what)) +
+  geom_col(position = dodge, width = 0.7) +
+  geom_linerange(aes(ymin = q1, ymax = q3), position = dodge, colour = "grey55", linewidth = 0.35) +
+  geom_errorbar(aes(ymin = ci_lo, ymax = ci_hi), position = dodge, width = 0.25, linewidth = 0.5, colour = "black") +
+  geom_text(data = mv, aes(band, top + 0.04, label = paste0(round(100 * mean), "% MV")),
+            inherit.aes = FALSE, size = 3.4, colour = colours[["label"]]) +
   scale_fill_manual(values = c(colours[["muted"]], colours[["navy"]]), name = NULL) +
   scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), expand = expansion(mult = c(0, 0.08))) +
   labs(x = "Steps a minute", y = NULL) +
-  theme_minimal(base_size = 9) +
+  theme_minimal(base_size = 11) +
   theme(legend.position = "top", panel.grid.major.x = element_blank())
 ```
 
-- **Most activity counts are not walking.** Counting a minute with at least 40 steps as walking, only `r pct(sh("wear_counts_in_walking"))` of all counts fall in walking minutes. The largest share, `r pct(one(bands, visit = "06", band = "1-19")$share_of_counts)`, comes from minutes with 1–19 steps: moving about rather than walking.
-- **Most MV activity is walking.** `r pct(sh("mv_minutes_walking"))` of MV minutes and `r pct(sh("mv_bout_minutes_walking"))` of the minutes in MV bouts are walking minutes.
-- **Much walking is not MV.** Only `r pct(sh("walking_minutes_reaching_mv"))` of walking minutes reach `r count(mv_cut)` counts a minute; at 60–79 steps a minute, `r pct(one(bands, visit = "06", band = "60-79")$share_minutes_mv)` do.
+- **Most activity counts are not walking.** The largest share of a participant's counts comes from minutes with 1–19 steps (mean `r pct(band_mean("1-19", "share_of_counts"))`).
+- **Most MV is walking.** At 40 or more steps a minute, `r pct(sh("mv_minutes_walking"))` of MV minutes are walking minutes.
+- **Most walking is not MV.** Only `r pct(band_mean("60-79", "share_minutes_mv"))` of minutes at 60–79 steps a minute are MV.
 
 # Self-reported walking against device walking
 
-**Device walkers.** A *step walking bout* uses the release's 10-minute MV bout rule with steps in place of counts, at `r paste(cads, collapse = ", ")` steps a minute (100 corresponds to at least moderate intensity; 60–79 is the slowest NHANES walking band). As in our earlier validation, a device walker has a bout on at least `r min_days` days a week. This threshold was our choice there, not a published standard; because some people may report walking on the strength of a single walk a week, each result below is also given for a 1-day rule (at least one bout in the measured week). Each comparison uses the same people for every device definition. PASE at 48 and 72 months is compared with the same visit's device week; the 96-month walking question and PASE, with the mean over a person's valid weeks.
+A **device walker** has a walking bout on at least `r min_days` days a week (no published standard exists; a 1-day rule is compared in the text). A **walking bout** lasts 10 or more minutes, 8 of every 10 at or above a threshold: `r mv_cut` counts a minute (an MV bout) or `r paste(cads, collapse = ", ")` steps a minute (a step bout; 100 is roughly moderate intensity). PASE at 48 and 72 months is compared with that visit's device week; the 96-month Walking Question and PASE with the mean of both weeks.
 
-```{r fig-accuracy, fig.height = 3.9, fig.cap = paste0("Sensitivity and specificity (95% CI) of each self-report against device walkers (a bout on at least ", min_days, " days a week), by how the bout is defined. Item: walked for exercise since age 50 (96 months). PASE: walking outside the home on any day, or on 3 or more days, in the past week.")}
-family_labels <- c(counts_mv = "Count MV bouts", setNames(paste0("Step bouts ≥ ", cads, "/min"), paste0("steps_", cads)))
+```{r fig-accuracy, fig.height = 4.1, fig.cap = paste0("Sensitivity and specificity (95% CI) of each self-report against device walkers (a walking bout on ", min_days, "+ days a week). MV bouts: ≥ ", mv_cut, " counts a minute (moderate-to-vigorous); step bouts: ≥ 40, 60 or 100 steps a minute. Walking Question: walked for exercise since age 50. PASE: walked outside the home on any day, or on 3+ days, in the past week.")}
+family_labels <- c(counts_mv = paste0("MV bouts (≥ ", mv_cut, " counts/min)"),
+                   setNames(paste0("Step bouts ≥ ", cads, "/min"), paste0("steps_", cads)))
 pro_order <- c("item96", "pase06_any", "pase06_frequent", "pase08_any", "pase08_frequent", "pase10_any", "pase10_frequent")
-pro_short <- c(item96 = "Item, 96 mo", pase06_any = "PASE any, 48 mo", pase06_frequent = "PASE 3+ d, 48 mo",
+pro_short <- c(item96 = "Walking Question, 96 mo", pase06_any = "PASE any, 48 mo", pase06_frequent = "PASE 3+ d, 48 mo",
                pase08_any = "PASE any, 72 mo", pase08_frequent = "PASE 3+ d, 72 mo",
                pase10_any = "PASE any, 96 mo", pase10_frequent = "PASE 3+ d, 96 mo")
 d <- acc[grepl(":bout_days$", acc$definition), ]
@@ -112,26 +118,27 @@ d$pro <- factor(pro_short[d$pro], levels = rev(pro_short[pro_order]))
 long <- rbind(data.frame(d[c("pro", "family")], stat = "Sensitivity", est = d$sensitivity, lo = d$sensitivity_lo, hi = d$sensitivity_hi),
               data.frame(d[c("pro", "family")], stat = "Specificity", est = d$specificity, lo = d$specificity_lo, hi = d$specificity_hi))
 ggplot(long, aes(est, pro, colour = family)) +
-  geom_pointrange(aes(xmin = lo, xmax = hi), position = position_dodge(width = 0.6), size = 0.25, linewidth = 0.4) +
+  geom_pointrange(aes(xmin = lo, xmax = hi), position = position_dodge(width = 0.65), size = 0.3, linewidth = 0.5) +
   facet_wrap(~stat, scales = "free_x") +
   scale_colour_manual(values = c(colours[["pase"]], "#7aa6d6", colours[["item"]], colours[["navy"]]), name = NULL) +
+  guides(colour = guide_legend(nrow = 2)) +
   labs(x = NULL, y = NULL) +
-  theme_minimal(base_size = 9) +
+  theme_minimal(base_size = 11) +
   theme(legend.position = "top", panel.grid.minor = element_blank(),
         panel.border = element_rect(fill = NA, colour = "grey60", linewidth = 0.4),
         panel.spacing.x = unit(1.2, "lines"))
 ```
 
-## The 96-month walking question
+## The 96-month Walking Question
 
-Against count MV bouts, the question's sensitivity is `r se("item96", "counts_mv")` and its specificity `r sp("item96", "counts_mv")`. Defining device walking by step bouts at `r min(cads)` steps a minute, which counts slow walking, makes `r pct(a("item96", low)$device_walker_share)` of people device walkers (against `r pct(a("item96", "counts_mv")$device_walker_share)` with count bouts), yet specificity barely moves (`r sp("item96", low)`): most of the least active people still answer yes. With the 1-day rule instead of 2+ days, specificity is a little higher but still low: `r range_sp("item96", families, "any_bout")` across the four bout definitions, against `r range_sp("item96", families)` with 2+ days. The 1-day rule also makes most people device walkers (`r pct(a("item96", low, "any_bout")$device_walker_share)` with step bouts at `r min(cads)` steps a minute), leaving few non-walkers to judge specificity on.
+Specificity is `r sp("item96", "counts_mv")` against MV bouts and `r sp("item96", low)` against step bouts at `r min(cads)` steps a minute, which count slow walking. Most of the least active participants still answer yes. A 1-day rule gives `r range_sp("item96", families, "any_bout")` across bout types (2+ days: `r range_sp("item96", families)`).
 
 ## PASE walking (48, 72 and 96 months)
 
-PASE "any walking" behaves like the 96-month question: specificity `r range_sp(pase_any, "counts_mv")` against count bouts and `r range_sp(pase_any, low)` against step bouts at `r min(cads)` steps a minute; with the 1-day rule, `r range_sp(pase_any, families, "any_bout")` across all bout definitions (against `r range_sp(pase_any, families)` with 2+ days). Restricting PASE to walking on 3 or more days roughly doubles specificity (`r range_sp(pase_freq, low)`), at a cost in sensitivity. The PASE walking score correlates slightly better with step measures than with count measures (Spearman ρ up to `r num(max(step_rho))` against `r num(max(count_rho))`).
+"Any walking" behaves like the Walking Question: specificity `r range_sp(pase_any, families)` across bout types (1-day rule: `r range_sp(pase_any, families, "any_bout")`). Walking on 3+ days roughly doubles specificity (`r range_sp(pase_freq, low)` against step bouts at `r min(cads)`), at some cost in sensitivity.
 
 # What this suggests
 
-A count-based device misses much slow walking, but counting slow walking as walking barely changes how often people with little device walking report walking. Two readings remain, and these data cannot tell them apart: the questions may capture walking that a single week of hip-worn accelerometry does not (occasional, seasonal or remembered walking, measured two to four years earlier for the 96-month question), or people may report walking that a device would not record at any threshold.
+Counting slow walking barely changes how often less active participants report walking. The questions may capture walking one device week misses, or reported walking a device would not record; these data cannot tell which.
 
-**Questions for the Northwestern group.** Which step-based definition of walking (cadence, bout rule) would you consider standard for the GT1M in this population? Did device or download settings differ between the two waves? Which step measure would you put first in a joint paper?
+**For the Northwestern group:** a standard step-based walking definition for the GT1M? Setting differences between waves? A preferred step measure?

@@ -131,3 +131,63 @@ def cadence_bands(w: pl.DataFrame, edges: list[int], mv_cutpoint: float) -> pl.D
         )
         .with_columns(pl.col("band").cast(pl.String))
     )
+
+
+def person_bands(w: pl.DataFrame, edges: list[int], mv_cutpoint: float) -> pl.DataFrame:
+    """Across participants, per cadence band: mean (95% CI) and quartiles of each person's
+    share of wear minutes, share of counts, and share of the band's minutes at MV.
+
+    A person counts for the counts share only with counts > 0, and for the MV share only with
+    minutes in the band; `persons` gives each n. Bands where a person has no minutes count as 0
+    for the minutes and counts shares.
+    """
+    labels = ["0"] + [f"{a}-{b - 1}" for a, b in zip(edges, edges[1:], strict=False)]
+    labels.append(f"{edges[-1]}+")
+    banded = w.with_columns(
+        pl.col("steps").cut([e - 0.5 for e in edges], labels=labels).cast(pl.String).alias("band")
+    )
+    per = banded.group_by("ID", "band").agg(
+        pl.len().alias("minutes"),
+        pl.col("cnt").sum().alias("counts"),
+        (pl.col("cnt") >= mv_cutpoint).sum().alias("mv"),
+    )
+    totals = per.group_by("ID").agg(
+        pl.col("minutes").sum().alias("all_minutes"), pl.col("counts").sum().alias("all_counts")
+    )
+    grid = totals.select("ID").join(pl.DataFrame({"band": labels}), how="cross")
+    per = (
+        grid.join(per, on=["ID", "band"], how="left")
+        .join(totals, on="ID")
+        .with_columns(pl.col("minutes", "counts", "mv").fill_null(0))
+        .with_columns(
+            (pl.col("minutes") / pl.col("all_minutes")).alias("share_of_minutes"),
+            pl.when(pl.col("all_counts") > 0)
+            .then(pl.col("counts") / pl.col("all_counts"))
+            .alias("share_of_counts"),
+            pl.when(pl.col("minutes") > 0)
+            .then(pl.col("mv") / pl.col("minutes"))
+            .alias("share_minutes_mv"),
+        )
+    )
+    rows = []
+    for band in labels:
+        b = per.filter(pl.col("band") == band)
+        for measure in ("share_of_minutes", "share_of_counts", "share_minutes_mv"):
+            x = b[measure].drop_nulls()
+            n = x.len()
+            mean = x.mean() if n else None
+            half = 1.959963984540054 * x.std() / n**0.5 if n > 1 else None
+            rows.append(
+                {
+                    "band": band,
+                    "measure": measure,
+                    "persons": n,
+                    "mean": mean,
+                    "ci_lo": mean - half if half is not None else None,
+                    "ci_hi": mean + half if half is not None else None,
+                    "q1": x.quantile(0.25) if n else None,
+                    "median": x.median() if n else None,
+                    "q3": x.quantile(0.75) if n else None,
+                }
+            )
+    return pl.DataFrame(rows)
