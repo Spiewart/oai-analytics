@@ -65,9 +65,10 @@ def reading_projects(A: Resolved, visit: str, anchor: str) -> tuple[int, ...]:
     """Reading projects for `visit`, in preference order.
 
     Project `cohort.reading_project` (15) before the anchor, and throughout when the anchor is
-    before V06. At and after an anchor of V06 or later, `readings.followup_project`, so the
-    anchor and follow-up grades come from one reading project; `readings.anchor_project =
-    "p15"` takes the anchor grade from Project 15 instead.
+    before V06. After an anchor of V06 or later, `readings.followup_project`. At that anchor,
+    under `readings.anchor_project = "followup"`, the follow-up project's reading of the anchor
+    film where one exists (a reader-consistent base), else Project 15's; under `"p15"`,
+    Project 15 only.
     """
     base = (int(setting(A, "cohort.reading_project", 15)),)
     followup = FOLLOWUP_PROJECTS[
@@ -76,8 +77,9 @@ def reading_projects(A: Resolved, visit: str, anchor: str) -> tuple[int, ...]:
     anchor_rule = _choice(A, "readings.anchor_project", "followup", ANCHOR_PROJECT)
     if anchor < FIRST_FOLLOWUP_ANCHOR or visit < anchor:
         return base
-    if visit == anchor and anchor_rule == "p15":
-        return base
+    if visit == anchor:
+        # "followup": the follow-up project's reading of the anchor film, else Project 15's
+        return base if anchor_rule == "p15" else (*followup, *base)
     return followup
 
 

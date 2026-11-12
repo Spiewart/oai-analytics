@@ -124,9 +124,27 @@ def test_anchor_project():
     assert (value_at(p15, "06", "kl"), value_at(p15, "06", "readprj")) == (1.0, 15)
     assert value_at(p15, "08", "kl") == 3.0
     p37 = assemble_status(soa, reads, resolved(**{"readings.followup_project": "p37"}), "06")
-    assert value_at(p37, "06", "kl") is None and value_at(p37, "06", "read") is False
+    assert (value_at(p37, "06", "kl"), value_at(p37, "06", "readprj")) == (1.0, 15)  # fallback
     baseline = assemble_status(soa, reads, resolved(), "00")  # Project 15 throughout
     assert (value_at(baseline, "06", "kl"), value_at(baseline, "08", "read")) == (1.0, False)
+
+
+def test_anchor_falls_back_to_project_15():
+    # knee A: Projects 15 (KL 1) and 43 (KL 2) read V06; knee B: Project 15 only (KL 3)
+    soa = {"R": soa_frame(visits=("06", "08")), "L": soa_frame(visits=("06", "08"))}
+    reads = readings(
+        (1, "R", "06", 1.0, 15),
+        (1, "R", "06", 2.0, 43),
+        (1, "L", "06", 3.0, 15),
+        (1, "L", "08", 3.0, 15),  # Project 15 is never used after the anchor
+    )
+    followup = assemble_status(soa, reads, resolved(), "06")
+    assert (value_at(followup, "06", "kl"), value_at(followup, "06", "readprj")) == (2.0, 43)
+    b = (value_at(followup, "06", "kl", side="L"), value_at(followup, "06", "readprj", side="L"))
+    assert b == (3.0, 15)
+    assert value_at(followup, "08", "read", side="L") is False
+    p15 = assemble_status(soa, reads, resolved(**{"readings.anchor_project": "p15"}), "06")
+    assert (value_at(p15, "06", "kl"), value_at(p15, "06", "kl", side="L")) == (1.0, 3.0)
 
 
 def test_unknown_ledger_values_are_rejected():
@@ -328,8 +346,9 @@ def test_knee_status_on_the_synthetic_release(isolated_settings, monkeypatch):
     read = knees.filter(pl.col("read"))
     assert set(read["readprj"].unique()) == {15}  # anchor V00: Project 15 throughout
     later = knee_status(A, ("06", "08", "10"), "06").filter(pl.col("read"))
-    assert set(later["visit"].unique()) == {"08", "10"}  # no Project 37/43 V06 rows here
-    assert set(later["readprj"].unique()) == {37, 43}
+    # no Project 37/43 V06 rows here: the anchor falls back to Project 15
+    assert set(later.filter(pl.col("visit") == "06")["readprj"].unique()) == {15}
+    assert set(later.filter(pl.col("visit") > "06")["readprj"].unique()) == {37, 43}
     assert value_at(later, "08", "readprj", id_=2000013) == 37  # READPRJ 42 read as 37
     with pytest.raises(ValueError, match="anchor"):
         knee_status(A, ("08", "10"), "06")
