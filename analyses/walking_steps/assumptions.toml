@@ -1,4 +1,6 @@
-# Assumptions for "how much of the GT1M activity counts is walking".
+# Assumptions for walking from per-minute steps: how much of the GT1M activity counts is walking,
+# and how self-reported walking (the 96-month item, PASE walking at 48, 72 and 96 months)
+# agrees with count-based and step-based device walking.
 # Per-minute steps (oai.steps) classify each wear minute as walking or not; the step
 # reports what share of the count-based measures fall in walking minutes.
 # Wear, intensity and bout rules are the release's, as in analyses/walking_validation.
@@ -101,6 +103,71 @@ status = "assumed"
 source = "20-step bands: Tudor-Locke & Rowe 2012's 60-79 to 120+ bands, with 1-59 split at 20 and 40"
 rationale = "Lower edges of the cadence bands in cadence_bands.csv; 0 steps is its own band."
 
+[reference.step_cadences]
+value = [40, 60, 100]
+status = "assumed"
+source = "Step walking bouts at three cadences: 40 (this ledger's walking minute), 60 (lowest NHANES walking band) and 100 steps/min (moderate intensity; Tudor-Locke & Rowe 2012)"
+rationale = "Every cadence is reported beside the count-based MV bouts, so no single step definition is built in."
+
+[reference.min_bout_days_per_week]
+value = 2.0
+status = "assumed"
+source = "As walking_validation reference.min_bout_days_per_week (device habitual walker = >= 2 bout-days per valid week)"
+
+[reference.min_bout_minutes_per_week]
+value = 150.0
+status = "assumed"
+source = "As walking_validation reference.min_bout_minutes_per_week (DHHS 2008 aerobic guideline volume)"
+
+[exposure.yes_without_amount_as]
+value = "non-walker"
+status = "open"
+source = "As walking_validation exposure.yes_without_amount_as (reproduces Lo 2022's 887 walkers); question for the original authors in TODO.md"
+choices = ["walker", "non-walker", "exclude"]
+
+[pase.walking_scoring]
+value = { days = [0.0, 1.5, 3.5, 6.0], hours = [0.5, 1.5, 3.0, 5.0], weight = 20.0 }
+status = "assumed"
+source = "Washburn et al. 1993 PASE scoring for item 2 (walking outside the home), as walking_validation"
+
+[pase.walker_threshold]
+value = 0.0
+status = "assumed"
+source = "As walking_validation: a PASE walker reports any walking outside the home in the past 7 days (subscore > 0)"
+
+[pase.frequent_days_code]
+value = 2
+status = "assumed"
+source = "As walking_validation components.pase_frequency_cuts: PASE item 2 days code >= 2 = walking on at least 3-4 days"
+rationale = "A frequency-restricted PASE walker, reported beside 'any walking'."
+choices = [1, 2, 3]
+
+[pase.visits]
+value = ["06", "08", "10"]
+status = "assumed"
+source = "PASE at 48, 72 and 96 months: the two device waves and the visit of the walking question"
+
+[pase.device_pairing]
+value = "adjacent_wave"
+status = "assumed"
+source = "As walking_validation pase.device_pairing: PASE at 48 and 72 months against the same visit's device wave; PASE at 96 months against the mean over valid waves"
+choices = ["adjacent_wave", "two_wave_mean"]
+
+[validity.auc_measures]
+value = ["counts_per_day", "mv_min", "purposeful_min", "steps", "peak_cadence", "cadence40_min", "cadence60_min", "cadence100_min", "step_bout40_min", "step_bout60_min", "step_bout100_min"]
+status = "assumed"
+source = "Every continuous count and step measure: AUC for each yes/no self-report, Spearman with the PASE walking subscore"
+
+[validity.bootstrap_reps]
+value = 1000
+status = "assumed"
+source = "As walking_validation validity.bootstrap_reps (AUC percentile bootstrap, stratified by self-report)"
+
+[validity.seed]
+value = 20261112
+status = "assumed"
+source = "Fixed seed for the AUC bootstrap"
+
 [variants.primary_cadence_60]
 description = "Headline walking minute = >= 60 steps/min (slow walking)"
 set = { "walking.primary_cadence" = 60 }
@@ -112,3 +179,11 @@ set = { "walking.primary_cadence" = 100 }
 [variants.any_step_day]
 description = "Count a person with at least one complete step day"
 set = { "sample.min_step_days" = 1 }
+
+[variants.pase_two_wave_mean]
+description = "Every PASE visit against the mean over valid device waves"
+set = { "pase.device_pairing" = "two_wave_mean" }
+
+[variants.yes_without_amount_as_walker]
+description = "A 96-month 'yes' with no amount answers counts as a walker"
+set = { "exposure.yes_without_amount_as" = "walker" }

@@ -1,12 +1,13 @@
-"""walking_counts: walking-minute shares of the count measures, on synthetic minutes."""
+"""walking_steps: walking-minute shares of the count measures, on synthetic minutes."""
 
 import sys
 from pathlib import Path
 
+import numpy as np
 import polars as pl
 import pytest
 
-sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "analyses" / "walking_counts"))
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "analyses" / "walking_steps"))
 
 import share as s  # noqa: E402
 
@@ -118,3 +119,76 @@ def test_wear_minute_share_divides_by_the_number_of_minutes():
     out = s.shares(w, [40]).filter(pl.col("measure") == "wear_minutes_walking").row(0, named=True)
     assert out["pooled"] == pytest.approx(0.5)
     assert (out["person_q1"], out["person_q3"]) == (pytest.approx(1 / 3), 1.0)
+
+
+# --- devices.py: step walking bouts and walker definitions
+import devices as dv  # noqa: E402
+import pro  # noqa: E402
+
+
+def test_step_bouts_mirror_the_count_bout_rule():
+    # 12 minutes at 70 steps/min on a valid day: one 12-minute walking bout at >= 60, none at 100
+    m = minutes({(1, 1): [(800.0, 70.0)] * 12 + [(50.0, 0.0)] * 588})
+    rules = DeviceRules(min_valid_days=1)
+    day = dv.step_bouts_daily(m, rules, [60, 100]).row(0, named=True)
+    assert (day["step_bout60_min"], day["step_bouts60"]) == (12, 1)
+    assert (day["step_bout100_min"], day["step_bouts100"]) == (0, 0)
+
+
+def test_short_step_runs_are_not_bouts():
+    m = minutes({(1, 1): [(800.0, 70.0)] * 9 + [(50.0, 0.0)] * 591})
+    day = dv.step_bouts_daily(m, DeviceRules(min_valid_days=1), [60]).row(0, named=True)
+    assert day["step_bouts60"] == 0
+
+
+def test_person_wave_has_count_and_step_measures_and_nulls_thin_step_data():
+    walk = [(800.0, 70.0)] * 12 + [(50.0, 0.0)] * 588
+    m = minutes({(1, 1): walk, (1, 2): walk, (2, 1): [(c, None) for c, _ in walk]})
+    p = dv.person_wave(m, DeviceRules(min_valid_days=1), [60], min_step_days=1).sort("ID")
+    one, two = p.row(0, named=True), p.row(1, named=True)
+    assert one["step_bout60_days_per_week"] == 7.0 and one["step_bout60_min"] == 12.0
+    assert one["bout_days_per_week"] == 0.0  # 800 counts/min is light, not MV
+    assert two["valid"] and two["step_bout60_days_per_week"] is None and two["steps"] is None
+
+
+def test_combine_skips_a_wave_without_step_measures():
+    device = pl.DataFrame(
+        {"ID": [1, 1], "wave": ["06", "08"], "valid": [True, True], "steps": [4000.0, None]}
+    )
+    row = dv.combine(device, ["steps"]).row(0, named=True)
+    assert row["n_waves"] == 2 and row["steps"] == 4000.0
+
+
+def test_walker_definitions_cover_every_family_and_rule():
+    names = [d[0] for d in dv.walker_definitions(2.0, 150.0, [40, 100])]
+    assert len(names) == 9 and "counts_mv:bout_days" in names and "steps_40:bout_minutes" in names
+
+
+# --- pro.py: accuracy statistics
+def test_accuracy_two_by_two():
+    p = pl.Series([True, True, True, False, False, None])
+    r = pl.Series([True, False, False, True, False, True])
+    a = pro.accuracy(p, r)
+    assert (a["tp"], a["fp"], a["fn"], a["tn"], a["n"]) == (1, 2, 1, 1, 5)
+    assert a["sensitivity"] == 0.5 and a["specificity"] == pytest.approx(1 / 3)
+    assert a["youden_j"] == pytest.approx(0.5 + 1 / 3 - 1)
+    assert a["agreement"] == 0.4
+
+
+def test_wilson_interval_known_value():
+    lo, hi = pro.wilson(8, 10)
+    assert lo == pytest.approx(0.4902, abs=1e-4) and hi == pytest.approx(0.9433, abs=1e-4)
+
+
+def test_auc_counts_ties_as_half():
+    x = np.array([3.0, 2.0, 2.0, 1.0])
+    yes = np.array([True, True, False, False])
+    assert pro.auc(x, yes) == pytest.approx((1 + 1 + 0.5 + 1) / 4)
+
+
+def test_auc_ci_brackets_the_estimate():
+    rng = np.random.default_rng(1)
+    x = pl.Series(np.r_[rng.normal(1, 1, 200), rng.normal(0, 1, 200)])
+    yes = pl.Series([True] * 200 + [False] * 200)
+    out = pro.auc_with_ci(x, yes, reps=200, seed=3)
+    assert out["auc_lo"] < out["auc"] < out["auc_hi"] and out["auc"] > 0.7
