@@ -23,6 +23,7 @@ def test_expected_analyses_exist():
         "lo2022_walking",
         "luyten_early_oa",
         "progression_definitions",
+        "walking_counts",
         "walking_validation",
     ]
 

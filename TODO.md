@@ -59,6 +59,11 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 - **Finish the amendment-12 outputs that are computed but not reported** — <!-- skip --> Two follow-ups from the answer-level sub-analyses, neither of them presentation: (1) the 12c correction-factor rows (Se, Sp, J and 1/J) for the months-per-year definitions as well as the times-per-month ones (their J is already in `validity_components_item.csv`); (2) statistics the components step computes but the report does not yet show: the Jonckheere–Terpstra trend across the weekly-walking bins and PPV and NPV at the guideline volume (12a), and the Lo 2022 subset's item shares and trend tests (12b). Report presentation polish is planned in the report redesign, not here.
   [analyses/walking_validation/components.R](analyses/walking_validation/components.R)
 
+### Walking share of the activity counts (`analyses/walking_counts`)
+
+- **Choose the headline walking-minute threshold** — <!-- skip --> `walking.primary_cadence` is `open` (default 40 steps/min; variants 60 and 100). No published threshold defines a walking minute; 60 is the lowest NHANES walking band and 100 is moderate intensity (Tudor-Locke & Rowe 2012). Every threshold is in the CSVs, so this only sets the headline sentence. Decide with the study team before results are shared.
+  [analyses/walking_counts/assumptions.toml](analyses/walking_counts/assumptions.toml)
+
 ### Analyst questions (resolve when each project starts)
 
 - **Nominal months for visits V11–V14** — <!-- skip --> Confirm from `AllClinical13_ReleaseComments_Yr14.pdf` / `AllClinical14_ReleaseComments_Y16.pdf`, then fill in `[visits]` in `config/oai.toml`. Low impact: those visits have `V##VISDYS`.
