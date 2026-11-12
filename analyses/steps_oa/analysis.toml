@@ -1,0 +1,32 @@
+name = "steps_oa"
+description = "GT1M steps at 48 and 72 months and incident and progressive knee OA (radiographic, symptomatic, replacement, measured JSW), in both directions."
+
+[inputs]
+# The per-minute steps are not a release table: they are read from OAI_STEPS_DIR (oai.steps).
+tables = [
+    "enrollees", "outcomes:99",
+    "allclinical:05", "allclinical:06", "allclinical:08", "allclinical:10", "allclinical:12",
+    "allclinical:13", "allclinical:14",
+    "acceldatabymin:06", "acceldatabymin:08",
+    "kxr_sq_bu:05", "kxr_sq_bu:06", "kxr_sq_bu:08", "kxr_sq_bu:10", "kxr_sq_bu:12",
+    "kxr_qjsw_duryea:06", "kxr_qjsw_duryea:08", "kxr_qjsw_duryea:10",
+]
+
+[[steps]]
+id = "cohort"
+lang = "python"
+stage = "local"
+entry = "build_frame.py"
+
+[[steps]]
+id = "models"
+lang = "r"
+stage = "local"
+entry = "models.R"
+needs = ["cohort"]
+
+[outputs]
+aggregate = [
+    "flow.csv", "descriptives.csv", "table_*.csv", "curve_*.csv", "metrics_*.csv",
+    "assumptions.resolved.json",
+]

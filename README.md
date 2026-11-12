@@ -74,6 +74,7 @@ Coded cells (`1: Right`) load as their code, with labels in the codebook. Missin
 |---|---|---|
 | `activity_agreement` | local | [analysis plan §1–9](docs/reference/oai-activity-agreement-analysis-plan.md) |
 | `progression_definitions` | local | [crosswalk](docs/reference/oai-progression-definition-crosswalk.md) |
+| `steps_oa` | local | GT1M steps at 48 and 72 months and incident and progressive knee OA, in both directions ([README](analyses/steps_oa/README.md)) |
 | `crepitus` | local | Crepitus measures in the OAI: sample sizes and events by visit and cohort ([README](analyses/crepitus/README.md) · [literature ledger](analyses/crepitus/LITERATURE.md)) |
 | `crepitus_activity` | local | Crepitus and GT1M activity and steps at 48 and 72 months, in both directions ([README](analyses/crepitus_activity/README.md)) |
 | `crepitus_soa_longterm` | local | S2 and exam crepitus and incident symptomatic OA to 96 and 120 months ([README](analyses/crepitus_soa_longterm/README.md)) |

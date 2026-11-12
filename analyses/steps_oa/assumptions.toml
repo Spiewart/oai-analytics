@@ -1,0 +1,370 @@
+# Assumptions for GT1M steps at 48 and 72 months and incident and progressive knee OA, both directions.
+# Spec: docs/superpowers/specs/2026-11-12-steps-oa-design.md
+# Outcome rules come from src/oai/derive/knee_outcomes.py
+# (docs/superpowers/specs/2026-11-12-knee-outcomes-module-design.md).
+# device.*, steps.day_rule and sample.min_step_days are copied verbatim from
+# analyses/walking_steps/assumptions.toml; outcomes.* (except outcomes.roa_replacement),
+# cohort.reading_project and cohort.side are copied verbatim from
+# analyses/crepitus_soa_longterm/assumptions.toml. They must stay identical to them
+# (tests/test_steps_oa_definition.py). cohort.side is read by soa_status; the knee-level module
+# analyses both knees and overrides it. periods.horizon, horizon.selection and
+# progression.risk_kl are defined here: periods.horizon differs from crepitus_soa_longterm's.
+
+[cohort.side]
+value = "R"
+status = "confirmed"
+source = "Lo 2018 Methods, Study Design: right knee only (GEE adjusts for one clustering level)"
+choices = ["R", "L"]
+
+[cohort.reading_project]
+value = 15
+status = "assumed"
+source = "Lo 2018 Methods: central readers; Project 15 reproduces the 877 baseline right-knee SOA exclusion exactly"
+alternatives = [37, 43]
+
+[outcomes.pain_baseline_item]
+value = "P01KP{side}12CV"
+status = "assumed"
+source = "Lo 2018 Methods quote the 12-month frequent-pain question; screening-visit item, as in analyses/lo2022_walking"
+
+[outcomes.pain_followup_item]
+value = "V{visit}KP{side}12CV"
+status = "assumed"
+source = "Lo 2018 Methods: symptoms at 12, 24, 36, 48 months; AllClinical follow-up item"
+
+[outcomes.roa_rule]
+value = "same_visit"
+status = "open"
+source = "Lo 2018 Methods: ROA = tibiofemoral KL >= 2; whether ROA is carried forward once seen is not stated"
+choices = ["same_visit", "ever"]
+
+[outcomes.arthroplasty_scope]
+value = "right"
+status = "open"
+source = "Lo 2018 Methods: 'Any participant with a knee arthroplasty was identified as having Sx, ROA, and SOA'"
+rationale = "'Any participant' could mean a replacement in either knee"
+choices = ["right", "either"]
+
+[outcomes.arthroplasty_timing]
+value = "by_visit_days"
+status = "assumed"
+source = "A replacement counts from the first outcome visit whose V##VISDYS is on or after the replacement day"
+choices = ["by_visit_days"]
+
+[outcomes.soa_missing]
+value = "both_required"
+status = "open"
+source = "Lo 2018 does not say whether SOA is missing or known absent when one component (pain or KL) is missing"
+rationale = "known_false: no frequent pain (or KL < 2) rules SOA out even if the other component is missing"
+choices = ["both_required", "known_false"]
+
+[outcomes.replacement_counts]
+value = "adjudicated_or_self_report"
+status = "open"
+source = "oai.derive.knee.REPLACEMENT_STATUS_COUNTS (from Lo 2022 p.1661): V99E*RPCF of 1 (self-reported) or 3 (adjudicated, confirmed), or RPSN = 1 (seen on a follow-up X-ray). Lo 2018 says only 'any participant with a knee arthroplasty'"
+rationale = "A counted replacement with no day count (V99E*DAYS blank) never becomes SOA at a follow-up visit"
+choices = ["adjudicated_or_self_report"]
+
+[outcomes.missing_visit_days]
+value = "nominal_month"
+status = "assumed"
+source = "When a participant has no V##VISDYS for an outcome visit, the replacement-timing check uses the visit's nominal month (config/oai.toml [visits]) in days"
+choices = ["nominal_month"]
+
+[outcomes.roa_source]
+value = "outcomes99"
+status = "assumed"
+source = "kXR_SQ_BU_Descrip.pdf sections 1.3 and Appendix B recommend the OUTCOMES99 summary variables (V99E?XIOA) over merging reading projects by hand"
+rationale = "Earliest visit with KL >= 2 from Projects 15, 37 and 43, carried forward; readings (Project 15, same visit) is refused past 48 months"
+choices = ["readings", "outcomes99"]
+
+[outcomes.roa_definition]
+value = "kl2"
+status = "open"
+source = "OUTCOMES99 offers incident KL >= 2 (V99E?XIOA) and incident KL >= 2 with JSN (V99E?XIOAN); Lo 2018 used KL >= 2"
+choices = ["kl2", "kl2_jsn"]
+
+[outcomes.roa_unread]
+value = "unknown"
+status = "assumed"
+source = "OUTCOMES99 'no incidence' (V99E?XIOA = 2) holds only while the knee was read; V99E?XNOA gives the last visit with no ROA"
+rationale = "unknown: after that visit (and between it and an incident visit) ROA is missing; no_roa: taken as absent (the first version of this analysis)"
+choices = ["unknown", "no_roa"]
+
+[periods.horizon]
+value = "10"
+status = "confirmed"
+source = "User decision 2026-11-12: follow incidence and progression from 48 months (V06) to 96 months (V10), the end of the complete reading projects"
+rationale = "10: 96 months; 12 (120 months) depends on Project 43, whose selection the release does not document, and only 3,435 knees were read at V12"
+choices = ["10", "12"]
+
+[outcomes.roa_replacement]
+value = "event"
+status = "assumed"
+source = "Value names as in analyses/luyten_early_oa: a knee replacement is a radiographic OA event"
+rationale = "event: a replaced knee counts as having ROA (and SOA) from its replacement; ignore: replacement does not make a knee a case"
+choices = ["event", "ignore"]
+
+[readings.anchor_project]
+value = "followup"
+status = "assumed"
+source = "Controller ruling 2026-11-12 (knee_outcomes module): grades at the 48-month anchor visit come from the follow-up reading project where it re-read the anchor film"
+rationale = "followup: the follow-up reading project's reading of the anchor film where one exists, else Project 15, so anchor and follow-up grades come from the same readers; p15: Project 15 only"
+choices = ["followup", "p15"]
+
+[readings.followup_project]
+value = "latest"
+status = "open"
+source = "Follow-up films (72 and 96 months) were read in Project 37 (some by Project 42); which project's grade counts is not fixed by the release"
+rationale = "latest: the most recent project that read the film; 37: Project 37 only"
+choices = ["latest", "37"]
+
+[incidence.model]
+value = "discrete_time"
+status = "confirmed"
+source = "User decision 5, 2026-11-12: a discrete-time model by visit (V08, V10) is primary, since a knee contributes visits until it has the outcome or its readings stop"
+rationale = "by_horizon: the companion logistic 'outcome by V10' model, which needs known-or-case selection (horizon.selection)"
+choices = ["discrete_time", "by_horizon"]
+
+[horizon.selection]
+value = "known_or_case"
+status = "open"
+source = "Spec decision 5, as in analyses/crepitus_soa_longterm: keeps knees whose outcome at the horizon is known or that became cases earlier (applies to the by_horizon model)"
+rationale = "known_or_case keeps cases who left and drops non-cases who left (favours cases); complete keeps only knees with a known outcome at the horizon"
+choices = ["known_or_case", "complete"]
+
+[progression.risk_kl]
+value = "2-3"
+status = "open"
+source = "Same entry as analyses/crepitus [progression.risk_kl]; no consensus, docs/reference/oai-progression-definition-crosswalk.md section 1"
+rationale = "KL progression needs a baseline grade that can still worsen (KL 4 cannot, except by replacement) and, for most definitions, existing radiographic OA. '1-3' also admits doubtful OA (KL 1)."
+alternatives = ["1-3"]
+choices = ["2-3", "1-3"]
+
+[progression.models]
+value = "read_knees"
+status = "confirmed"
+source = "User decision 6, 2026-11-12: KL and JSN progression are descriptive only in the primary analysis; models are a sensitivity fitted in the knees that were read (Project 37/42 read only some knees after 48 months)"
+choices = ["read_knees"]
+
+[progression.jsn_rule]
+value = "whole_grade"
+status = "assumed"
+source = "oai.derive.knee_outcomes.progression: JSN (medial JSM and lateral JSL grades, which can carry half grades) progresses when a follow-up grade reaches the next whole grade"
+rationale = "whole_grade: floor(follow-up) >= floor(base) + 1; within_grade: any rise over the base grade, half grades included"
+choices = ["whole_grade", "within_grade"]
+
+[progression.replacement_as_kl4]
+value = true
+status = "assumed"
+source = "KL 4 knees can only progress by replacement (spec, progression sample): a replacement counts as progression to KL 4"
+rationale = "True counts a replaced knee as progressed; false leaves replacement as its own outcome"
+
+[jsw.threshold_mm]
+value = 0.7
+status = "confirmed"
+source = "User decision 8, 2026-11-12: loss of at least 0.7 mm in medial minimum JSW from 48 to 96 months (FNIH threshold) leads; the continuous change in mm alongside"
+
+[jsw.middle]
+value = "keep"
+status = "assumed"
+source = "FNIH progressors lose at least 0.7 mm; the continuous change stays alongside"
+rationale = "keep: knees losing between 0.5 and 0.7 mm stay in the sample as non-progressors; exclude: they are dropped (jsw.nonprogressor_mm is the upper bound of the excluded band, FNIH-style contrast)"
+choices = ["keep", "exclude"]
+
+[jsw.nonprogressor_mm]
+value = 0.5
+status = "assumed"
+source = "FNIH contrast: non-progressors lose less than 0.5 mm; used when jsw.middle = exclude"
+
+[steps.bands]
+value = [5000, 7500, 10000]
+status = "assumed"
+source = "Steps/day cut points for band descriptives and tables (conventional 5,000, 7,500 and 10,000 steps/day)"
+
+[steps.spline_knots]
+value = [0.10, 0.50, 0.90]
+status = "assumed"
+source = "Natural-spline knots at the 10th, 50th and 90th percentiles of steps/day (Harrell's three-knot placement)"
+
+[steps.transform]
+value = "none"
+status = "assumed"
+source = "Odds ratios per 1,000 steps/day; log(x + 1) as a variant gives ORs per log unit"
+choices = ["none", "log"]
+
+[tkr.min_events]
+value = 20
+status = "assumed"
+source = "Knee replacement models are fitted only with at least this many events; fewer are reported descriptively"
+
+[tkr.censor]
+value = "last_visit"
+status = "assumed"
+source = "Replacement follow-up runs longer than the X-ray readings (OUTCOMES99 V99E?KDAYS); knees without replacement are censored at the last visit"
+choices = ["last_visit"]
+
+[reverse.coding]
+value = "any"
+status = "assumed"
+source = "Direction B: incident or progressing OA between 48 and 96 months predicts steps at 72 months"
+rationale = "any: a knee with an event in either knee marks the person (0/1); count: the number of affected knees (0/1/2)"
+choices = ["any", "count"]
+
+[reverse.r2_kl_read]
+value = false
+status = "assumed"
+source = "R2 (steps at 72 months after worsening) uses OUTCOMES99 incidence and replacement; KL worsening needs the follow-up reading, available only for read knees (spec decision 6)"
+rationale = "false: R2 omits KL worsening; true: adds it, restricted to the read knees"
+
+[model.covariates]
+value = ["age", "sex", "bmi", "wear_hr"]
+status = "confirmed"
+source = "Spec model 1: age, sex, BMI and wear hours/day at the wave"
+
+[model.covariates_2_knee]
+value = ["kl48", "womac48"]
+status = "confirmed"
+source = "Spec model 2 for knee-level models: the knee's KL grade and WOMAC pain at 48 months; pain may confound or mediate"
+
+[model.covariates_2_person]
+value = ["kl_max", "womac_pain_max"]
+status = "confirmed"
+source = "Spec model 2 for person-level models: the higher KL grade and the worse knee's WOMAC pain at 48 months, as in analyses/crepitus_activity"
+
+[model.corstr]
+value = "exchangeable"
+status = "assumed"
+source = "Two knees per person: logistic GEE with an exchangeable working correlation, as in analyses/crepitus_activity B3"
+choices = ["exchangeable", "independence"]
+
+[sample.exclude_baseline_pain]
+value = false
+status = "assumed"
+source = "Incident SOA already conditions on no frequent pain at 48 months; this variant also drops people with any knee pain at 48 months"
+rationale = "false keeps knees with ROA but no frequent pain; true excludes baseline pain for a cleaner exposure-first order"
+
+[variants.horizon_120]
+description = "Follow-up to 120 months (V12; depends on Project 43)"
+set = { "periods.horizon" = "12" }
+
+[variants.roa_kl2_jsn]
+description = "ROA = incident KL >= 2 with JSN (V99E?XIOAN)"
+set = { "outcomes.roa_definition" = "kl2_jsn" }
+
+[variants.exclude_baseline_pain]
+description = "Drop people with any knee pain at 48 months"
+set = { "sample.exclude_baseline_pain" = true }
+
+[variants.progression_kl_1_to_3]
+description = "Progression risk set is KL 1-3 at 48 months"
+set = { "progression.risk_kl" = "1-3" }
+
+[variants.log_steps]
+description = "Steps enter as log(x + 1)"
+set = { "steps.transform" = "log" }
+
+[variants.by_horizon]
+description = "Companion logistic 'outcome by V10' model in place of discrete-time"
+set = { "incidence.model" = "by_horizon" }
+
+[variants.anchor_p15]
+description = "48-month anchor grade from Project 15 only"
+set = { "readings.anchor_project" = "p15" }
+
+[variants.followup_p37]
+description = "Follow-up grades from Project 37 only"
+set = { "readings.followup_project" = "37" }
+
+[variants.reverse_count]
+description = "Reverse direction coded as the number of affected knees (0/1/2)"
+set = { "reverse.coding" = "count" }
+
+[variants.r2_kl_worsening_read]
+description = "R2 also counts KL worsening in the read knees"
+set = { "reverse.r2_kl_read" = true }
+
+[variants.jsw_fnih_middle]
+description = "Drop knees losing 0.5 to 0.7 mm (FNIH contrast)"
+set = { "jsw.middle" = "exclude" }
+
+[variants.jsn_within_grade]
+description = "JSN progression includes within-grade changes"
+set = { "progression.jsn_rule" = "within_grade" }
+
+[device.nonwear_minutes]
+value = 90
+status = "confirmed"
+source = "AccelData_Descrip.pdf (non-wear >90 zero minutes); >= 90 within each calendar day reproduces the release's by-day files"
+rationale = "Validated for knee-OA wear patterns; 60 is the NHANES rule"
+alternatives = [60]
+
+[device.interrupt_minutes]
+value = 2
+status = "confirmed"
+source = "AccelData_Descrip.pdf: interruptions of up to 2 consecutive minutes"
+
+[device.interrupt_ceiling]
+value = 100
+status = "confirmed"
+source = "AccelData_Descrip.pdf: interruptions have counts < 100"
+
+[device.valid_day_hours]
+value = 10.0
+status = "confirmed"
+source = "AccelData_Descrip.pdf: valid day = >= 10 wear hours"
+
+[device.max_valid_days]
+value = 7
+status = "confirmed"
+source = "AccelData_Descrip.pdf: only the first 7 valid days are used"
+
+[device.min_valid_days]
+value = 4
+status = "confirmed"
+source = "Accelerometry_Descrip.pdf: 4-7 valid days"
+
+[device.mv_cutpoint]
+value = 2020
+status = "confirmed"
+source = "Troiano 2008 cutpoint, as in the release"
+
+[device.light_floor]
+value = 100
+status = "confirmed"
+source = "Troiano 2008 light intensity 100-2019 counts/min, as in the release"
+
+[device.bout_window]
+value = 10
+status = "confirmed"
+source = "AccelData_Descrip.pdf: MV bout rolling window of 10 minutes"
+
+[device.bout_need]
+value = 8
+status = "confirmed"
+source = "AccelData_Descrip.pdf: a bout is established when 8 of 10 minutes are at or above the cutpoint"
+
+[device.bout_stop_below]
+value = 3
+status = "confirmed"
+source = "AccelData_Descrip.pdf: the bout stops when 3 minutes in the 10-minute window are below the cutpoint"
+
+[device.purposeful_bout_minutes]
+value = 10
+status = "assumed"
+source = "Spec 5: purposeful walking proxy = minutes in >= 10-minute MV bouts"
+
+[steps.day_rule]
+value = "complete"
+status = "confirmed"
+source = "User decision 2026-11-12 (oai.derive.accel.step_day_usable)"
+rationale = "A valid day with any wear minute lacking steps is left out of the step analysis; 4 valid days across both waves are partly missing. Days are still chosen by wear alone."
+choices = ["complete"]
+
+[sample.min_step_days]
+value = 4
+status = "assumed"
+source = "Mirrors device.min_valid_days: a person counts when at least this many of their first valid days have complete steps"
+rationale = "Keeps the per-person shares on the same footing as the release's valid-person rule."
+alternatives = [1]
+choices = [1, 4]
