@@ -58,6 +58,8 @@ class Run:
         self.flow = {(r["sample"], r["step"]): int(r["n"]) for r in read_csv(folder / "flow.csv")}
         self.desc = read_csv(folder / "descriptives.csv")
         self.info = json.loads((folder / "run_info.json").read_text())
+        resolved = json.loads((folder / "assumptions.resolved.json").read_text())
+        self.assumptions = {k: v["value"] for k, v in resolved["assumptions"].items()}
         log = any(r["term"] == "per_log" for r in self.tables.get("p1", []))
         for rows in self.tables.values():
             for r in rows:
@@ -437,7 +439,8 @@ def secondary_section(run: Run) -> list[str]:
         ev = run.row("s2", outcome=gated[0]["outcome"], term="events", model="m1")
         out.append(
             f"**S2 from 72 months** had {ev['events'] if ev else '—'} replacements, below the "
-            "20-event gate (`tkr.min_events`), so no model was fitted. Replacements by step band at "
+            f"{run.assumptions['tkr.min_events']:g}-event gate (`tkr.min_events`), so no model "
+            "was fitted. Replacements by step band at "
             "48 months: "
             + "; ".join(
                 f"{BAND_LABEL[r['term'].removeprefix('band_')]}: {r['events']} of {r['n']}"
@@ -598,89 +601,257 @@ def est(run: Run, table: str, **match: str) -> str:
     return ci(run.row(table, **match))
 
 
+def need(run: Run, table: str, **match: str) -> dict[str, str]:
+    r = run.row(table, **match)
+    if r is None or num(r["estimate"]) is None:
+        sys.exit(f"summarize: missing estimate {table} {match}")
+    return r
+
+
+def direction(r: dict[str, str], up: str, down: str) -> str:
+    """`up` when the estimate is above the null, `down` when below."""
+    return up if num(r["estimate"]) > null_value(r) else down
+
+
+def ci_phrase(r: dict[str, str]) -> str:
+    return "its 95% CI excludes the null" if excludes_null(r) else "its 95% CI includes the null"
+
+
+def overlap(a: dict[str, str], b: dict[str, str]) -> bool:
+    return num(a["lo"]) <= num(b["hi"]) and num(b["lo"]) <= num(a["hi"])
+
+
+def chance_phrase(k: int, m: int) -> str:
+    exp = 0.05 * m
+    if abs(k - exp) <= 1:
+        rel = "close to"
+    elif k > exp:
+        rel = "more than"
+    else:
+        rel = "fewer than"
+    return f"{k} of {m} CIs exclude the null, {rel} the {exp:.1f} expected by chance at 95%"
+
+
+def width(r: dict[str, str]) -> float:
+    return num(r["hi"]) - num(r["lo"])
+
+
 def reading_section(runs: dict[str, Run]) -> list[str]:
     d = runs["default"]
     lt = "per_1000"
-    p1m1 = est(d, "p1", outcome="roa", term=lt, model="m1")
-    p1m2 = est(d, "p1", outcome="roa", term=lt, model="m2")
-    p1b = est(d, "p1", outcome="roa", term="band_ge10000", model="m1")
-    p1nl = num(d.row("p1", outcome="roa", term="nonlinear_p", model="m1")["estimate"])
-    p2m1 = est(d, "p2", outcome="soa", term=lt, model="m1")
-    p2r = est(d, "p2", outcome="soa_roa48", term=lt, model="m1")
-    p2n = est(d, "p2", outcome="soa_noroa48", term=lt, model="m1")
+    p1m1 = need(d, "p1", outcome="roa", term=lt, model="m1")
+    p1m2 = need(d, "p1", outcome="roa", term=lt, model="m2")
+    bands = {b: d.row("p1", outcome="roa", term=f"band_{b}", model="m1") for b in BANDS[1:]}
+    p1top = bands["ge10000"]
+    low_bands = [r for b, r in bands.items() if b != "ge10000" and r and num(r["lo"]) is not None]
+    p1nl = num(need(d, "p1", outcome="roa", term="nonlinear_p", model="m1")["estimate"])
+    p2 = need(d, "p2", outcome="soa", term=lt, model="m1")
+    p2r = need(d, "p2", outcome="soa_roa48", term=lt, model="m1")
+    p2n = need(d, "p2", outcome="soa_noroa48", term=lt, model="m1")
 
-    def var(label: str, table: str = "p1", outcome: str = "roa") -> str:
-        r = runs[label].row(table, outcome=outcome, term=lin_term(runs[label]), model="m1")
-        return ci(r)
+    # ---- P1
+    m_flags = [bool(excludes_null(p1m1)), bool(excludes_null(p1m2))]
+    which = {
+        (True, True): "both models' CIs exclude 1",
+        (False, True): "the Model 1 CI includes 1 and the Model 2 CI excludes it",
+        (True, False): "the Model 1 CI excludes 1 and the Model 2 CI includes it",
+        (False, False): "both models' CIs include 1",
+    }[tuple(m_flags)]
+    p1_text = (
+        f"- **P1, incident ROA:** each 1,000 steps/day more at 48 months is associated with "
+        f"{direction(p1m1, 'higher', 'lower')} odds of incident ROA by 96 months: OR "
+        f"{ci(p1m1)} in Model 1 and {ci(p1m2)} in Model 2; {which}."
+    )
+    if low_bands and p1top is not None and num(p1top["lo"]) is not None:
+        low_null = all(not excludes_null(r) for r in low_bands)
+        lo_ests = [num(r["estimate"]) for r in low_bands]
+        p1_text += (
+            f" The 5,000–9,999 bands have ORs of {min(lo_ests):.2f}–{max(lo_ests):.2f} against "
+            f"< 5,000 ({'all CIs include 1' if low_null else 'not all CIs include 1'}); the "
+            f"≥ 10,000 band has OR {ci(p1top)}"
+            + (
+                ", so the positive linear estimate is carried by the ≥ 10,000 band."
+                if low_null and excludes_null(p1top) and num(p1top["estimate"]) > 1
+                else "."
+            )
+        )
+    p1_text += f" The spline's test of non-linearity gives p = {p1nl:.2f}" + (
+        " (no evidence against a straight line)." if p1nl >= 0.05 else " (evidence of a curve)."
+    )
+    prim = [
+        r
+        for t in ("p1", "p2")
+        for r in d.tables.get(t, [])
+        if r["term"] != "nonlinear_p" and excludes_null(r) is not None
+    ]
+    kp = sum(bool(excludes_null(r)) for r in prim)
+    p1_text += f" Across the primary displays, {chance_phrase(kp, len(prim))}."
+    sims = []
+    for label, name in (
+        ("roa_kl2_jsn", "when ROA requires JSN"),
+        ("exclude_baseline_pain", "after dropping knees with frequent pain at 48 months"),
+        ("by_horizon", "in the by-horizon companion"),
+    ):
+        r = need(runs[label], "p1", outcome="roa", term=lt, model="m1")
+        sims.append(f"{ci(r)} {name} ({ci_phrase(r).removeprefix('its 95% ')})")
+    p1_text += " The Model 1 linear OR is " + "; ".join(sims) + "."
+    h = need(runs["horizon_120"], "p1", outcome="roa", term=lt, model="m1")
+    hb = need(runs["horizon_120"], "p1", outcome="roa", term="band_ge10000", model="m1")
+    smaller = num(h["estimate"]) < num(p1m1["estimate"]) and num(hb["estimate"]) < num(
+        p1top["estimate"]
+    )
+    p1_text += (
+        f" To 120 months (provisional, Project 43) the linear OR is {ci(h)} and the ≥ 10,000 "
+        f"band {ci(hb)}"
+        + (", both smaller than at 96 months" if smaller else "")
+        + (
+            ", with CIs including 1."
+            if not excludes_null(h) and not excludes_null(hb)
+            else f"; linear {ci_phrase(h)}, band {ci_phrase(hb)}."
+        )
+    )
 
+    # ---- P2
+    p2_text = (
+        f"- **P2, incident SOA:** OR {ci(p2)} per 1,000 steps/day; {ci_phrase(p2)}. Split by "
+        f"ROA at 48 months it is {ci(p2r)} in knees with ROA (which become SOA through new "
+        f"frequent pain) and {ci(p2n)} in knees without ROA (which become SOA mostly through "
+        "new ROA, as in P1). The split was pre-specified; the two CIs "
+        + ("overlap." if overlap(p2r, p2n) else "do not overlap.")
+    )
+
+    # ---- secondary
     k, m = tally(d, SECONDARY)
-    r2 = d.row("r2", term="any", model="m1")
-    r2lo = num(r2["lo"]) * 1000 if r2 else None
-    r2hi = num(r2["hi"]) * 1000 if r2 else None
-    r3 = {r["term"]: num(r["estimate"]) for r in d.tables.get("r3", []) if r["model"] == "mean"}
-    s3tkr = est(d, "s3", outcome="tkr_progression", term=lt, model="m1")
-    s3kl = est(d, "s3", outcome="kl_any_read", term=lt, model="m1")
-    s4roa = est(d, "s4", outcome="roa", term="per_10min", model="m1")
-    jsw = est(d, "s3b", outcome="change_mm", term=lt, model="m1")
+    s3tkr = need(d, "s3", outcome="tkr_progression", term=lt, model="m1")
+    s3kl = need(d, "s3", outcome="kl_any_read", term=lt, model="m1")
+    s4roa = need(d, "s4", outcome="roa", term="per_10min", model="m1")
+    jsw = need(d, "s3b", outcome="change_mm", term=lt, model="m1")
     change_hits = [r for r in ci_rows(d, SECONDARY) if r["term"] == "change" and excludes_null(r)]
     change_text = (
         "No estimate for the change in steps from 48 to 72 months has a CI that excludes the null."
         if not change_hits
         else f"{len(change_hits)} change-in-steps estimates have a CI that excludes the null (listed above)."
     )
-    r1m1, r1m2 = d.row("r1", term="any", model="m1"), d.row("r1", term="any", model="m2")
-    r1_flags = [bool(excludes_null(r)) for r in (r1m1, r1m2)]
-    r1_text = (
-        f"New ROA or KL worsening between 36 and 48 months: {ci(r1m1)} in Model 1 and "
-        f"{ci(r1m2)} in Model 2 (thousand steps/day)"
-        + (", the Model 2 CI just excluding 0." if r1_flags == [False, True] else ".")
+    sec_text = (
+        f"- **Secondary families:** {chance_phrase(k, m)}. Knee replacement in knees with "
+        f"KL ≥ 2: HR {ci(s3tkr)} ({ci_phrase(s3tkr).removeprefix('its 95% ')}); KL worsening "
+        f"in the read knees: OR {ci(s3kl)}; measured JSW change: {ci(jsw)} mm per 1,000 "
+        f"steps/day (CI width {width(jsw):.3f} mm, {ci_phrase(jsw).removeprefix('its 95% ')}); "
+        f"MV minutes and incident ROA: OR {ci(s4roa)}. {change_text}"
     )
+
+    # ---- reverse: each model for what its window shows
+    r1m1, r1m2 = need(d, "r1", term="any", model="m1"), need(d, "r1", term="any", model="m2")
+    r2m1, r2m2 = need(d, "r2", term="any", model="m1"), need(d, "r2", term="any", model="m2")
+    r3 = {r["term"]: num(r["estimate"]) for r in d.tables.get("r3", []) if r["model"] == "mean"}
+
+    def steps_ci(r: dict[str, str]) -> str:
+        return minus(f"{num(r['lo']) * 1000:+,.0f} to {num(r['hi']) * 1000:+,.0f}")
+
+    def rev(r: dict[str, str]) -> str:
+        diff = minus(f"{num(r['estimate']) * 1000:+,.0f}")
+        return (
+            f"{direction(r, 'more', 'fewer')} steps ({diff} steps/day, CI {steps_ci(r)}; "
+            f"{ci_phrase(r).removeprefix('its 95% ')})"
+        )
+
+    rev_text = (
+        f"- **Reverse direction.** *R1 (preceding, 36 → 48 months; the window that bears on "
+        f"reverse causation for P1):* {r1m1['events']} people with new ROA or KL worsening "
+        f"before the device wave had, at 72 months, {rev(r1m1)} in Model 1 and {rev(r1m2)} in "
+        "Model 2, adjusted for steps at 48 months."
+        + (
+            " These data give no sign that knees already worsening lowered later steps"
+            + ("; small drops are within the Model 1 CI." if num(r1m1["lo"]) < 0 else ".")
+            if num(r1m1["estimate"]) >= 0 and num(r1m2["estimate"]) >= 0
+            else " The estimates point to fewer steps after worsening."
+        )
+        + f" *R2 (concurrent, 48 → 72 months):* {r2m1['events']} people with new ROA or "
+        f"replacement between the waves had {rev(r2m1)} in Model 1 and {rev(r2m2)} in Model 2; "
+        "this window shows whether steps change alongside new OA, not what preceded the P1 "
+        "outcomes."
+        f" *R3 (cross-sectional):* mean steps/day are {n0(r3.get('kl_max_0'))} at the higher "
+        f"KL grade 0 and {n0(r3.get('kl_max_4'))} at grade 4, and {n0(r3.get('soa48_TRUE'))} "
+        f"with SOA against {n0(r3.get('soa48_FALSE'))} without; this gradient by itself does "
+        "not say which came first."
+    )
+
+    # ---- literature, behind assertions on the estimates cited
+    lit = ["- **Against the literature** (see Literature):"]
+    s3e = num(s3tkr["estimate"])
+    if 0.90 <= s3e <= 1.00 and not excludes_null(s3tkr):
+        lit.append(
+            f"knee replacement in KL ≥ 2 knees (HR {ci(s3tkr)} per 1,000 steps/day) is similar "
+            "in direction and size to Master 2021's HR of 0.95 (0.84–1.04) (PMID 34175271; "
+            "different samples: Master's N = 516 had advanced structural OA);"
+        )
+    jay = [s3kl, s4roa]
+    if all(not excludes_null(r) for r in jay):
+        lit.append(
+            f"KL worsening in the read knees ({ci(s3kl)}) and MV minutes against incident ROA "
+            f"({ci(s4roa)}) have CIs including 1, as Jayabalan 2019 (PMID 30238649, KL "
+            "worsening, activity minutes) and Qin 2018 (PMID 28976494, MVPA, incident OA) "
+            "reported no association;"
+        )
+    lit.append(
+        "MOST reported no association of steps/day with radiographic worsening in KL 0–2 knees "
+        "(Øiestad 2015, PMID 26077404). No OAI or MOST paper found here models steps/day "
+        "against incident ROA by knee with discrete-time follow-up."
+    )
+
+    # ---- selection caveat from flow
+    f = d.flow
+    inc_read, inc_risk = (
+        f[("selection_incident_roa", "V10_read")],
+        f[("selection_incident_roa", "V10_knees_at_risk")],
+    )
+    pr_read, pr_risk = (
+        f[("selection_progression", "V10_read")],
+        f[("selection_progression", "V10_knees_at_risk")],
+    )
+    sel_text = (
+        f"- **Selective readings:** incidence readings are not complete: {n0(inc_read)} of "
+        f"{n0(inc_risk)} knees at risk of ROA ({inc_read / inc_risk:.0%}) were read at 96 "
+        "months, although the design expected incidence readings to be complete. P1 and P2 "
+        "assume unread knees resemble read ones, and a missed visit is not separated from a "
+        f"film that was not read. In the progression sample only {n0(pr_read)} of "
+        f"{n0(pr_risk)} ({pr_read / pr_risk:.0%}) were read; readings after 48 months were "
+        "chosen by design (Project 37/42; Project 43 undocumented), so KL and JSN progression "
+        "is modeled only in the read knees, who differ from the unread. Measured JSW (Project "
+        "16) did not follow end-stage knees, and the FNIH 0.7 mm threshold was set for 24–48 "
+        "months, not the 48 → 96 and 72 → 96-month windows used here."
+    )
+
+    # ---- small cells from the tables
+    small = sorted(
+        {
+            f"{r['table'].upper()} {r['outcome']}"
+            for rows in d.tables.values()
+            for r in rows
+            if num(r["events"]) is not None and 0 < num(r["events"]) < 5
+        }
+    )
+    small_text = (
+        "- **Small cells:** band counts below 5 events appear in "
+        + ", ".join(small)
+        + "; the project treats small cells as advisory, and they are aggregate counts only."
+        if small
+        else "- **Small cells:** no table cell has between 1 and 4 events."
+    )
+
     return [
         "### Reading",
         "",
-        f"- **P1, incident ROA:** each 1,000 steps/day more at 48 months is associated with "
-        f"slightly higher odds of incident ROA by 96 months: OR {p1m1} in Model 1 and {p1m2} "
-        f"in Model 2. The bands show no gradient below 10,000 steps/day; the ≥ 10,000 band has "
-        f"OR {p1b} against < 5,000, and the spline shows no departure from a straight line "
-        f"(p = {p1nl:.2f}). The estimate is similar when ROA requires JSN "
-        f"({var('roa_kl2_jsn')}), after dropping knees with frequent pain at 48 months "
-        f"({var('exclude_baseline_pain')}) and in the by-horizon companion "
-        f"({var('by_horizon')}). To 120 months (provisional, Project 43) it is "
-        f"{var('horizon_120')}.",
-        f"- **P2, incident SOA:** no association: OR {p2m1}. Split by ROA at 48 months it is "
-        f"{p2r} in knees with ROA (which become SOA through new frequent pain) and {p2n} in "
-        f"knees without ROA (which become SOA mostly through new ROA, as in P1). The split was "
-        "pre-specified; the two CIs overlap.",
-        f"- **Secondary families:** {k} of {m} CIs exclude the null, about what chance gives "
-        f"({0.05 * m:.1f}). Knee replacement in knees with KL ≥ 2: HR {s3tkr}; KL worsening in "
-        f"the read knees: OR {s3kl}; measured JSW change: {jsw} mm per 1,000 steps/day, a "
-        f"narrow interval around no difference; MV minutes and incident ROA: OR {s4roa}. "
-        f"{change_text}",
-        f"- **Reverse direction:** new ROA or replacement between 48 and 72 months is not "
-        f"associated with steps at 72 months (Model 1 CI {minus(n0(r2lo))} to {n0(r2hi)} "
-        f"steps/day, {r2['events']} people with new OA). {r1_text} Cross-sectionally (R3), "
-        f"mean steps/day fall with the higher KL grade, from {n0(r3.get('kl_max_0'))} (KL 0) to "
-        f"{n0(r3.get('kl_max_4'))} (KL 4), and are {n0(r3.get('soa48_TRUE'))} with SOA against "
-        f"{n0(r3.get('soa48_FALSE'))} without. Across the two device waves, new OA is not followed "
-        "by a measurable drop in steps, so these data give no sign that knees already "
-        "worsening lowered steps before the P1 outcomes; small drops cannot be ruled out. The "
-        "cross-sectional gradient by itself does not say which came first.",
-        "- **Against the literature** (see Literature): the knee replacement estimate in KL ≥ 2 "
-        "knees is close to Master 2021's per-1,000-step HR in advanced OA (PMID 34175271); the "
-        "null KL worsening and MV estimates agree with Jayabalan 2019 (PMID 30238649) and Qin "
-        "2018 (PMID 28976494); MOST found no association of steps with radiographic worsening in "
-        "KL 0–2 knees (Øiestad 2015, PMID 26077404). No published OAI or MOST paper found here "
-        "models steps/day against incident ROA by knee with discrete-time follow-up.",
+        p1_text,
+        p2_text,
+        sec_text,
+        rev_text,
+        " ".join(lit),
         "- **Design limit:** with two device waves, these models show which measure moves "
         "first, not why. Residual confounding (for example by occupation, prior injury or "
         "activity type) is not addressed.",
-        "- **Selective readings:** readings after 48 months were chosen by design (Project "
-        "37/42; Project 43 undocumented), so progression by KL and JSN is modeled only in the "
-        "read knees, who differ from the unread. Measured JSW (Project 16) did not follow "
-        "end-stage knees, and the FNIH 0.7 mm threshold was set for 24–48 months, not the 48 → "
-        "96 and 72 → 96-month windows used here.",
-        "- **Small cells:** some band counts (for example S2 from 72 months) are below 5; the "
-        "project treats small cells as advisory, and they are aggregate counts only.",
+        sel_text,
+        small_text,
         "",
     ]
 
