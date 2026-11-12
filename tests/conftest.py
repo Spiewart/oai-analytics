@@ -31,8 +31,11 @@ def isolated_settings(request, tmp_path, monkeypatch):
             data_dir = oai_config.load_settings().data_dir
         except oai_config.ConfigError:
             pytest.skip("OAI_DATA_DIR is not configured (env or .env)")
+        steps_dir = oai_config.load_settings().paths.get("OAI_STEPS_DIR")
     else:
         data_dir = OAI_FIXTURE_DATA
+        steps_dir = None
+    monkeypatch.setenv("OAI_STEPS_DIR", str(steps_dir) if steps_dir else "")
     monkeypatch.setenv("OAI_DATA_DIR", str(data_dir))
     monkeypatch.setenv("OAI_WORK_DIR", str(tmp_path / "work"))
     monkeypatch.setenv("OAI_RESULTS_DIR", str(tmp_path / "results"))

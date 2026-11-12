@@ -18,8 +18,16 @@ from dotenv import dotenv_values
 
 from oai.errors import OAIError
 
-PATH_KEYS = ("OAI_DATA_DIR", "OAI_WORK_DIR", "OAI_RESULTS_DIR", "OAI_GENO_DIR", "OAI_ANALYSES_DIR")
-MUST_BE_OUTSIDE_REPO = ("OAI_WORK_DIR", "OAI_RESULTS_DIR")
+PATH_KEYS = (
+    "OAI_DATA_DIR",
+    "OAI_WORK_DIR",
+    "OAI_RESULTS_DIR",
+    "OAI_GENO_DIR",
+    "OAI_ANALYSES_DIR",
+    "OAI_STEPS_DIR",
+)
+# OAI_STEPS_DIR holds non-public files shared by the OAI accelerometry group; never in the repo
+MUST_BE_OUTSIDE_REPO = ("OAI_WORK_DIR", "OAI_RESULTS_DIR", "OAI_STEPS_DIR")
 _AUTO: Any = object()
 
 
@@ -65,6 +73,11 @@ class Settings:
     @property
     def results_dir(self) -> Path:
         return self.paths.get("OAI_RESULTS_DIR") or self.work_dir / "results"
+
+    @property
+    def steps_dir(self) -> Path:
+        """Per-minute step files (not in the public release); see oai.steps."""
+        return self._require("OAI_STEPS_DIR")
 
     @property
     def geno_dir(self) -> Path | None:
@@ -133,7 +146,7 @@ def load_settings(
             if key in paths and paths[key].is_relative_to(root):
                 raise ConfigError(
                     f"{key}={paths[key]} is inside the repository ({root}). "
-                    "Derived data must live outside the repo."
+                    "Data must live outside the repo."
                 )
     return Settings(repo_root=root, config_path=config_path, project=project, paths=paths)
 

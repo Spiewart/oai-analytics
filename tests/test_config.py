@@ -88,3 +88,19 @@ def test_find_repo_root_locates_this_checkout():
     assert root is not None
     assert (root / "config" / "oai.toml").is_file()
     assert Path(__file__).resolve().is_relative_to(root)
+
+
+def test_steps_dir_is_required_on_access(fake_repo):
+    s = load_settings(env={}, repo_root=fake_repo)
+    with pytest.raises(ConfigError, match="OAI_STEPS_DIR"):
+        _ = s.steps_dir
+
+
+def test_steps_dir_resolves_from_env(fake_repo, tmp_path):
+    s = load_settings(env={"OAI_STEPS_DIR": str(tmp_path / "steps")}, repo_root=fake_repo)
+    assert s.steps_dir == (tmp_path / "steps").resolve()
+
+
+def test_steps_dir_inside_repo_is_rejected(fake_repo):
+    with pytest.raises(ConfigError, match="OAI_STEPS_DIR.*inside the repository"):
+        load_settings(env={"OAI_STEPS_DIR": str(fake_repo / "steps")}, repo_root=fake_repo)

@@ -23,6 +23,7 @@ import polars as pl
 
 from oai.derive.knee import find_col
 from oai.loader import read_table
+from oai.steps import read_steps
 
 DAY_KEY_SCALE = 100_000  # ID * scale + PAStudyDay identifies one participant-day
 
@@ -44,6 +45,17 @@ class DeviceRules:
 
 
 DEFAULT_RULES = DeviceRules()  # frozen, so safe as a default argument
+
+
+@dataclass(frozen=True)
+class StepRules:
+    """How per-minute steps (oai.steps) are summarised; wear always comes from DeviceRules."""
+
+    cadence_cutpoints: tuple[int, ...] = (100,)  # wear minutes at or above each (steps/min)
+    peak_cadence_minutes: int = 30  # peak-30 cadence: mean of the day's 30 highest minutes
+
+
+DEFAULT_STEP_RULES = StepRules()
 
 
 def _runs(values: np.ndarray, key: np.ndarray) -> tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -138,8 +150,48 @@ def bout_mask(
     return out
 
 
-def daily_summary(minutes: pl.DataFrame, rules: DeviceRules = DEFAULT_RULES) -> pl.DataFrame:
-    """One row per ID x day from `minutes` (ID, day, minute, cnt; one row per recorded minute)."""
+def step_day_usable(missing_min: pl.Expr, wear_min: pl.Expr) -> pl.Expr:
+    """True when a day's step measures can be reported; otherwise they are set to null.
+
+    missing_min: the day's wear minutes with no step value (steps were not captured).
+    wear_min: the day's wear minutes.
+
+    Strict: any wear minute without steps makes the day's steps unusable. Steps per day is a
+    sum, so a partly missing day would undercount; in the 48- and 72-month files only 4 valid
+    days are partly missing (decided 2026-11-12).
+    """
+    del wear_min  # kept in the signature so a tolerance rule can use it
+    return missing_min == 0
+
+
+def _step_measures(rules: StepRules) -> list[pl.Expr]:
+    """Per-day aggregations of the wear-minute `wsteps` column (null where not captured)."""
+    w = pl.col("wsteps")
+    exprs = [
+        w.sum().alias("steps"),
+        pl.col("step_missing").sum().alias("step_missing_min"),
+        w.drop_nulls().top_k(rules.peak_cadence_minutes).mean().alias("peak_cadence"),
+    ]
+    exprs += [(w >= c).sum().alias(f"cadence{c}_min") for c in rules.cadence_cutpoints]
+    return exprs
+
+
+def step_columns(rules: StepRules = DEFAULT_STEP_RULES) -> list[str]:
+    """The step measures daily_summary adds when its minutes carry steps."""
+    return ["steps", "peak_cadence", *(f"cadence{c}_min" for c in rules.cadence_cutpoints)]
+
+
+def daily_summary(
+    minutes: pl.DataFrame,
+    rules: DeviceRules = DEFAULT_RULES,
+    step_rules: StepRules = DEFAULT_STEP_RULES,
+) -> pl.DataFrame:
+    """One row per ID x day from `minutes` (ID, day, minute, cnt; one row per recorded minute).
+
+    When `minutes` also has `steps` (read_minutes(..., steps=True)), adds the step measures of
+    step_columns() over wear minutes, plus step_missing_min; a day that step_day_usable()
+    rejects gets null step measures. Wear itself is always judged from counts.
+    """
     m = minutes.sort(["ID", "day", "minute"])
     key = m["ID"].to_numpy() * DAY_KEY_SCALE + m["day"].to_numpy()
     cnt = m["cnt"].cast(pl.Float64).to_numpy()
@@ -162,7 +214,15 @@ def daily_summary(minutes: pl.DataFrame, rules: DeviceRules = DEFAULT_RULES) -> 
         pl.Series("purposeful", purposeful),
         pl.Series("purposeful_start", purposeful_start),
     )
-    return (
+    has_steps = "steps" in m.columns
+    step_aggs: list[pl.Expr] = []
+    if has_steps:
+        per_minute = per_minute.with_columns(
+            pl.when(pl.Series(wear)).then(m["steps"]).otherwise(None).alias("wsteps"),
+            (pl.Series(wear) & m["steps"].is_null()).alias("step_missing"),
+        )
+        step_aggs = _step_measures(step_rules)
+    daily = (
         per_minute.group_by(["ID", "day"], maintain_order=True)
         .agg(
             pl.col("wear").sum().alias("wear_min"),
@@ -172,8 +232,15 @@ def daily_summary(minutes: pl.DataFrame, rules: DeviceRules = DEFAULT_RULES) -> 
             pl.col("bout").sum().alias("bout_min"),
             pl.col("purposeful").sum().alias("purposeful_min"),
             pl.col("purposeful_start").sum().alias("purposeful_bouts"),
+            *step_aggs,
         )
         .with_columns((pl.col("wear_min") >= rules.valid_day_hours * 60).alias("valid"))
+    )
+    if not has_steps:
+        return daily
+    usable = step_day_usable(pl.col("step_missing_min"), pl.col("wear_min"))
+    return daily.with_columns(
+        pl.when(usable).then(pl.col(c)).otherwise(None).alias(c) for c in step_columns(step_rules)
     )
 
 
@@ -188,8 +255,16 @@ def first_valid_days(daily: pl.DataFrame, rules: DeviceRules = DEFAULT_RULES) ->
     )
 
 
-def person_summary(daily: pl.DataFrame, rules: DeviceRules = DEFAULT_RULES) -> pl.DataFrame:
-    """Per participant, means per valid day over the first max_valid_days valid days."""
+def person_summary(
+    daily: pl.DataFrame,
+    rules: DeviceRules = DEFAULT_RULES,
+    step_rules: StepRules = DEFAULT_STEP_RULES,
+) -> pl.DataFrame:
+    """Per participant, means per valid day over the first max_valid_days valid days.
+
+    With step measures, also step_days (those valid days with usable steps) and each step
+    measure's mean over them; the valid days are chosen by wear alone, never by steps.
+    """
     return (
         first_valid_days(daily, rules)
         .group_by("ID", maintain_order=True)
@@ -202,19 +277,29 @@ def person_summary(daily: pl.DataFrame, rules: DeviceRules = DEFAULT_RULES) -> p
             pl.col("bout_min").mean(),
             pl.col("purposeful_min").mean(),
             ((pl.col("purposeful_bouts") > 0).mean() * 7).alias("bout_days_per_week"),
+            *(
+                [pl.col("steps").is_not_null().sum().alias("step_days")]
+                + [pl.col(c).mean() for c in step_columns(step_rules)]
+                if "steps" in daily.columns
+                else []
+            ),
         )
         .with_columns((pl.col("valid_days") >= rules.min_valid_days).alias("valid"))
     )
 
 
-def read_minutes(visit: str) -> pl.DataFrame:
-    """ID, day, minute, cnt for one accelerometer wave ("06" or "08"), sorted."""
+def read_minutes(visit: str, *, steps: bool = False) -> pl.DataFrame:
+    """ID, day, minute, cnt for one accelerometer wave ("06" or "08"), sorted.
+
+    With steps=True, adds the non-public per-minute steps (oai.steps) as `steps`, null where
+    none were captured. Every step minute must match a count minute.
+    """
     lf = read_table("acceldatabymin", visit, lazy=True)
     # find_col wants a frame; one with no rows resolves names without reading the large file
     col = partial(
         find_col, pl.DataFrame(schema=lf.collect_schema()), where=f"acceldatabymin{visit}"
     )
-    return (
+    minutes = (
         lf.select(
             pl.col(col("ID")).cast(pl.Int64).alias("ID"),
             pl.col(col(f"V{visit}PAStudyDay")).cast(pl.Int64).alias("day"),
@@ -224,6 +309,13 @@ def read_minutes(visit: str) -> pl.DataFrame:
         .sort(["ID", "day", "minute"])
         .collect()
     )
+    if not steps:
+        return minutes
+    st = read_steps(visit)
+    orphans = st.join(minutes, on=["ID", "day", "minute"], how="anti").height
+    if orphans:
+        raise ValueError(f"{orphans} step minute(s) at visit {visit} have no count minute")
+    return minutes.join(st, on=["ID", "day", "minute"], how="left", maintain_order="left")
 
 
 def release_by_day(visit: str) -> pl.DataFrame:
