@@ -135,3 +135,8 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 - **Get the Mahmoudian 2021 full text** — <!-- skip --> *Semin Arthritis Rheum* 2021;51:285–91 (doi 10.1016/j.semarthrit.2020.11.002) is not open access, so `published.toml` holds only the abstract's group size, age and BMI. The Methods and Table 1 decide what is still guessed: how "structural" and "clinical" progression were defined (the abstract's ORs are ranges, 1.1–1.4 and 2.1–2.5), where the KOOS daily-living score came from (the release has none; we rescale WOMAC function), which KL reading, how missing KOOS or exam items were handled, and the KL 0–1 denominator behind "27%". We find 1,098 knees (21.8%); no ledger variant closes the gap (the highest share is 23.5%, right knees only), so the difference is a choice outside the ledger. The abstract's 27% also implies a KL 0–1 denominator of about 4,870 (we have 5,028), so the gap is not only in the numerator. Candidates: patellar tenderness counted as a sign, or KOOS taken from another visit. Then extend `published.toml` and settle the `luyten.*` keys.
   [analyses/luyten_early_oa/README.md](analyses/luyten_early_oa/README.md)
+
+### Crepitus and device-measured activity (`analyses/crepitus_activity`)
+
+- **Settle Northwestern's authorship terms before any write-up** — <!-- skip --> The per-minute steps (48 and 72 months) come from Northwestern (Alison Chang). Their terms: Jing, who retrieved and cleaned the data, is a co-author on publications that use them, and the PARR group (Physical Activity in Rheumatology Research) offers scientific input. Raise both before drafting an abstract or author list from this analysis.
+  [analyses/crepitus_activity/README.md](analyses/crepitus_activity/README.md)

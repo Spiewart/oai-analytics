@@ -67,7 +67,7 @@ WOMAC has no crepitus item. V13 and V14 carry none of the three.
 | Knee replacement | Pazzinatto 2019 (36 months, null) | No longer follow-up, time-to-event or exam-versus-self-report comparison. |
 | Activity levels | None | Open. |
 | Weight loss and protective behaviors | None | Open. |
-| Accelerometry | None | Open. Accelerometer data exist at V06 and V08, where the exam item (V06) and KOOS S2 (V06, V08) both exist. |
+| Accelerometry | None | Now tested in `analyses/crepitus_activity` (unpublished): GT1M steps and MV and light minutes at 48 and 72 months against exam and S2 crepitus counts, in both directions. Adjusted estimates are close to null, about ±100 steps/day per crepitus knee and ORs of 0.98–1.03 per 1,000 steps/day; the unadjusted gap of about 700 steps/day with bilateral exam crepitus is explained by age, sex, BMI and wear. |
 
 ## Search log
 
