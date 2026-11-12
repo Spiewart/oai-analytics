@@ -140,3 +140,8 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 - **Settle Northwestern's authorship terms before any write-up** — <!-- skip --> The per-minute steps (48 and 72 months) come from Northwestern (Alison Chang). Their terms: Jing, who retrieved and cleaned the data, is a co-author on publications that use them, and the PARR group (Physical Activity in Rheumatology Research) offers scientific input. Raise both before drafting an abstract or author list from this analysis.
   [analyses/crepitus_activity/README.md](analyses/crepitus_activity/README.md)
+
+### Future studies ([docs/study-ideas.md](docs/study-ideas.md))
+
+- **Regression to the mean in knee pain at trial-style entry thresholds** — <!-- skip --> ~~Read Englund & Turkiewicz 2023 first.~~ Read 2026-11-02: it already reports observed pain RTM in OAI (about 1 NRS point at FORWARD-style criteria), so the new contribution is the formula-vs-observed comparison, threshold and design features, WOMAC pain and a comparison group for cohort effects. Still to do: (1) get the 2023 online appendix (the exact FORWARD-style criteria and the mixed model), needed to replicate it; (2) recheck the Bihlet 2018 reliability figure (0.48–0.61) against their variance table; (3) decide with the study team whether the remaining contribution is worth a study.
+  [docs/study-ideas.md](docs/study-ideas.md)
