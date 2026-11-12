@@ -151,4 +151,4 @@ Check PubMed for published OAI or MOST work on device-measured activity or steps
 
 ## Authorship note
 
-The step data come from Northwestern. Its analyst, Jing, is to be a co-author on publications that use them, and the PARR group offers scientific input (memory: nw-step-data).
+The step data come from Northwestern. Its analyst is to be a co-author on publications that use them, and the PARR group offers scientific input (memory: nw-step-data).

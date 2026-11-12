@@ -13,7 +13,7 @@ Knee OA outcomes come from the shared module `src/oai/derive/knee_outcomes.py`.
 - **Plan:** [docs/superpowers/plans/2026-11-12-steps-oa.md](../../docs/superpowers/plans/2026-11-12-steps-oa.md)
 - **Assumptions:** [ASSUMPTIONS.md](ASSUMPTIONS.md)
 
-The per-minute steps come from Northwestern (`OAI_STEPS_DIR`, never in the repo). Their terms: Jing (Northwestern analyst) is a co-author on publications that use them, and the PARR group offers scientific input.
+The per-minute steps come from Northwestern (`OAI_STEPS_DIR`, never in the repo). Their terms: the Northwestern analyst who prepared them is a co-author on publications that use them, and the PARR group offers scientific input.
 
 ```bash
 uv run oai run steps_oa
