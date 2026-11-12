@@ -31,43 +31,6 @@ def resolved(variant=None, **overrides):
     return load_assumptions(ANALYSIS).resolve("luyten_early_oa", variant, overrides)
 
 
-def series(values, column="soa", **extra):
-    """An soa_status-shaped frame for one knee: one value per visit V00..V10."""
-    return pl.DataFrame(
-        {"ID": [1] * len(VISITS), "visit": list(VISITS), column: values, **extra},
-        schema_overrides={column: pl.Boolean},
-    )
-
-
-def at(values, horizon, selection="known_or_case"):
-    return luyten.by_horizon(series(values), "soa", horizon, selection)["value"].item()
-
-
-def test_outcome_selection_by_horizon():
-    case_at_24 = [False, False, True, True, None, None, None]
-    assert (at(case_at_24, "06"), at(case_at_24, "10")) == (True, True)
-    lost_after_48 = [False, False, False, False, False, None, None]
-    assert (at(lost_after_48, "06"), at(lost_after_48, "10")) == (False, None)
-    back_at_96 = [False, False, False, None, None, False, False]
-    assert (at(back_at_96, "06"), at(back_at_96, "10")) == (None, False)
-    assert at(case_at_24, "10", "complete") is None
-    prevalent = [True, True, True, True, True, True, True]
-    assert at(prevalent, "10") is None
-
-
-def test_replacement_counts_as_roa_under_event():
-    status = series(
-        [False, False, False, None, None, None, None],
-        column="roa",
-        replaced=[False, False, False, True, True, True, True],
-    )
-    roa = lambda rule: luyten.by_horizon(  # noqa: E731
-        luyten.roa_series(status, rule), "roa", "10", "known_or_case"
-    )["value"].item()
-    assert roa("event") is True
-    assert roa("ignore") is None
-
-
 def test_left_knee_uses_left_columns():
     knees = luyten.knee_frame(resolved()).filter(pl.col("ID") == P[3]).sort("SIDE")
     left, right = knees.row(0, named=True), knees.row(1, named=True)

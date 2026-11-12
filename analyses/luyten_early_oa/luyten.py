@@ -12,13 +12,11 @@ Framing 2 compares crepitus with none among KL 0-1 knees meeting the KOOS criter
 
 from __future__ import annotations
 
-import dataclasses
-
 import polars as pl
 
 from oai.assumptions import Resolved
+from oai.derive import knee_outcomes as outcomes
 from oai.derive.crepitus import crepitus_values
-from oai.derive.incident_soa import soa_status
 from oai.derive.knee import find_col, xray_readings
 from oai.loader import read_table
 
@@ -28,6 +26,7 @@ ROA_AT_BASELINE = 1  # V99E?XIOA: KL >= 2 at baseline; 2-9: no ROA at baseline (
 OUTCOMES99_READ = tuple(range(2, 10))
 PROGRESSION_INCIDENCE = (1, 2)
 HORIZONS = {"48": "06", "96": "10"}  # outcome label -> last visit
+STATUS_VISITS = ("00", "01", "03", "05", "06", "08", "10")  # every visit the by-horizon rule reads
 OUTCOMES = ("roa48", "roa96", "soa48", "soa96")
 # Case-count frames (early OA vs controls, Framing 1, Framing 2) and their exposure levels
 FRAMES = {"early": ("yes", "no"), "f1": ("yes", "jlt_only"), "f2": ("yes", "no")}
@@ -194,64 +193,25 @@ def group_metrics(knees: pl.DataFrame) -> pl.DataFrame:
 # ---------------------------------------------------------------- outcomes
 
 
-def for_side(A: Resolved, side: str) -> Resolved:
-    """`A` with `cohort.side` set, for oai.derive.incident_soa's one-knee functions."""
-    return dataclasses.replace(A, values={**A.values, "cohort.side": side})
-
-
-def roa_series(status: pl.DataFrame, rule: str) -> pl.DataFrame:
-    """ID, visit, roa: OUTCOMES99 ROA, or ROA or a replacement (`outcomes.roa_replacement`)."""
-    roa = pl.col("roa") | pl.col("replaced") if rule == "event" else pl.col("roa")
-    return status.select("ID", "visit", roa.alias("roa"))
-
-
-def by_horizon(status: pl.DataFrame, column: str, horizon: str, selection: str) -> pl.DataFrame:
-    """ID, value: incident `column` (True at any follow-up visit up to `horizon`).
-
-    False when the horizon visit's value is known and no earlier visit is True; null otherwise
-    (`known_or_case`). Under `complete` the horizon visit's value must be known even for a case.
-    A knee True at baseline is prevalent, not incident: null.
-    """
-    up_to = status.filter(pl.col("visit") <= horizon)
-    follow = pl.col("visit") != "00"
-    at_horizon = pl.col(column).filter(pl.col("visit") == horizon).first()
-    return (
-        up_to.group_by("ID", maintain_order=True)
-        .agg(
-            pl.col(column).filter(pl.col("visit") == "00").first().alias("_base"),
-            pl.col(column).filter(follow).fill_null(False).any().alias("_case"),
-            at_horizon.alias("_last"),
-        )
-        .select(
-            "ID",
-            pl.when(pl.col("_base").fill_null(False))
-            .then(None)
-            .when(pl.col("_last").is_null() & (pl.lit(selection == "complete") | ~pl.col("_case")))
-            .then(None)
-            .otherwise(pl.col("_case"))
-            .alias("value"),
-        )
-    )
-
-
 def knee_outcomes(A: Resolved) -> pl.DataFrame:
-    """ID, SIDE, replaced0, roa48, roa96, soa48, soa96 for every knee of the cohort."""
-    selection, rule = A["horizon.selection"], A["outcomes.roa_replacement"]
-    frames = []
-    for side in sides_of(A):
-        status = soa_status(for_side(A, side))
-        knee = status.filter(pl.col("visit") == "00").select(
-            "ID", pl.lit(side).alias("SIDE"), pl.col("replaced").alias("replaced0")
-        )
-        sources = {"roa": roa_series(status, rule), "soa": status.select("ID", "visit", "soa")}
-        for label, visit in HORIZONS.items():
-            for name, frame in sources.items():
-                value = by_horizon(frame, name, visit, selection).rename(
-                    {"value": f"{name}{label}"}
-                )
-                knee = knee.join(value, on="ID", how="left")
-        frames.append(knee)
-    return pl.concat(frames).select("ID", "SIDE", "replaced0", *OUTCOMES)
+    """ID, SIDE, replaced0, roa48, roa96, soa48, soa96 for every knee of the cohort.
+
+    From oai.derive.knee_outcomes: `outcomes.roa_replacement` makes a replaced knee ROA there,
+    and each outcome is its by-horizon event from the baseline anchor.
+    """
+    selection = A["horizon.selection"]
+    status = outcomes.knee_status(A, STATUS_VISITS, "00")
+    status = status.filter(pl.col("SIDE").is_in(sides_of(A)))
+    knee = status.filter(pl.col("visit") == "00").select(
+        "ID", "SIDE", pl.col("replaced").alias("replaced0")
+    )
+    for label, visit in HORIZONS.items():
+        for name in ("roa", "soa"):
+            event = outcomes.by_horizon(status, name, "00", visit, selection)
+            knee = knee.join(
+                event.rename({"event": f"{name}{label}"}), on=["ID", "SIDE"], how="left"
+            )
+    return knee.select("ID", "SIDE", "replaced0", *OUTCOMES)
 
 
 def all_knees(A: Resolved) -> pl.DataFrame:
