@@ -41,6 +41,7 @@ from oai.loader import read_table
 from oai.visits import DAYS_PER_YEAR, nominal_month
 
 SIDES = ("R", "L")
+SCHEDULE = ("00", "01", "03", "05", "06", "08", "10", "12")  # the X-ray / outcome visits
 KEYS = ["ID", "SIDE"]
 STATUS_COLUMNS = (
     "ID", "SIDE", "visit", "roa", "sx", "soa", "replaced", "kl", "jsm", "jsl", "read", "readprj",
@@ -186,6 +187,21 @@ def _earlier(flag: pl.Expr) -> pl.Expr:
     return flag.fill_null(False).cast(pl.Int64).cum_sum().shift(1, fill_value=0).over(KEYS) > 0
 
 
+def _require_scheduled(status: pl.DataFrame, anchor: str, horizon: str, what: str) -> None:
+    """ValueError when a scheduled visit after `anchor`, up to `horizon`, is not in `status`.
+
+    A visit present with null values is "unknown"; an absent visit is "not requested", and
+    would silently drop cases (by_horizon) or shrink `span` (periods).
+    """
+    present = set(status["visit"].unique())
+    missing = [v for v in SCHEDULE if anchor < v <= horizon and v not in present]
+    if missing:
+        raise ValueError(
+            f"{what}: status lacks scheduled visits {missing} between anchor V{anchor} and "
+            f"horizon V{horizon}; pass every visit of that span to knee_status"
+        )
+
+
 def periods(status: pl.DataFrame, outcome: str, anchor: str, horizon: str) -> pl.DataFrame:
     """ID, SIDE, period, end_visit, span, event for the knees `at_risk` at `anchor`.
 
@@ -193,8 +209,10 @@ def periods(status: pl.DataFrame, outcome: str, anchor: str, horizon: str) -> pl
     counts the scheduled visits (those in `status`) since the previous known visit, so an
     unknown middle visit gives a span of 2. Rows stop after the first event, and after the
     first visit at which the knee is replaced (censored there when the replacement is not
-    itself the event).
+    itself the event). `status` must hold every scheduled visit after the anchor up to
+    `horizon` (ValueError otherwise); a visit with null values is fine.
     """
+    _require_scheduled(status, anchor, horizon, "periods")
     schedule = sorted(v for v in status["visit"].unique() if anchor < v <= horizon)
     position = {v: i + 1 for i, v in enumerate(schedule)}
     rows = (
@@ -221,8 +239,11 @@ def by_horizon(
 
     False when the horizon visit's value is known and no earlier visit is True; null otherwise
     (`known_or_case`). Under `complete` the horizon visit's value must be known even for a case.
-    A knee True at the anchor is prevalent, not incident: null.
+    A knee True at the anchor is prevalent, not incident: null. `status` must hold every
+    scheduled visit after the anchor up to and including `horizon` (ValueError otherwise, as a
+    missing visit would drop cases); a visit with null values is fine.
     """
+    _require_scheduled(status, anchor, horizon, "by_horizon")
     if selection not in SELECTIONS:
         raise ValueError(f"selection must be one of {SELECTIONS}, not {selection!r}")
     column = pl.col(outcome)

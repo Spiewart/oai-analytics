@@ -427,3 +427,24 @@ def test_replacement_times():
     assert set(by_id) == {1, 2, 3}  # 4: counted, no day; 5: baseline; 6: before the anchor
     assert flow["excluded_no_day"][0] == 1
     assert flow["replaced_by_anchor"][0] == 2
+
+
+def test_by_horizon_refuses_a_missing_scheduled_visit():
+    # V03 and V05 are scheduled between the V00 anchor and V10: dropping them would lose cases
+    gap = [v for v in LUYTEN_VISITS if v not in ("03", "05")]
+    knees = status((1, "R", {"soa": [False, True, False, False, False]}), visits=gap)
+    with pytest.raises(ValueError, match=r"lacks scheduled visits \['03', '05'\]"):
+        by_horizon(knees, "soa", "00", "10", "known_or_case")
+    no_horizon = status((1, "R", {"soa": [False] * 4}), visits=LUYTEN_VISITS[:4])
+    with pytest.raises(ValueError, match=r"\['06', '08', '10'\]"):
+        by_horizon(no_horizon, "soa", "00", "10", "known_or_case")
+    # a visit present with null values is fine (unknown, not unrequested)
+    nulls = status((1, "R", {"soa": [False] + [None] * 6}), visits=LUYTEN_VISITS)
+    assert by_horizon(nulls, "soa", "00", "10", "known_or_case")["event"].item() is None
+
+
+def test_periods_refuses_a_missing_scheduled_visit():
+    visits = ("06", "10")  # V08 is scheduled between the V06 anchor and V10
+    knees = status((1, "R", {"roa": [False, False]}), visits=visits)
+    with pytest.raises(ValueError, match=r"lacks scheduled visits \['08'\]"):
+        periods(knees, "roa", "06", "10")

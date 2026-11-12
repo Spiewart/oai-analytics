@@ -17,6 +17,8 @@ import polars as pl
 from oai.assumptions import Resolved
 from oai.derive import knee_outcomes as outcomes
 from oai.derive.crepitus import crepitus_values
+from oai.derive.incident_soa import ALL_OUTCOME_VISITS as OUTCOME_VISITS
+from oai.derive.incident_soa import horizon_of
 from oai.derive.knee import find_col, xray_readings
 from oai.loader import read_table
 
@@ -26,7 +28,6 @@ ROA_AT_BASELINE = 1  # V99E?XIOA: KL >= 2 at baseline; 2-9: no ROA at baseline (
 OUTCOMES99_READ = tuple(range(2, 10))
 PROGRESSION_INCIDENCE = (1, 2)
 HORIZONS = {"48": "06", "96": "10"}  # outcome label -> last visit
-STATUS_VISITS = ("00", "01", "03", "05", "06", "08", "10")  # every visit the by-horizon rule reads
 OUTCOMES = ("roa48", "roa96", "soa48", "soa96")
 # Case-count frames (early OA vs controls, Framing 1, Framing 2) and their exposure levels
 FRAMES = {"early": ("yes", "no"), "f1": ("yes", "jlt_only"), "f2": ("yes", "no")}
@@ -200,14 +201,21 @@ def knee_outcomes(A: Resolved) -> pl.DataFrame:
     and each outcome is its by-horizon event from the baseline anchor.
     """
     selection = A["horizon.selection"]
-    status = outcomes.knee_status(A, STATUS_VISITS, "00")
+    # every visit soa_status produces (it follows periods.horizon); a horizon past it stays null
+    visits = ("00", *(v for v in OUTCOME_VISITS if v <= horizon_of(A)))
+    status = outcomes.knee_status(A, visits, "00")
     status = status.filter(pl.col("SIDE").is_in(sides_of(A)))
     knee = status.filter(pl.col("visit") == "00").select(
         "ID", "SIDE", pl.col("replaced").alias("replaced0")
     )
     for label, visit in HORIZONS.items():
         for name in ("roa", "soa"):
-            event = outcomes.by_horizon(status, name, "00", visit, selection)
+            event = outcomes.by_horizon(status, name, "00", min(visit, visits[-1]), selection)
+            if visit > visits[-1]:
+                # the horizon is past the last visit soa_status produces: never known there, so
+                # only a case seen by then counts, and not under `complete`
+                case = pl.col("event").fill_null(False) & pl.lit(selection != "complete")
+                event = event.with_columns(pl.when(case).then(True).alias("event"))
             knee = knee.join(
                 event.rename({"event": f"{name}{label}"}), on=["ID", "SIDE"], how="left"
             )
