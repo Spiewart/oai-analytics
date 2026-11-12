@@ -73,31 +73,32 @@ Per-minute step counts for the 48- and 72-month accelerometry weeks (prepared by
 
 # How much of the activity counts is walking
 
-```{r fig-bands, fig.height = 2.9, fig.cap = paste0("Mean share (bars, with 95% CI) of each participant's wear minutes and activity counts by steps a minute, 48 months (72 months is similar). Thin grey lines: middle 50% of participants. Labels: mean share of a band's minutes that are MV (≥ ", mv_cut, " counts a minute).")}
-b <- pb[pb$visit == "06", ]
-lev <- unique(b$band)
-b$band <- factor(b$band, levels = lev)
+```{r fig-bands, fig.height = 4.6, fig.cap = paste0("Mean share of each participant's wear minutes and activity counts by steps a minute. Grey lines: middle 50% of participants. Labels: mean share of a band's minutes that are MV (≥ ", mv_cut, " counts a minute).")}
+b <- pb
+b$band <- factor(b$band, levels = unique(b$band))
+b$wave <- factor(ifelse(b$visit == "06", "48 months", "72 months"), levels = c("48 months", "72 months"))
 bars <- b[b$measure %in% c("share_of_minutes", "share_of_counts"), ]
 bars$what <- factor(ifelse(bars$measure == "share_of_minutes", "Wear minutes", "Activity counts"),
                     levels = c("Wear minutes", "Activity counts"))
 mv <- b[b$measure == "share_minutes_mv", ]
-top <- aggregate(q3 ~ band, data = bars, FUN = max)
-mv <- merge(mv, setNames(top, c("band", "top")), by = "band")
+top <- aggregate(q3 ~ band + wave, data = bars, FUN = max)
+mv <- merge(mv, setNames(top, c("band", "wave", "top")), by = c("band", "wave"))
 dodge <- position_dodge(width = 0.75)
 ggplot(bars, aes(band, mean, fill = what)) +
   geom_col(position = dodge, width = 0.7) +
-  geom_linerange(aes(ymin = q1, ymax = q3), position = dodge, colour = "grey55", linewidth = 0.35) +
-  geom_errorbar(aes(ymin = ci_lo, ymax = ci_hi), position = dodge, width = 0.25, linewidth = 0.5, colour = "black") +
-  geom_text(data = mv, aes(band, top + 0.04, label = paste0(round(100 * mean), "% MV")),
-            inherit.aes = FALSE, size = 3.4, colour = colours[["label"]]) +
+  geom_errorbar(aes(ymin = q1, ymax = q3), position = dodge, width = 0.3, colour = "grey50", linewidth = 0.35) +
+  geom_text(data = mv, aes(band, top + 0.06, label = paste0(round(100 * mean), "% MV")),
+            inherit.aes = FALSE, size = 3.2, colour = colours[["label"]]) +
+  facet_wrap(~wave, ncol = 1) +
   scale_fill_manual(values = c(colours[["muted"]], colours[["navy"]]), name = NULL) +
-  scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), expand = expansion(mult = c(0, 0.08))) +
+  scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), expand = expansion(mult = c(0, 0.12))) +
   labs(x = "Steps a minute", y = NULL) +
   theme_minimal(base_size = 11) +
-  theme(legend.position = "top", panel.grid.major.x = element_blank())
+  theme(legend.position = "top", panel.grid.major.x = element_blank(),
+        strip.text = element_text(face = "bold", hjust = 0))
 ```
 
-- **Most activity counts are not walking.** The largest share of a participant's counts comes from minutes with 1–19 steps (mean `r pct(band_mean("1-19", "share_of_counts"))`).
+- **Most activity counts are not walking.** The largest share of a participant's counts comes from minutes with 1–19 steps (mean `r pct(band_mean("1-19", "share_of_counts"))` at 48 months).
 - **Most MV is walking.** At 40 or more steps a minute, `r pct(sh("mv_minutes_walking"))` of MV minutes are walking minutes.
 - **Most walking is not MV.** Only `r pct(band_mean("60-79", "share_minutes_mv"))` of minutes at 60–79 steps a minute are MV.
 
@@ -137,8 +138,6 @@ Specificity is `r sp("item96", "counts_mv")` against MV bouts and `r sp("item96"
 
 "Any walking" behaves like the Walking Question: specificity `r range_sp(pase_any, families)` across bout types (1-day rule: `r range_sp(pase_any, families, "any_bout")`). Walking on 3+ days roughly doubles specificity (`r range_sp(pase_freq, low)` against step bouts at `r min(cads)`), at some cost in sensitivity.
 
-# What this suggests
+# Impression
 
-Counting slow walking barely changes how often less active participants report walking. The questions may capture walking one device week misses, or reported walking a device would not record; these data cannot tell which.
-
-**For the Northwestern group:** a standard step-based walking definition for the GT1M? Setting differences between waves? A preferred step measure?
+Self-reported walking may include walking that one device week misses, or walking a device would not record at any threshold; these data cannot tell which.
