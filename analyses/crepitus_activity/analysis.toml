@@ -1,0 +1,25 @@
+name = "crepitus_activity"
+description = "Crepitus (exam and KOOS S2; absolute and change) and GT1M activity and steps at 48 and 72 months, in both directions; S2 at 72/96 and exam at 120 months as outcomes."
+
+[inputs]
+# The per-minute steps are not a release table: they are read from OAI_STEPS_DIR (oai.steps).
+tables = [
+    "enrollees", "allclinical:05", "allclinical:06", "allclinical:08", "allclinical:10",
+    "allclinical:12", "acceldatabymin:06", "acceldatabymin:08", "kxr_sq_bu:06",
+]
+
+[[steps]]
+id = "cohort"
+lang = "python"
+stage = "local"
+entry = "build_frame.py"
+
+[[steps]]
+id = "models"
+lang = "r"
+stage = "local"
+entry = "models.R"
+needs = ["cohort"]
+
+[outputs]
+aggregate = ["flow.csv", "descriptives.csv", "table_*.csv", "metrics_*.csv", "assumptions.resolved.json"]

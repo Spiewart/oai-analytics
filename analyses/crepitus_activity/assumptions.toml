@@ -1,0 +1,134 @@
+# Assumptions for crepitus and device-measured activity at 48 and 72 months.
+# Spec: docs/superpowers/specs/2026-11-12-crepitus-activity-design.md
+# device.*, steps.day_rule and sample.min_step_days are copied verbatim from
+# analyses/walking_steps/assumptions.toml and must stay identical to it
+# (tests/test_crepitus_activity_definition.py).
+
+[crepitus.count_missing]
+value = "both_required"
+status = "assumed"
+source = "User decision 2026-11-12: crepitus per person is the number of knees with crepitus (0/1/2)"
+rationale = "both_required: a person missing either knee's value has no count; available_knees: the count is over the knees measured"
+choices = ["both_required", "available_knees"]
+
+[crepitus.s2_cut]
+value = 1
+status = "assumed"
+source = "KOOS S2 'at least rarely' (>= 1) counts a knee, as in analyses/lo2018_crepitus dual and analyses/luyten_early_oa"
+choices = [1, 2]
+
+[activity.measures]
+value = ["steps", "mv_min", "light_min"]
+status = "confirmed"
+source = "Spec: steps/day primary; MV and light minutes/day (counts) secondary"
+
+[activity.transform]
+value = "none"
+status = "assumed"
+source = "Linear models on daily means with sandwich SEs; log(x + 1) as a variant gives ratios"
+choices = ["none", "log"]
+
+[model.covariates]
+value = ["age", "sex", "bmi", "wear_hr"]
+status = "confirmed"
+source = "Spec model 1: age, sex, BMI and wear hours/day at the wave"
+
+[model.covariates_2]
+value = ["kl_max", "womac_pain_max"]
+status = "confirmed"
+source = "Spec model 2 adds the higher KL grade (Project 15, 48 months) and the worse knee's WOMAC pain at 48 months; pain may confound or mediate"
+
+[model.corstr]
+value = "exchangeable"
+status = "assumed"
+source = "B3 is knee-level (two knees per person): logistic GEE with an exchangeable working correlation, as in the other crepitus analyses"
+choices = ["exchangeable", "independence"]
+
+[device.bout_need]
+value = 8
+status = "confirmed"
+source = "AccelData_Descrip.pdf: a bout is established when 8 of 10 minutes are at or above the cutpoint"
+
+[device.bout_stop_below]
+value = 3
+status = "confirmed"
+source = "AccelData_Descrip.pdf: the bout stops when 3 minutes in the 10-minute window are below the cutpoint"
+
+[device.bout_window]
+value = 10
+status = "confirmed"
+source = "AccelData_Descrip.pdf: MV bout rolling window of 10 minutes"
+
+[device.interrupt_ceiling]
+value = 100
+status = "confirmed"
+source = "AccelData_Descrip.pdf: interruptions have counts < 100"
+
+[device.interrupt_minutes]
+value = 2
+status = "confirmed"
+source = "AccelData_Descrip.pdf: interruptions of up to 2 consecutive minutes"
+
+[device.light_floor]
+value = 100
+status = "confirmed"
+source = "Troiano 2008 light intensity 100-2019 counts/min, as in the release"
+
+[device.max_valid_days]
+value = 7
+status = "confirmed"
+source = "AccelData_Descrip.pdf: only the first 7 valid days are used"
+
+[device.min_valid_days]
+value = 4
+status = "confirmed"
+source = "Accelerometry_Descrip.pdf: 4-7 valid days"
+
+[device.mv_cutpoint]
+value = 2020
+status = "confirmed"
+source = "Troiano 2008 cutpoint, as in the release"
+
+[device.nonwear_minutes]
+value = 90
+status = "confirmed"
+source = "AccelData_Descrip.pdf (non-wear >90 zero minutes); >= 90 within each calendar day reproduces the release's by-day files"
+rationale = "Validated for knee-OA wear patterns; 60 is the NHANES rule"
+alternatives = [60]
+
+[device.purposeful_bout_minutes]
+value = 10
+status = "assumed"
+source = "Spec 5: purposeful walking proxy = minutes in >= 10-minute MV bouts"
+
+[device.valid_day_hours]
+value = 10.0
+status = "confirmed"
+source = "AccelData_Descrip.pdf: valid day = >= 10 wear hours"
+
+[steps.day_rule]
+value = "complete"
+status = "confirmed"
+source = "User decision 2026-11-12 (oai.derive.accel.step_day_usable)"
+rationale = "A valid day with any wear minute lacking steps is left out of the step analysis; 4 valid days across both waves are partly missing. Days are still chosen by wear alone."
+choices = ["complete"]
+
+[sample.min_step_days]
+value = 4
+status = "assumed"
+source = "Mirrors device.min_valid_days: a person counts when at least this many of their first valid days have complete steps"
+rationale = "Keeps the per-person shares on the same footing as the release's valid-person rule."
+alternatives = [1]
+choices = [1, 4]
+
+[variants.available_knees]
+description = "Crepitus counts over the knees measured"
+set = { "crepitus.count_missing" = "available_knees" }
+
+[variants.log_activity]
+description = "Activity as log(x + 1); estimates are ratios"
+set = { "activity.transform" = "log" }
+
+[variants.s2_cut_2]
+description = "S2 counts a knee at 'sometimes' or more"
+set = { "crepitus.s2_cut" = 2 }
