@@ -90,6 +90,9 @@ The outcome counts by V08 or V10. 120 months (V12) is a provisional horizon vari
   - knee replacement: a Cox model over the full OUTCOMES99 follow-up from the 48-month visit, clustered by person (builder's call, because replacement follow-up is longer).
 
   Each is fitted for E1, and for E1 + E2 with the outcome after 72 months.
+- **KL transitions (user, 2026-11-12).** Every progression table and the descriptives annotate the KL transition: 0–1 → 2+, 2–3 → 4, and any ≥ 1 grade.
+  - 2–3 → 4 (with replacement counted as KL 4) is reported by step band. It is modeled only in the read-knees sensitivity analysis, because the readings are selective.
+  - 0–1 → 2+ from the KL readings is shown beside P1's OUTCOMES99 incidence, as a check that the two agree.
 - **S3b, measured JSW**, in the progression sample (KL 2–3 at 48 months, `progression.risk_kl`):
   - outcome: loss of at least 0.7 mm by 96 months (logistic GEE);
   - companion: the change in mm (gaussian GEE);

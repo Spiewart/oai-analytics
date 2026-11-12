@@ -65,6 +65,11 @@ All functions are pure on frames except `knee_status` and `replacement_times`, w
    - It is null when no visit is read and no worsening was seen.
    - `risk` is a set of base grades, from `progression.risk_kl` for KL.
    - This replaces `kl_progression`; `progression.py`'s stubs are removed and `tests/test_analyses.py` is updated.
+   - **KL transitions (user, 2026-11-12).** For `measure = "kl"` the output also carries `base_kl`, `max_kl` (the highest read grade after the anchor, up to the horizon) and these flags:
+     - `kl_incident` (0–1 → 2+), `kl_to_4` (2–3 → 4) and `kl_any` (≥ 1 grade);
+     - `transition`, a label such as `"0-1>2+"`, `"2-3>4"`, `"2>3"`, `"0>1"` or `"none"`.
+
+     These flags apply wherever a base and a read follow-up exist. They are null where the knee is unread, and they are independent of `risk`. Under `progression.replacement_as_kl4 = true` (default, builder's call), a knee replaced after the anchor counts as reaching KL 4.
 6. **`replacement_times(A, anchor, censor) -> pl.DataFrame`.** `ID, SIDE, time_yr, event`.
    - Time runs from the anchor visit day to the replacement day.
    - **Censoring:** under `tkr.censor = "last_visit"`, a knee is censored at the latest `V##VISDYS` across AllClinical visits after the anchor (V14 included).
@@ -96,6 +101,7 @@ The analysis carries these. Defaults are noted where an analysis's ledger may om
 | `outcomes.roa_replacement` | `"ignore"` | Luyten sets `"event"`; the value names are luyten's |
 | `readings.anchor_project` | `"followup"` | variant `"p15"` |
 | `progression.jsn_rule` | `"whole_grade"` | variant `"within_grade"` |
+| `progression.replacement_as_kl4` | true | a replacement after the anchor counts as KL 4 in the transition flags |
 | `readings.followup_project` | `"latest"` | `open`, everywhere it appears |
 | `tkr.censor` | `"last_visit"` | |
 | `jsw.threshold_mm` | 0.7 | FNIH |
