@@ -8,6 +8,7 @@ Frames (participant-level, OAI_FRAME_DIR only):
   progression          KL and JSN worsening, V06 KL in progression.risk_kl (S3, read knees)
   jsw                  medial minimum JSW change, same knees (S3b)
   tkr                  time to knee replacement from V06 (S2, S3)
+  jsw_72, tkr_72       the same from V08 (72 months), for the models with the 48 -> 72 change
 Every knee frame carries kl48, womac48, roa48, sx48 and the person columns.
 """
 
@@ -22,9 +23,11 @@ from persons import (
     descriptives,
     frame_flow,
     incidence_sample,
+    jsw_frame,
     knee_base,
     person_frame,
     progression_frame,
+    replacement_frame,
     reverse_exposures,
     risk_grades,
     selection_flow,
@@ -118,18 +121,16 @@ jsw_all = (
     .join(progression_all.select(KEYS), on=KEYS, how="semi")
 )
 out["jsw"] = with_person(jsw_all, base, people)
+# change models take the outcome from 72 months: JSW 72 -> horizon, same knees
+out["jsw_72"] = jsw_frame(ko.jsw_change(A, "08", horizon), progression_all, base, people)
 
 tkr_all, tkr_flow = ko.replacement_times(A, ANCHOR)
 tkr_all = tkr_all.with_columns(pl.col("ID").cast(pl.Int64))
-at_risk_roa = ko.at_risk(status, "roa", ANCHOR).with_columns(pl.lit(True).alias("at_risk_roa"))
-out["tkr"] = (
-    with_person(tkr_all, base, people)
-    .join(at_risk_roa, on=KEYS, how="left")
-    .with_columns(
-        pl.col("at_risk_roa").fill_null(False),
-        (pl.col("kl48") >= 2).fill_null(False).alias("progression_tkr"),
-    )
-)
+out["tkr"] = replacement_frame(tkr_all, base, people, ko.at_risk(status, "roa", ANCHOR))
+# change models: knees not replaced by the 72-month visit, time from that visit
+tkr72_all, tkr72_flow = ko.replacement_times(A, "08")
+tkr72_all = tkr72_all.with_columns(pl.col("ID").cast(pl.Int64))
+out["tkr_72"] = replacement_frame(tkr72_all, base, people, ko.at_risk(status, "roa", "08"))
 
 persons_out.write_parquet(frames / "persons.parquet")
 for name, frame in out.items():
@@ -172,6 +173,11 @@ flow.append({"sample": "jsw", "step": "knees_both_widths_all_people", "n": jsw_b
 flow.append({"sample": "tkr", "step": "knees_all_people", "n": tkr_all.height})
 for column in tkr_flow.columns:
     flow.append({"sample": "tkr", "step": column, "n": tkr_flow[column].item()})
+flow.append({"sample": "tkr_72", "step": "knees_all_people", "n": tkr72_all.height})
+for column in tkr72_flow.columns:
+    flow.append({"sample": "tkr_72", "step": column, "n": tkr72_flow[column].item()})
+jsw72_both = out["jsw_72"].filter(pl.col("change_mm").is_not_null())
+flow.append({"sample": "jsw_72", "step": "knees_both_widths_valid_48", "n": jsw72_both.height})
 
 events = {
     **{f"periods_{o}": "event" for o in ko.OUTCOMES},
@@ -180,12 +186,16 @@ events = {
     "progression": "kl_event",
     "jsw": "progressor",
     "tkr": "event",
+    "jsw_72": "progressor",
+    "tkr_72": "event",
 }
 for name, event in events.items():
     flow += frame_flow(name, out[name], event)
 flow += frame_flow("progression_jsn", out["progression"], "jsn_event")
 flow += frame_flow("tkr_incidence", out["tkr"].filter("at_risk_roa"), "event")
 flow += frame_flow("tkr_progression", out["tkr"].filter("progression_tkr"), "event")
+flow += frame_flow("tkr_72_incidence", out["tkr_72"].filter("at_risk_roa"), "event")
+flow += frame_flow("tkr_72_progression", out["tkr_72"].filter("progression_tkr"), "event")
 
 after = [v for v in visits if v >= ANCHOR]
 for label, knees in (("incident_roa", samples["roa"]), ("progression", progression_all)):

@@ -183,3 +183,47 @@ def test_knee_events_and_agreement():
     roa = pl.DataFrame({"ID": [1, 2, 3], "SIDE": ["R"] * 3, "event": [True, True, False]})
     table = {r["level"]: r["n"] for r in P.agreement(kl, roa)}
     assert table == {"true/true": 1, "true/false": 0, "false/true": 1, "false/false": 0}
+
+
+def _base(*rows):
+    return pl.DataFrame(
+        [dict(zip(("ID", "SIDE", "kl48"), r, strict=True)) for r in rows],
+        schema={"ID": pl.Int64, "SIDE": pl.String, "kl48": pl.Float64},
+    )
+
+
+def test_replacement_frame_flags_follow_the_given_at_risk_set():
+    # tkr_72: at_risk_roa marks only the knees at risk at V08; progression_tkr is KL >= 2 at V06;
+    # people without valid 48-month wear (not in persons) leave
+    times = pl.DataFrame(
+        {
+            "ID": [1, 1, 2, 3],
+            "SIDE": ["R", "L", "R", "R"],
+            "time_yr": [3.0, 4.0, 5.0, 2.0],
+            "event": [True, False, False, True],
+        }
+    )
+    base = _base((1, "R", 0.0), (1, "L", 1.0), (2, "R", 2.0), (3, "R", 3.0))
+    persons = pl.DataFrame({"ID": [1, 2], "steps_48": [5000.0, 8000.0]})
+    at_risk_v08 = pl.DataFrame({"ID": [1], "SIDE": ["R"]}, schema_overrides={"ID": pl.Int64})
+    out = P.replacement_frame(times, base, persons, at_risk_v08).sort("ID", "SIDE")
+    assert out.select("ID", "SIDE").rows() == [(1, "L"), (1, "R"), (2, "R")]
+    assert out["at_risk_roa"].to_list() == [False, True, False]
+    assert out["progression_tkr"].to_list() == [False, False, True]
+
+
+def test_jsw_frame_keeps_the_progression_sample_only():
+    change = pl.DataFrame(
+        {
+            "ID": [1, 1, 2],
+            "SIDE": ["R", "L", "R"],
+            "base_mm": [4.0, 3.5, 3.0],
+            "change_mm": [-0.8, -0.1, None],
+        }
+    )
+    sample = pl.DataFrame({"ID": [1, 2], "SIDE": ["R", "R"]}, schema_overrides={"ID": pl.Int64})
+    base = _base((1, "R", 2.0), (1, "L", 0.0), (2, "R", 3.0))
+    persons = pl.DataFrame({"ID": [1, 2], "steps_48": [5000.0, 8000.0]})
+    out = P.jsw_frame(change, sample, base, persons).sort("ID", "SIDE")
+    assert out.select("ID", "SIDE").rows() == [(1, "R"), (2, "R")]
+    assert out["kl48"].to_list() == [2.0, 3.0]

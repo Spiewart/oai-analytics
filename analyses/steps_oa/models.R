@@ -5,10 +5,13 @@
 #        Each P model: linear (per_1000), step bands (band_*, vs the lowest band) and a
 #        restricted cubic spline (nonlinear_p, and curve_p{1,2}.csv for m1)
 #   S1   incident ROA and SOA after 72 months: steps_48 (baseline_adj) + steps_change (change)
-#   S2   knee replacement in the incident-ROA knees: Cox if >= tkr.min_events, else band counts
-#   S3   Cox replacement in knees with KL >= 2 at 48; KL and JSN worsening in read knees (GEE)
-#   S3b  medial minimum JSW: progressor (logistic GEE) and change_mm (gaussian GEE), for
-#        steps_48 and for steps_48 + steps_change
+#   S2   knee replacement in the incident-ROA knees: Cox if >= tkr.min_events, else band counts;
+#        steps_48 from 48 months (tkr), and steps_48 + steps_change from 72 months (tkr_72:
+#        knees not replaced and at risk of ROA at 72 months; outcome tkr_incidence_72)
+#   S3   Cox replacement in knees with KL >= 2 at 48 (and the change model from 72 months,
+#        tkr_progression_72); KL and JSN worsening in read knees (GEE, steps_48 only)
+#   S3b  medial minimum JSW: progressor (logistic GEE) and change_mm (gaussian GEE): steps_48
+#        on 48 -> 96 months; steps_48 + steps_change on 72 -> 96 (jsw_72; outcomes *_72)
 #   S4   P1 and P2 with MV minutes/day at 48 months (per 10 min/day)
 #   R1   steps_72 ~ new OA 36->48 + steps_48     (person level, gaussian GEE, independence)
 #   R2   steps_72 ~ new OA 48->72 + steps_48     (reverse.r2_kl_read: with KL worsening, read knees)
@@ -21,7 +24,9 @@
 # "log"). Under "log", steps enter as log(steps + 1) and `per_1000` is named `per_log` (S4:
 # `per_10min` becomes `per_log`). Bands and spline always use steps/day.
 # Table columns: n is knees (persons for R); events is knees with the outcome (R1/R2: people
-# with the exposure; R3: blank).
+# with the exposure; R3: blank); dropped is knees left out by drop_separated() (0 where none;
+# also metric <key>.dropped_separated), so n + dropped is the complete-case sample.
+# Every model with the 48 -> 72 change takes its outcome from 72 months onward.
 
 suppressPackageStartupMessages(library(survival))
 A <- oaimodels::assumptions()
@@ -72,11 +77,11 @@ band_of <- function(steps) {
 rows <- list()
 metrics <- list()
 na_est <- c(estimate = NA_real_, lo = NA_real_, hi = NA_real_)
-record <- function(table, exposure, outcome, term, model, n, events, est) {
+record <- function(table, exposure, outcome, term, model, n, events, est, dropped = 0L) {
   rows[[length(rows) + 1]] <<- data.frame(
     table = table, exposure = exposure, outcome = outcome, term = term, model = model, n = n,
     events = events, estimate = unname(est[["estimate"]]), lo = unname(est[["lo"]]),
-    hi = unname(est[["hi"]])
+    hi = unname(est[["hi"]]), dropped = dropped
   )
   key <- sprintf("%s.%s.%s.%s.%s", table, exposure, outcome, term, model)
   metrics[[key]] <<- unname(est[["estimate"]])
@@ -84,6 +89,7 @@ record <- function(table, exposure, outcome, term, model, n, events, est) {
   metrics[[paste0(key, ".hi")]] <<- unname(est[["hi"]])
   metrics[[paste0(key, ".n")]] <<- n
   metrics[[paste0(key, ".events")]] <<- events
+  if (isTRUE(dropped > 0)) metrics[[paste0(key, ".dropped_separated")]] <<- dropped
 }
 complete <- function(d, vars) d[stats::complete.cases(d[, unique(vars), drop = FALSE]), , drop = FALSE]
 knees_n <- function(d) nrow(unique(d[, c("ID", "SIDE")]))
@@ -168,13 +174,14 @@ coef_p <- function(fit, term) {
 forward_shapes <- function(table, d, outcome, model, kl_factor, curve = NULL) {
   covs <- covariates_for(A, model, "48", "knee")
   dd <- complete(d, c("event", "steps_48", covs, period_vars(d)))
+  before <- knees_n(dd)
   dd <- drop_separated(dd, "event", factor_vars(dd, kl_factor && "kl48" %in% covs),
                      paste(table, outcome, model))
   rhs_rest <- c(period_terms(dd), cov_terms(dd, covs, kl_factor))
-  n <- knees_n(dd); ev <- events_n(dd, "event")
+  n <- knees_n(dd); ev <- events_n(dd, "event"); dropped <- before - n
 
   fit <- gee_fit(dd, "event", c("x_steps", rhs_rest), "binomial")
-  record(table, "steps_48", outcome, lin_term, model, n, ev, coef_est(fit, "x_steps", TRUE))
+  record(table, "steps_48", outcome, lin_term, model, n, ev, coef_est(fit, "x_steps", TRUE), dropped)
 
   # Bands: lowest band is the reference; NA for a band (all bands if the reference) with too few
   dd$band <- band_of(dd$steps_48)
@@ -186,7 +193,8 @@ forward_shapes <- function(table, d, outcome, model, kl_factor, curve = NULL) {
     est <- if (b == BANDS[1]) {
       if (is.null(fit_b)) na_est else c(estimate = 1, lo = NA_real_, hi = NA_real_)
     } else if (band_events[[b]] < MIN_EVENTS) na_est else coef_est(fit_b, paste0("band", b), TRUE)
-    record(table, "steps_48", outcome, paste0("band_", b), model, knees_n(db), events_n(db, "event"), est)
+    record(table, "steps_48", outcome, paste0("band_", b), model, knees_n(db), events_n(db, "event"), est,
+           dropped)
   }
 
   # Restricted cubic spline, knots at quantiles of steps_48 in this model's sample
@@ -195,7 +203,7 @@ forward_shapes <- function(table, d, outcome, model, kl_factor, curve = NULL) {
   dd$rcs1 <- B[, 1]; dd$rcs2 <- B[, 2]
   fit_s <- gee_fit(dd, "event", c("rcs1", "rcs2", rhs_rest), "binomial")
   record(table, "steps_48", outcome, "nonlinear_p", model, n, ev,
-         c(estimate = coef_p(fit_s, "rcs2"), lo = NA_real_, hi = NA_real_))
+         c(estimate = coef_p(fit_s, "rcs2"), lo = NA_real_, hi = NA_real_), dropped)
   if (!is.null(curve)) {
     cv <- if (is.null(fit_s)) {
       data.frame(or = NA_real_, lo = NA_real_, hi = NA_real_)[rep(1, length(CURVE_AT)), ]
@@ -216,6 +224,7 @@ knee_logit <- function(table, exposure, d, outcome_col, outcome, model, waves, x
   raw <- c(outcome_col, "steps_48", if ("x_change" %in% x) c("steps_change", "steps_72"),
            if ("x_mv" %in% x) "mv_min_48", covs, extra, period_vars(d))
   dd <- complete(d, raw)
+  before <- knees_n(dd)
   if (family == "binomial") {
     dd <- drop_separated(dd, outcome_col, factor_vars(dd, kl_factor && "kl48" %in% covs),
                          paste(table, outcome, model, paste(labels, collapse = "+")))
@@ -225,28 +234,35 @@ knee_logit <- function(table, exposure, d, outcome_col, outcome, model, waves, x
   ev <- if (family == "binomial") events_n(dd, outcome_col) else NA_integer_
   ratio <- family == "binomial"
   for (i in seq_along(x)) {
-    record(table, exposure, outcome, labels[[i]], model, knees_n(dd), ev, coef_est(fit, x[[i]], ratio))
+    record(table, exposure, outcome, labels[[i]], model, knees_n(dd), ev, coef_est(fit, x[[i]], ratio),
+           before - knees_n(dd))
   }
 }
 
-# Cox model of knee replacement, clustered by person; band counts below the event minimum
-knee_cox <- function(table, d, outcome, model, kl_factor) {
-  covs <- covariates_for(A, model, "48", "knee")
-  dd <- complete(d, c("time_yr", "event", "steps_48", covs))
+# Cox model of knee replacement, clustered by person; band counts (by steps_48) below the event
+# minimum. `x` are the step terms recorded as `labels`; with the change (x_change) the frame is
+# tkr_72 (time from the 72-month visit) and wear enters at both waves.
+knee_cox <- function(table, d, outcome, model, kl_factor, x = "x_steps", labels = lin_term,
+                     waves = "48") {
+  covs <- covariates_for(A, model, waves, "knee")
+  dd <- complete(d, c("time_yr", "event", "steps_48", if ("x_change" %in% x) "steps_change", covs))
   n <- knees_n(dd); ev <- events_n(dd, "event")
   record(table, "steps_48", outcome, "events", model, n, ev, na_est)
   if (ev >= min_tkr) {
-    rhs <- c("x_steps", cov_terms(dd, covs, kl_factor))
+    rhs <- c(x, cov_terms(dd, covs, kl_factor))
     dd$event_ <- as.integer(as.logical(dd$event))
     f <- stats::as.formula(paste("survival::Surv(time_yr, event_) ~", paste(rhs, collapse = " + ")))
     fit <- tryCatch(survival::coxph(f, data = dd, cluster = ID), error = function(e) {
       message("cox failed (", outcome, "): ", conditionMessage(e)); NULL
     })
-    est <- if (is.null(fit) || !"x_steps" %in% names(stats::coef(fit))) na_est else {
-      b <- stats::coef(fit)[["x_steps"]]; se <- sqrt(stats::vcov(fit)["x_steps", "x_steps"])
-      if (is.finite(se)) exp(c(estimate = b, lo = b - 1.96 * se, hi = b + 1.96 * se)) else na_est
+    for (i in seq_along(x)) {
+      term <- x[[i]]
+      est <- if (is.null(fit) || !term %in% names(stats::coef(fit))) na_est else {
+        b <- stats::coef(fit)[[term]]; se <- sqrt(stats::vcov(fit)[term, term])
+        if (is.finite(b) && is.finite(se)) exp(c(estimate = b, lo = b - 1.96 * se, hi = b + 1.96 * se)) else na_est
+      }
+      record(table, "steps_48", outcome, labels[[i]], model, n, ev, est)
     }
-    record(table, "steps_48", outcome, lin_term, model, n, ev, est)
   } else {
     dd$band <- band_of(dd$steps_48)
     for (b in BANDS) {
@@ -263,6 +279,8 @@ f_soa <- read(incidence[["soa"]])
 f_roa72 <- read("periods_roa_72")
 f_soa72 <- read("periods_soa_72")
 tkr <- read("tkr")
+tkr72 <- read("tkr_72")
+jsw72 <- read("jsw_72")
 progression <- read("progression")
 jsw <- read("jsw")
 persons <- read("persons")
@@ -287,22 +305,28 @@ for (model in models) {
 
   # S2: replacement in the incident-ROA knees
   knee_cox("s2", tkr[tkr$at_risk_roa %in% TRUE, ], "tkr_incidence", model, kl_factor = FALSE)
+  knee_cox("s2", tkr72[tkr72$at_risk_roa %in% TRUE, ], "tkr_incidence_72", model, FALSE,
+           c("x_steps", "x_change"), c("baseline_adj", "change"), c("48", "72"))
 
   # S3: replacement in knees with KL >= 2; KL and JSN worsening in the read knees
   knee_cox("s3", tkr[tkr$progression_tkr %in% TRUE, ], "tkr_progression", model, kl_factor = TRUE)
+  knee_cox("s3", tkr72[tkr72$progression_tkr %in% TRUE, ], "tkr_progression_72", model, TRUE,
+           c("x_steps", "x_change"), c("baseline_adj", "change"), c("48", "72"))
   read_kl <- progression[progression$kl_read %in% TRUE, ]
   knee_logit("s3", "steps_48", read_kl, "kl_any", "kl_any_read", model, "48", "x_steps", lin_term, TRUE)
   knee_logit("s3", "steps_48", read_kl[read_kl$base_kl %in% 2:3, ], "kl_to_4", "kl_to_4_read", model,
              "48", "x_steps", lin_term, TRUE)
   knee_logit("s3", "steps_48", progression, "jsn_event", "jsn_read", model, "48", "x_steps", lin_term, TRUE)
 
-  # S3b: measured JSW in the progression risk grades
+  # S3b: measured JSW in the progression risk grades; 48 -> horizon for steps_48 alone, 72 ->
+  # horizon (jsw_72, base_mm the 72-month width) for the model with the change
   j <- jsw[jsw$kl48 %in% risk, ]
+  j72 <- jsw72[jsw72$kl48 %in% risk, ]
   extra <- if (model == "m2") "base_mm" else character()
   for (spec in list(list(col = "progressor", family = "binomial"), list(col = "change_mm", family = "gaussian"))) {
     knee_logit("s3b", "steps_48", j, spec$col, spec$col, model, "48", "x_steps", lin_term, TRUE,
                extra, spec$family)
-    knee_logit("s3b", "steps_48", j, spec$col, spec$col, model, c("48", "72"),
+    knee_logit("s3b", "steps_48", j72, spec$col, paste0(spec$col, "_72"), model, c("48", "72"),
                c("x_steps", "x_change"), c("baseline_adj", "change"), TRUE, extra, spec$family)
   }
 

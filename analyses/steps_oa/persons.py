@@ -206,6 +206,34 @@ def with_person(knees: pl.DataFrame, base: pl.DataFrame, persons: pl.DataFrame) 
     )
 
 
+def replacement_frame(
+    times: pl.DataFrame, base: pl.DataFrame, persons: pl.DataFrame, at_risk_roa: pl.DataFrame
+) -> pl.DataFrame:
+    """Replacement times (`ko.replacement_times`) with the knee and person columns and two flags:
+    at_risk_roa (the knee is in `at_risk_roa`, ID, SIDE: at risk of incident ROA at the times'
+    anchor) and progression_tkr (KL >= 2 at 48 months)."""
+    flagged = at_risk_roa.select(KEYS).unique().with_columns(pl.lit(True).alias("at_risk_roa"))
+    return (
+        with_person(times, base, persons)
+        .join(flagged, on=KEYS, how="left")
+        .with_columns(
+            pl.col("at_risk_roa").fill_null(False),
+            (pl.col("kl48") >= 2).fill_null(False).alias("progression_tkr"),
+        )
+    )
+
+
+def jsw_frame(
+    change: pl.DataFrame, sample: pl.DataFrame, base: pl.DataFrame, persons: pl.DataFrame
+) -> pl.DataFrame:
+    """JSW change (`ko.jsw_change`) for the knees in `sample` (ID, SIDE: the progression
+    sample, KL at 48 months in progression.risk_kl), with the knee and person columns."""
+    knees = change.with_columns(pl.col("ID").cast(pl.Int64)).join(
+        sample.select(KEYS), on=KEYS, how="semi"
+    )
+    return with_person(knees, base, persons)
+
+
 def progression_frame(
     status: pl.DataFrame, horizon: str, risk: Sequence[float] | None, A: Resolved
 ) -> pl.DataFrame:
