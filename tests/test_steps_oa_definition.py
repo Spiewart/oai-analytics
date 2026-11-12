@@ -16,6 +16,7 @@ NEW = {
     "readings.anchor_project": "followup",
     "readings.followup_project": "latest",
     "incidence.model": "discrete_time",
+    "incidence.link": "cloglog",
     "horizon.selection": "known_or_case",
     "progression.risk_kl": "2-3",
     "progression.models": "read_knees",

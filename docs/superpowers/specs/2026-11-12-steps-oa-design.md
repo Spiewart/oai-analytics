@@ -31,7 +31,7 @@ The analysis has the same shape as `analyses/crepitus_activity` (both directions
    - knee replacement within incidence is secondary.
 4. **Both directions** (from the original request).
 5. **Follow-up loss in P1 and P2:**
-   - **Primary:** a discrete-time model by visit (V08, V10), in which a knee contributes visits until it has the outcome or its readings stop.
+   - **Primary:** a discrete-time model by visit (V08, V10), in which a knee contributes visits until it has the outcome or its readings stop. Fitted as grouped-time proportional hazards (final-review ruling 2026-11-12, ledger `incidence.link`): complementary log-log link, an intercept per interval end, `offset(log(span))` for an interval spanning an unread visit, and independence working correlation with person-clustered robust SEs; estimates are hazard ratios per follow-up interval.
    - **Companion check:** a logistic "outcome by V10" model.
 6. **Progression readings are selective** (Project 37/42 read only some knees after 48 months):
    - **Primary (c):** KL and JSN progression are descriptive only, and knee replacement carries the progression family.
@@ -48,7 +48,7 @@ The analysis has the same shape as `analyses/crepitus_activity` (both directions
 
 ### Unit and samples
 
-- **Unit:** the knee, with two knees per person clustered by person (logistic GEE, exchangeable, as in crepitus_activity B3).
+- **Unit:** the knee, with two knees per person clustered by person (logistic GEE, exchangeable, as in crepitus_activity B3; discrete-time models on person-period rows use independence, per Pepe & Anderson).
 - **Incidence sample:** knees with KL 0–1 at 48 months (Project 15 V06 reading, agreeing with OUTCOMES99: not ROA at or before V06), not replaced at 48 months, in people with valid 48-month steps.
 - **Incident SOA sample:** knees without SOA at 48 months, i.e. not (frequent pain and ROA). Knees with ROA but no frequent pain at 48 months stay in the sample.
 - **Progression sample:** knees with KL ≥ 2 at 48 months, not replaced. The at-risk grades (`progression.risk_kl`) are `open` in `analyses/crepitus`. Carry the same entry here as `open`: default 2–3, variant 1–3. KL 4 knees can only progress by replacement.

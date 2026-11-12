@@ -19,13 +19,20 @@
 # Every model runs as m1 (age, sex, BMI, wear at each wave) and m2 (+ the knee's KL and WOMAC
 # pain at 48 for knee models; + the higher KL and the worse knee's pain for person models), on
 # complete cases of its own terms. A fit error, or a band with fewer than MIN_EVENTS events,
-# writes NA. Knee models: odds ratios (hazard ratios for Cox; mm for change_mm). Reverse models:
+# writes NA. Discrete-time models (every model on a periods frame: P1, P2, S1, S4) are grouped-time
+# proportional hazards: binomial GEE with a complementary log-log link, offset(log(span)) and
+# factor(end_visit) (no span factor), independence working correlation with person-clustered
+# robust SEs (incidence.link; Pepe & Anderson), so their estimates are hazard ratios per
+# follow-up interval. Under incidence.model = "by_horizon", P1, P2 and S4 use one row per knee and
+# stay logistic (odds ratios). Other knee models: odds ratios from logistic GEE with model.corstr
+# (hazard ratios for Cox; mm for change_mm). Reverse models:
 # the difference in steps_72 in 1,000 steps/day (ratio of steps_72 + 1 under steps.transform =
 # "log"). Under "log", steps enter as log(steps + 1) and `per_1000` is named `per_log` (S4:
 # `per_10min` becomes `per_log`). Bands and spline always use steps/day.
 # Table columns: n is knees (persons for R); events is knees with the outcome (R1/R2: people
 # with the exposure; R3: blank); dropped is knees left out by drop_separated() (0 where none;
-# also metric <key>.dropped_separated), so n + dropped is the complete-case sample.
+# also metric <key>.dropped_separated), so n + dropped is the complete-case sample. The spline
+# curve files hold `hr` (discrete time) or `or` (by_horizon) against 5,000 steps/day.
 # Every model with the 48 -> 72 change takes its outcome from 72 months onward.
 
 suppressPackageStartupMessages(library(survival))
@@ -39,6 +46,8 @@ models <- c("m1", "m2")
 log_scale <- identical(A[["steps.transform"]], "log")
 by_horizon <- identical(A[["incidence.model"]], "by_horizon")
 corstr <- A[["model.corstr"]]
+link <- A[["incidence.link"]]
+if (!identical(link, "cloglog")) stop("incidence.link must be \"cloglog\"", call. = FALSE)
 edges <- as.numeric(A[["steps.bands"]])
 knot_q <- as.numeric(A[["steps.spline_knots"]])
 min_tkr <- as.numeric(A[["tkr.min_events"]])
@@ -97,15 +106,20 @@ events_n <- function(d, outcome) sum(as.logical(d[[outcome]]))
 
 # `factor(v)` when v has at least two values in d, else nothing (a constant adds no term)
 fac <- function(d, v) if (length(unique(d[[v]])) >= 2) sprintf("factor(%s)", v) else character()
+# A periods frame has one row per knee and follow-up interval (end_visit, span = visits covered)
+is_periods <- function(d) all(c("end_visit", "span") %in% names(d))
+# Grouped-time hazard terms: an intercept per interval end and log(span) as an offset, so a knee
+# whose middle visit was unread (span 2) carries twice the interval's cumulative hazard instead of
+# a span factor that its few rows would perfectly predict
 period_terms <- function(d) {
-  if (!all(c("end_visit", "span") %in% names(d))) return(character())
-  c(fac(d, "end_visit"), fac(d, "span"))
+  if (!is_periods(d)) return(character())
+  c(fac(d, "end_visit"), "offset(log(span))")
 }
 period_vars <- function(d) intersect(c("end_visit", "span"), names(d))
-# Knees in a level of a factor term (kl48 as a factor, end_visit, span) with no events or no
-# non-events are perfectly predicted by that level: the logistic fit's other coefficients are those
-# of the fit without them, but geeglm diverges instead of converging there. They are dropped
-# (with a message), so the model is fitted where it can be.
+# Knees in a level of a factor term (kl48 as a factor, end_visit) with no events or no non-events
+# are perfectly predicted by that level: the fit's other coefficients are those of the fit without
+# them, but geeglm diverges instead of converging there. They are dropped (with a message), so the
+# model is fitted where it can be. span is an offset, not a factor, so it is never checked.
 drop_separated <- function(d, outcome, factors, label) {
   repeat {
     y <- as.logical(d[[outcome]])
@@ -124,7 +138,7 @@ drop_separated <- function(d, outcome, factors, label) {
     d <- d[!bad, , drop = FALSE]
   }
 }
-factor_vars <- function(d, kl_factor) c(if (kl_factor) "kl48", period_vars(d))
+factor_vars <- function(d, kl_factor) c(if (kl_factor) "kl48", intersect("end_visit", names(d)))
 
 # Covariates as model terms: kl48 enters as a factor (kl_factor) or as its grade (0/1 for ROA)
 cov_terms <- function(d, covs, kl_factor) {
@@ -136,13 +150,21 @@ cov_terms <- function(d, covs, kl_factor) {
 }
 
 # ------------------------------------------------------------------ fitting
+# Binomial on a periods frame: complementary log-log link (hazard ratios) and independence
+# working correlation (person-period rows break Pepe & Anderson's condition for a non-diagonal
+# one); robust SEs are clustered by person either way. Rows are ordered by ID and the cluster is an
+# integer, as in oaimodels::fit_knee_gee (r/oaimodels/R/gee.R: geepack finds clusters from
+# diff(as.numeric(id))).
 gee_fit <- function(d, outcome, rhs, family) {
   d <- d[order(d$ID), , drop = FALSE]
   if (identical(family, "binomial")) d[[outcome]] <- as.integer(as.logical(d[[outcome]]))
   d$cluster_ <- match(d$ID, unique(d$ID))
   f <- stats::as.formula(paste(outcome, "~", paste(rhs, collapse = " + ")))
-  fam <- if (identical(family, "binomial")) stats::binomial else stats::gaussian
-  cs <- if (identical(family, "gaussian_person")) "independence" else corstr
+  periods <- is_periods(d)
+  fam <- if (identical(family, "binomial")) {
+    if (periods) stats::binomial(link = link) else stats::binomial()
+  } else stats::gaussian()
+  cs <- if (identical(family, "gaussian_person") || periods) "independence" else corstr
   tryCatch(
     geepack::geeglm(f, id = cluster_, data = d, family = fam, corstr = cs),
     error = function(e) {
@@ -170,7 +192,8 @@ coef_p <- function(fit, term) {
 }
 
 # ------------------------------------------------------------------ forward (knee level)
-# Linear, band and spline models of `outcome` (0/1 `event` column) on steps at 48 months
+# Linear, band and spline models of `outcome` (0/1 `event` column) on steps at 48 months; hazard
+# ratios on a periods frame, odds ratios on a by_horizon frame
 forward_shapes <- function(table, d, outcome, model, kl_factor, curve = NULL) {
   covs <- covariates_for(A, model, "48", "knee")
   dd <- complete(d, c("event", "steps_48", covs, period_vars(d)))
@@ -206,18 +229,20 @@ forward_shapes <- function(table, d, outcome, model, kl_factor, curve = NULL) {
          c(estimate = coef_p(fit_s, "rcs2"), lo = NA_real_, hi = NA_real_), dropped)
   if (!is.null(curve)) {
     cv <- if (is.null(fit_s)) {
-      data.frame(or = NA_real_, lo = NA_real_, hi = NA_real_)[rep(1, length(CURVE_AT)), ]
+      data.frame(ratio = NA_real_, lo = NA_real_, hi = NA_real_)[rep(1, length(CURVE_AT)), ]
     } else {
       terms <- c("rcs1", "rcs2")
       rcs_curve(stats::coef(fit_s)[terms], stats::vcov(fit_s)[terms, terms], knots,
                 CURVE_AT / 1000, CURVE_REF / 1000)
     }
-    utils::write.csv(data.frame(steps = CURVE_AT, or = cv$or, lo = cv$lo, hi = cv$hi),
-                     file.path(out_dir, sprintf("curve_%s.csv", curve)), row.names = FALSE)
+    out <- data.frame(steps = CURVE_AT, ratio = cv$ratio, lo = cv$lo, hi = cv$hi)
+    names(out)[2] <- if (is_periods(dd)) "hr" else "or"
+    utils::write.csv(out, file.path(out_dir, sprintf("curve_%s.csv", curve)), row.names = FALSE)
   }
 }
 
-# One knee-level GEE (logistic, or gaussian for change_mm): coefficients `x` recorded as `labels`
+# One knee-level GEE (binomial, or gaussian for change_mm): coefficients `x` recorded as `labels`;
+# binomial is cloglog on a periods frame (S1, S4), logistic otherwise
 knee_logit <- function(table, exposure, d, outcome_col, outcome, model, waves, x, labels, kl_factor,
                        extra = character(), family = "binomial") {
   covs <- covariates_for(A, model, waves, "knee")

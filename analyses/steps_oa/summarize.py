@@ -133,6 +133,16 @@ def nev(r: dict[str, str] | None) -> str:
     return f"{n0(num(r['n']))}" if ev is None else f"{n0(num(r['n']))} / {n0(ev)}"
 
 
+def discrete(run: Run) -> bool:
+    """P1, P2 and S4 are discrete-time hazard models unless the run is the by_horizon companion."""
+    return run.assumptions.get("incidence.model") != "by_horizon"
+
+
+def scale(run: Run) -> str:
+    """Abbreviation of the P1/P2/S4 ratio: HR (cloglog, per follow-up interval) or OR."""
+    return "HR" if discrete(run) else "OR"
+
+
 def lin_term(run: Run) -> str:
     return (
         "per_log" if any(r["term"] == "per_log" for r in run.tables.get("p1", [])) else "per_1000"
@@ -277,16 +287,37 @@ def reconcile(run: Run) -> str:
         )
     lines.append("")
     lines.append(
-        '"Dropped" knees sit in a level of a factor term (visit, span, or KL grade in Model 2) '
-        "with no events or no non-events; they are left out so the GEE converges, and every "
-        "table carries the count in its `dropped` column."
+        '"Dropped" knees would sit in a level of a factor term (the interval-end visit, or KL '
+        "grade in Model 2) with no events or no non-events; they are left out so the GEE "
+        "converges, and every table carries the count in its `dropped` column. The visits a "
+        "knee's interval spans enter as an offset, not a factor, so knees whose 72-month film "
+        "was unread stay in. " + dropped_note(run)
     )
     return "\n".join(lines)
 
 
+def dropped_note(run: Run) -> str:
+    """What drop_separated() removed in this run, from every table's `dropped` column."""
+    hits = {}
+    for rows in run.tables.values():
+        for r in rows:
+            k = int(num(r.get("dropped")) or 0)
+            if k > 0 and not r["term"].startswith("band_") and r["term"] != "nonlinear_p":
+                hits[(r["table"], r["outcome"], r["model"])] = k
+    if not hits:
+        return "No model in this run dropped a knee."
+    return (
+        "Knees dropped: "
+        + "; ".join(f"{t.upper()} {oc} Model {m[1]}: {k}" for (t, oc, m), k in sorted(hits.items()))
+        + " (knees, not rows; the run log names the factor level, which in these runs is a "
+        "KL grade of Model 2 with no events or no non-events)."
+    )
+
+
 def bands_table(run: Run, table: str, outcome: str) -> list[str]:
+    sc = scale(run)
     out = [
-        "| Steps/day at 48 months | Knees / events | Model 1 OR | Model 2 OR |",
+        f"| Steps/day at 48 months | Knees / events | Model 1 {sc} | Model 2 {sc} |",
         "|---|---|---|---|",
     ]
     for b in BANDS:
@@ -298,7 +329,22 @@ def bands_table(run: Run, table: str, outcome: str) -> list[str]:
 
 def primary_section(run: Run) -> list[str]:
     lt = lin_term(run)
-    out = ["### Primary: P1 and P2 (odds ratio per 1,000 steps/day at 48 months)", ""]
+    out = [
+        "### Primary: P1 and P2 (hazard ratio per 1,000 steps/day at 48 months)"
+        if discrete(run)
+        else "### Primary: P1 and P2 (odds ratio per 1,000 steps/day at 48 months)",
+        "",
+    ]
+    if discrete(run):
+        out.append(
+            "Discrete-time models by follow-up interval (48 → 72 and 72 → 96 months, or 48 → 96 "
+            "months for a knee whose 72-month film was not read): binomial GEE with a "
+            "complementary log-log link, an intercept per interval end and log(visits spanned) as "
+            "an offset, so each estimate is a hazard ratio per follow-up interval (grouped-time "
+            "proportional hazards). Independence working correlation with robust SEs clustered "
+            "by person."
+        )
+        out.append("")
     out.append("| Estimate | Knees / events | Model 1 | Model 2 | Non-linearity p (M1, M2) |")
     out.append("|---|---|---|---|---|")
     for label, t, oc in (
@@ -328,7 +374,8 @@ def primary_section(run: Run) -> list[str]:
         out.extend(bands_table(run, t, oc))
         out.append("")
     out.append(
-        "**Spline curves** (Model 1; OR against 5,000 steps/day; `curve_p1.csv`, `curve_p2.csv`):"
+        f"**Spline curves** (Model 1; {scale(run)} against 5,000 steps/day; `curve_p1.csv`, "
+        "`curve_p2.csv`):"
     )
     out.append("")
     at = ["2500", "7500", "10000", "12500"]
@@ -339,10 +386,11 @@ def primary_section(run: Run) -> list[str]:
         cells = []
         for a in at:
             r = cv.get(a)
-            if r is None or num(r["or"]) is None:
+            v = None if r is None else num(r.get("hr", r.get("or")))
+            if v is None:
                 cells.append("—")
             else:
-                cells.append(f"{num(r['or']):.2f} ({num(r['lo']):.2f}–{num(r['hi']):.2f})")
+                cells.append(f"{v:.2f} ({num(r['lo']):.2f}–{num(r['hi']):.2f})")
         out.append(f"| {label} | " + " | ".join(cells) + " |")
     out.append("")
     prim = [
@@ -410,9 +458,11 @@ def secondary_section(run: Run) -> list[str]:
     out = [
         "### Secondary families",
         "",
-        "Odds ratios (Cox hazard ratios for knee replacement; differences in mm for JSW change) "
-        'per 1,000 steps/day. "Change 48 → 72" is per 1,000 steps/day of change, in a model '
-        "that also holds steps at 48 months, in people valid at both waves. **Every change model "
+        "Per 1,000 steps/day: hazard ratios per follow-up interval for S1 and S4 (discrete time, "
+        "as P1 and P2), odds ratios for the read-knee KL and JSN models and JSW progression "
+        "(logistic GEE, one row per knee), Cox hazard ratios for knee replacement, and "
+        'differences in mm for JSW change. "Change 48 → 72" is per 1,000 steps/day of change, in '
+        "a model that also holds steps at 48 months, in people valid at both waves. **Every change model "
         "measures its outcome from 72 months onward** (S1, the 72-month Cox models in S2 and S3, "
         "and S3b's 72 → 96-month JSW).",
         "",
@@ -505,7 +555,7 @@ def reverse_section(run: Run) -> list[str]:
         "|---|---|---|---|",
     ]
     labels = {
-        "r1": "R1, new ROA or KL worsening in either knee, 36 → 48 months (preceding)",
+        "r1": "R1, new ROA, KL worsening or knee replacement in either knee, 36 → 48 months (preceding)",
         "r2": "R2, new ROA or knee replacement in either knee, 48 → 72 months (concurrent)",
     }
     for t in ("r1", "r2"):
@@ -524,7 +574,7 @@ def reverse_section(run: Run) -> list[str]:
         m = next(r for r in r3 if r["term"] == term and r["model"] == "mean")
         s = next((r for r in r3 if r["term"] == term and r["model"] == "sd"), None)
         label = (
-            term.replace("kl_max_", "Higher KL grade ")
+            term.replace("kl_max_", "People whose higher-graded knee is KL ")
             .replace("soa48_FALSE", "No SOA at 48 months")
             .replace("soa48_TRUE", "SOA at 48 months")
         )
@@ -556,7 +606,8 @@ def variant_section(runs: dict[str, Run], ledger: dict) -> list[str]:
         "### Variants",
         "",
         "Each variant is one ledger change (`uv run oai run steps_oa --variant NAME`). Model 1, "
-        "linear term (OR per 1,000 steps/day; `log_steps`: per unit of log(steps + 1)).",
+        "linear term (P1 and P2: HR per 1,000 steps/day, per follow-up interval; `by_horizon`: OR, "
+        "logistic by 96 months; `log_steps`: per unit of log(steps + 1)).",
         "",
         "| Run | Change | P1 knees / events | P1 | P1 Model 2 | P1 ≥ 10,000 vs < 5,000 | P2 knees / events | P2 | Secondary CIs excluding the null | Targeted estimate |",
         "|---|---|---|---|---|---|---|---|---|---|",
@@ -659,16 +710,16 @@ def reading_section(runs: dict[str, Run]) -> list[str]:
     }[tuple(m_flags)]
     p1_text = (
         f"- **P1, incident ROA:** each 1,000 steps/day more at 48 months is associated with "
-        f"{direction(p1m1, 'higher', 'lower')} odds of incident ROA by 96 months: OR "
+        f"{direction(p1m1, 'higher', 'lower')} hazard of incident ROA to 96 months: HR "
         f"{ci(p1m1)} in Model 1 and {ci(p1m2)} in Model 2; {which}."
     )
     if low_bands and p1top is not None and num(p1top["lo"]) is not None:
         low_null = all(not excludes_null(r) for r in low_bands)
         lo_ests = [num(r["estimate"]) for r in low_bands]
         p1_text += (
-            f" The 5,000–9,999 bands have ORs of {min(lo_ests):.2f}–{max(lo_ests):.2f} against "
+            f" The 5,000–9,999 bands have HRs of {min(lo_ests):.2f}–{max(lo_ests):.2f} against "
             f"< 5,000 ({'all CIs include 1' if low_null else 'not all CIs include 1'}); the "
-            f"≥ 10,000 band has OR {ci(p1top)}"
+            f"≥ 10,000 band has HR {ci(p1top)}"
             + (
                 ", so the positive linear estimate is carried by the ≥ 10,000 band."
                 if low_null and excludes_null(p1top) and num(p1top["estimate"]) > 1
@@ -690,18 +741,18 @@ def reading_section(runs: dict[str, Run]) -> list[str]:
     for label, name in (
         ("roa_kl2_jsn", "when ROA requires JSN"),
         ("exclude_baseline_pain", "after dropping knees with frequent pain at 48 months"),
-        ("by_horizon", "in the by-horizon companion"),
+        ("by_horizon", "in the by-horizon companion, an odds ratio of ROA by 96 months"),
     ):
         r = need(runs[label], "p1", outcome="roa", term=lt, model="m1")
         sims.append(f"{ci(r)} {name} ({ci_phrase(r).removeprefix('its 95% ')})")
-    p1_text += " The Model 1 linear OR is " + "; ".join(sims) + "."
+    p1_text += " The Model 1 linear estimate is " + "; ".join(sims) + "."
     h = need(runs["horizon_120"], "p1", outcome="roa", term=lt, model="m1")
     hb = need(runs["horizon_120"], "p1", outcome="roa", term="band_ge10000", model="m1")
     smaller = num(h["estimate"]) < num(p1m1["estimate"]) and num(hb["estimate"]) < num(
         p1top["estimate"]
     )
     p1_text += (
-        f" To 120 months (provisional, Project 43) the linear OR is {ci(h)} and the ≥ 10,000 "
+        f" To 120 months (provisional, Project 43) the linear HR is {ci(h)} and the ≥ 10,000 "
         f"band {ci(hb)}"
         + (", both smaller than at 96 months" if smaller else "")
         + (
@@ -713,7 +764,7 @@ def reading_section(runs: dict[str, Run]) -> list[str]:
 
     # ---- P2
     p2_text = (
-        f"- **P2, incident SOA:** OR {ci(p2)} per 1,000 steps/day; {ci_phrase(p2)}. Split by "
+        f"- **P2, incident SOA:** HR {ci(p2)} per 1,000 steps/day; {ci_phrase(p2)}. Split by "
         f"ROA at 48 months it is {ci(p2r)} in knees with ROA (which become SOA through new "
         f"frequent pain) and {ci(p2n)} in knees without ROA (which become SOA mostly through "
         "new ROA, as in P1). The split was pre-specified; the two CIs "
@@ -737,7 +788,7 @@ def reading_section(runs: dict[str, Run]) -> list[str]:
         f"KL ≥ 2: HR {ci(s3tkr)} ({ci_phrase(s3tkr).removeprefix('its 95% ')}); KL worsening "
         f"in the read knees: OR {ci(s3kl)}; measured JSW change: {ci(jsw)} mm per 1,000 "
         f"steps/day (CI width {width(jsw):.3f} mm, {ci_phrase(jsw).removeprefix('its 95% ')}); "
-        f"MV minutes and incident ROA: OR {ci(s4roa)}. {change_text}"
+        f"MV minutes and incident ROA: HR {ci(s4roa)} per 10 min/day. {change_text}"
     )
 
     # ---- reverse: each model for what its window shows
@@ -757,11 +808,13 @@ def reading_section(runs: dict[str, Run]) -> list[str]:
 
     rev_text = (
         f"- **Reverse direction.** *R1 (preceding, 36 → 48 months; the window that bears on "
-        f"reverse causation for P1):* {r1m1['events']} people with new ROA or KL worsening "
+        f"reverse causation for P1):* {r1m1['events']} people with new ROA, KL worsening or knee "
+        f"replacement "
         f"before the device wave had, at 72 months, {rev(r1m1)} in Model 1 and {rev(r1m2)} in "
         "Model 2, adjusted for steps at 48 months."
         + (
-            " These data give no sign that knees already worsening lowered later steps"
+            " These data give no sign that knees already worsening were followed by fewer steps "
+            "at 72 months"
             + ("; small drops are within the Model 1 CI." if num(r1m1["lo"]) < 0 else ".")
             if num(r1m1["estimate"]) >= 0 and num(r1m2["estimate"]) >= 0
             else " The estimates point to fewer steps after worsening."
@@ -770,8 +823,9 @@ def reading_section(runs: dict[str, Run]) -> list[str]:
         f"replacement between the waves had {rev(r2m1)} in Model 1 and {rev(r2m2)} in Model 2; "
         "this window shows whether steps change alongside new OA, not what preceded the P1 "
         "outcomes."
-        f" *R3 (cross-sectional):* mean steps/day are {n0(r3.get('kl_max_0'))} at the higher "
-        f"KL grade 0 and {n0(r3.get('kl_max_4'))} at grade 4, and {n0(r3.get('soa48_TRUE'))} "
+        f" *R3 (cross-sectional):* mean steps/day are {n0(r3.get('kl_max_0'))} in people whose "
+        f"higher-graded knee is KL 0 and {n0(r3.get('kl_max_4'))} in those whose higher-graded "
+        f"knee is KL 4, and {n0(r3.get('soa48_TRUE'))} "
         f"with SOA against {n0(r3.get('soa48_FALSE'))} without; this gradient by itself does "
         "not say which came first."
     )
@@ -788,8 +842,8 @@ def reading_section(runs: dict[str, Run]) -> list[str]:
     jay = [s3kl, s4roa]
     if all(not excludes_null(r) for r in jay):
         lit.append(
-            f"KL worsening in the read knees ({ci(s3kl)}) and MV minutes against incident ROA "
-            f"({ci(s4roa)}) have CIs including 1, as Jayabalan 2019 (PMID 30238649, KL "
+            f"KL worsening in the read knees (OR {ci(s3kl)}) and MV minutes against incident ROA "
+            f"(HR {ci(s4roa)}) have CIs including 1, as Jayabalan 2019 (PMID 30238649, KL "
             "worsening, activity minutes) and Qin 2018 (PMID 28976494, MVPA, incident OA) "
             "reported no association;"
         )
@@ -877,9 +931,12 @@ def build(results: Path, ledger: dict) -> str:
         "",
         "- **Exposure:** steps/day at 48 months, per 1,000 (E1), and its change from 48 to 72 "
         "months, per 1,000 (E2, with E1 in the model).",
-        "- **Forward estimates:** odds ratios from logistic GEE by knee, clustered by person "
-        "(discrete time by visit for P1 and P2); hazard ratios for knee replacement (Cox, "
-        "clustered by person); differences in mm for JSW change.",
+        "- **Forward estimates:** hazard ratios per follow-up interval from discrete-time GEE "
+        "by knee (P1, P2, S1, S4: complementary log-log link, log-span offset, independence "
+        "working correlation); odds ratios from logistic GEE by knee for the read-knee KL and "
+        "JSN models and JSW progression (exchangeable) and in the `by_horizon` companion; "
+        "hazard ratios for knee replacement (Cox); differences in mm for JSW change. All "
+        "clustered by person.",
         "- **Model 1:** age, sex, BMI and wear hours/day at each wave in the model. **Model 2:** "
         "plus the knee's KL grade and WOMAC pain at 48 months (reverse models: the higher KL and "
         "the worse knee's pain). Pain may confound or mediate, so both are shown.",

@@ -47,10 +47,10 @@ All functions are pure on frames except `knee_status` and `replacement_times`, w
        - `"latest"` = 43, then 37;
        - `"p37"` = 37 only.
 
-       Either way, base and follow-up grades come from the same reading project, so a reader difference is not counted as change. Project 37/42 readers re-read V06 and could revise Project 15's grades.
+       Either way, base and follow-up grades come from the same reading project wherever that project re-read the anchor film, so a reader difference is not counted as change. Project 37/42 readers re-read V06 and could revise Project 15's grades. Where the follow-up project did not re-read the anchor film, the anchor grade falls back to Project 15 (controller ruling 2026-11-12), so for those knees the base and follow-up projects differ; `readprj` at the anchor visit shows which project graded it.
      - **When the anchor is V00:** Project 15 throughout, as luyten uses now.
    - **Anchor-reading variant:** `readings.anchor_project = "p15"` takes the anchor grade from Project 15 instead. The default is `"followup"`. This replaces steps_oa's `kl48.source`.
-   - **READPRJ 42** is recoded to 37, as `kXR_SQ_BU_Descrip.pdf` instructs.
+   - **READPRJ 42** is recoded to 37, as `kXR_SQ_BU_Descrip.pdf` instructs. A single-project call for 37 therefore also returns the READPRJ 42 rows, labelled 37.
    - `xray_readings` gains `JSL`, `READPRJ` and a list of projects, in preference order. Single-project calls are unchanged.
 2. **`at_risk(status, outcome, anchor) -> pl.DataFrame`.** `ID, SIDE` for knees whose `outcome` is known False at `anchor` and that are not replaced at `anchor`. `outcome` ∈ {`roa`, `soa`}.
 3. **`by_horizon(status, outcome, anchor, horizon, selection) -> pl.DataFrame`.** `ID, SIDE, event`. This is luyten's `by_horizon`, generalised from baseline to `anchor` and keyed by knee. Its semantics are unchanged: a knee prevalent at the anchor is null; `known_or_case` and `complete` work as before.

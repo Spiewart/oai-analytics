@@ -1,5 +1,6 @@
 # Shape helpers for steps_oa: Harrell's restricted cubic spline (as Hmisc::rcspline.eval with
-# norm = 2) and the curve of odds ratios it implies against a reference value.
+# norm = 2) and the curve of ratios (odds or hazard ratios, by the model's link) it implies
+# against a reference value.
 
 # Restricted cubic spline basis for k knots: k - 1 columns, x itself and k - 2 nonlinear terms.
 # Each nonlinear term is 0 for x at or below the first knot and linear beyond the last; it is
@@ -20,12 +21,12 @@ rcs_basis <- function(x, knots) {
   out
 }
 
-# Odds ratios (exp of the linear predictor difference) at `at` against `ref`, with 95% CIs from
+# Ratios (exp of the linear predictor difference) at `at` against `ref`, with 95% CIs from
 # the covariance `V` of the spline coefficients `b` (in rcs_basis column order).
 rcs_curve <- function(b, V, knots, at, ref) {
   d <- rcs_basis(at, knots) - matrix(rcs_basis(ref, knots), nrow = length(at), ncol = length(b),
                                      byrow = TRUE)
   eta <- as.vector(d %*% b)
   se <- sqrt(pmax(rowSums((d %*% V) * d), 0))
-  data.frame(or = exp(eta), lo = exp(eta - 1.96 * se), hi = exp(eta + 1.96 * se))
+  data.frame(ratio = exp(eta), lo = exp(eta - 1.96 * se), hi = exp(eta + 1.96 * se))
 }

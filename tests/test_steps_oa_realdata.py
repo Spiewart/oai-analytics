@@ -14,7 +14,7 @@ from oai.manifest import find_analysis
 from oai.runner import run_analysis
 
 REPO = Path(__file__).resolve().parents[1]
-CAUSAL_WORDS = re.compile(r"protect|harm", re.IGNORECASE)
+CAUSAL_WORDS = re.compile(r"protect|harm|\bbias|correct(ed|s|ion|ive|ly)?\b", re.IGNORECASE)
 
 
 def _r_ready() -> bool:

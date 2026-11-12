@@ -115,7 +115,7 @@ choices = ["followup", "p15"]
 [readings.followup_project]
 value = "latest"
 status = "open"
-source = "Follow-up films (72 and 96 months) were read in Project 37 (some by Project 42); which project's grade counts is not fixed by the release"
+source = "Projects 37 and 43 (READPRJ 42 recoded to 37): follow-up films (72 and 96 months) were read in Project 37 (some by Project 42); which project's grade counts is not fixed by the release"
 rationale = "latest: Project 43 where it read the film, else Project 37 (the module's FOLLOWUP_PROJECTS); p37: Project 37 only"
 choices = ["latest", "p37"]
 
@@ -123,8 +123,15 @@ choices = ["latest", "p37"]
 value = "discrete_time"
 status = "confirmed"
 source = "User decision 5, 2026-11-12: a discrete-time model by visit (V08, V10) is primary, since a knee contributes visits until it has the outcome or its readings stop"
-rationale = "by_horizon: the companion logistic 'outcome by V10' model, which needs known-or-case selection (horizon.selection)"
+rationale = "by_horizon: the companion logistic 'outcome by V10' model (odds ratios), which needs known-or-case selection (horizon.selection)"
 choices = ["discrete_time", "by_horizon"]
+
+[incidence.link]
+value = "cloglog"
+status = "assumed"
+source = "Controller ruling 2026-11-12 (final review): the discrete-time models (P1, P2, S1, S4; every model on a periods frame) are grouped-time proportional hazards: complementary log-log link with offset(log(span)) and factor(end_visit), no span factor"
+rationale = "A knee whose 72-month film was unread and whose 96-month film was read has one interval spanning two visits (span 2). The log-span offset gives that interval twice a single visit's cumulative hazard; a span factor instead perfectly predicted the few span-2 rows (all incident cases) and dropped them. Estimates are hazard ratios per follow-up interval; the by_horizon companion stays logistic (odds ratios)"
+choices = ["cloglog"]
 
 [horizon.selection]
 value = "known_or_case"
@@ -190,7 +197,7 @@ source = "Natural-spline knots at the 10th, 50th and 90th percentiles of steps/d
 [steps.transform]
 value = "none"
 status = "assumed"
-source = "Odds ratios per 1,000 steps/day; log(x + 1) as a variant gives ORs per log unit"
+source = "Ratios per 1,000 steps/day (hazard ratios in the discrete-time models, odds ratios in the other logistic models); log(x + 1) as a variant gives ratios per log unit"
 choices = ["none", "log"]
 
 [tkr.min_events]
@@ -236,6 +243,7 @@ source = "Spec model 2 for person-level models: the higher KL grade and the wors
 value = "exchangeable"
 status = "assumed"
 source = "Two knees per person: logistic GEE with an exchangeable working correlation, as in analyses/crepitus_activity B3"
+rationale = "Applies to the one-row-per-knee GEEs (S3 read-knee KL and JSN, S3b JSW, and P1, P2 and S4 under by_horizon). Models on a periods frame (P1, P2, S1, S4) use independence with person-clustered robust SEs whatever this value (controller ruling 2026-11-12): a non-diagonal working correlation across person-period rows, whose time-varying risk set violates Pepe & Anderson's (1994) condition, can make the coefficient estimates inconsistent; person-level reverse models (R1, R2) also use independence"
 choices = ["exchangeable", "independence"]
 
 [sample.exclude_baseline_pain]
