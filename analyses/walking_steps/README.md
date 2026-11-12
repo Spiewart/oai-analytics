@@ -1,6 +1,6 @@
 # Walking from per-minute steps
 
-Two questions, at 48 and 72 months: how much of the GT1M activity counts is walking (step `share`), and how self-reported walking agrees with count-based and step-based device walking (steps `persons` and `pro_validity`). `oai report walking_steps` renders `report.pdf`, a short report of both for the study team and the Northwestern accelerometry group; put author names in the git-ignored `report.local.yml` (`authors: [{name: ...}]`).
+Two questions, at 48 and 72 months: how much of the GT1M activity counts is walking (step `share`), and how self-reported walking agrees with count-based and step-based device walking (steps `persons` and `pro_validity`). `oai report walking_steps` renders `report.pdf`, a two-page exploratory summary of both for the study team and the Northwestern accelerometry group.
 
 ## Part 1: share of the counts
 
