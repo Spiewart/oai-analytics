@@ -50,7 +50,7 @@
 | `readings.anchor_project` | `followup` (choices: followup, p15) | Controller ruling 2026-11-12 (knee_outcomes module): grades at the 48-month anchor visit come from the follow-up reading project where it re-read the anchor film | followup: the follow-up reading project's reading of the anchor film where one exists, else Project 15, so anchor and follow-up grades come from the same readers; p15: Project 15 only |
 | `reverse.coding` | `any` (choices: any, count) | Direction B: incident or progressing OA between 48 and 96 months predicts steps at 72 months | any: a knee with an event in either knee marks the person (0/1); count: the number of affected knees (0/1/2) |
 | `reverse.r2_kl_read` | `false` | R2 (steps at 72 months after worsening) uses OUTCOMES99 incidence and replacement; KL worsening needs the follow-up reading, available only for read knees (spec decision 6) | false: R2 omits KL worsening; true: adds it, restricted to the read knees |
-| `sample.exclude_baseline_pain` | `false` | Incident SOA already conditions on no frequent pain at 48 months; this variant also drops people with any knee pain at 48 months | false keeps knees with ROA but no frequent pain; true excludes baseline pain for a cleaner exposure-first order |
+| `sample.exclude_baseline_pain` | `false` | Spec sensitivity variant exclude_baseline_pain (P1 and S1): frequent knee pain can precede ROA on the X-ray, so low steps could follow a knee already on its way to ROA. SOA's definition already includes the pain component, so the guard targets incident ROA only | false keeps every knee at risk of ROA; true drops knees with frequent knee pain, or unknown frequent pain, at 48 months (sx known False at V06 required) from incident ROA: P1, S1 and the by-horizon companion. Knee replacement (S2) and incident SOA are unchanged |
 | `sample.min_step_days` | `4` (choices: 1, 4) | Mirrors device.min_valid_days: a person counts when at least this many of their first valid days have complete steps | Keeps the per-person shares on the same footing as the release's valid-person rule. |
 | `steps.bands` | `[5000, 7500, 10000]` | Steps/day cut points for band descriptives and tables (conventional 5,000, 7,500 and 10,000 steps/day) |  |
 | `steps.spline_knots` | `[0.1, 0.5, 0.9]` | Natural-spline knots at the 10th, 50th and 90th percentiles of steps/day (Harrell's three-knot placement) |  |
@@ -77,7 +77,7 @@
 |---|---|---|
 | `anchor_p15` | `readings.anchor_project = p15` | 48-month anchor grade from Project 15 only |
 | `by_horizon` | `incidence.model = by_horizon` | Companion logistic 'outcome by V10' model in place of discrete-time |
-| `exclude_baseline_pain` | `sample.exclude_baseline_pain = true` | Drop people with any knee pain at 48 months |
+| `exclude_baseline_pain` | `sample.exclude_baseline_pain = true` | Drop knees with frequent knee pain, or unknown frequent pain, at 48 months from incident ROA (P1, S1 and the by-horizon companion) |
 | `followup_p37` | `readings.followup_project = p37` | Follow-up grades from Project 37 only |
 | `horizon_120` | `periods.horizon = 12` | Follow-up to 120 months (V12; depends on Project 43) |
 | `jsn_within_grade` | `progression.jsn_rule = within_grade` | JSN progression includes within-grade changes |

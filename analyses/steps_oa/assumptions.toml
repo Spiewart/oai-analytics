@@ -241,8 +241,8 @@ choices = ["exchangeable", "independence"]
 [sample.exclude_baseline_pain]
 value = false
 status = "assumed"
-source = "Incident SOA already conditions on no frequent pain at 48 months; this variant also drops people with any knee pain at 48 months"
-rationale = "false keeps knees with ROA but no frequent pain; true excludes baseline pain for a cleaner exposure-first order"
+source = "Spec sensitivity variant exclude_baseline_pain (P1 and S1): frequent knee pain can precede ROA on the X-ray, so low steps could follow a knee already on its way to ROA. SOA's definition already includes the pain component, so the guard targets incident ROA only"
+rationale = "false keeps every knee at risk of ROA; true drops knees with frequent knee pain, or unknown frequent pain, at 48 months (sx known False at V06 required) from incident ROA: P1, S1 and the by-horizon companion. Knee replacement (S2) and incident SOA are unchanged"
 
 [variants.horizon_120]
 description = "Follow-up to 120 months (V12; depends on Project 43)"
@@ -253,7 +253,7 @@ description = "ROA = incident KL >= 2 with JSN (V99E?XIOAN)"
 set = { "outcomes.roa_definition" = "kl2_jsn" }
 
 [variants.exclude_baseline_pain]
-description = "Drop people with any knee pain at 48 months"
+description = "Drop knees with frequent knee pain, or unknown frequent pain, at 48 months from incident ROA (P1, S1 and the by-horizon companion)"
 set = { "sample.exclude_baseline_pain" = true }
 
 [variants.progression_kl_1_to_3]
