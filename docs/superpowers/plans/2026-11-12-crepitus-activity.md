@@ -196,6 +196,6 @@ Model specifications. Every model uses complete cases on its own terms. A models
   - how the variants move them.
 
   Wording is neutral. Report the estimates with their CIs. Two waves of activity cannot separate direction from shared change, and the README says so.
-- [ ] **Step 4: Add to TODO.md** (`<!-- skip -->`): before any publication, the Northwestern authorship terms (Jing co-author, PARR input).
+- [ ] **Step 4: Add to TODO.md** (`<!-- skip -->`): before any publication, the Northwestern authorship terms (the Northwestern analyst as co-author, PARR input).
 - [ ] **Step 5: Run** `uv run pytest -q` and the R suite. Expected: PASS.
 - [ ] **Step 6: Commit** `feat(crepitus_activity): results — crepitus and activity in both directions at 48 and 72 months`.

@@ -283,7 +283,7 @@ choices = ["across_visits", "within_visit"]
 [construct.scope_approved]
 value = false
 status = "assumed"
-source = "Spec 'Analyses': Grace Lo approves the scope and expectations before any new walker-group comparison is computed. Flip to true only with the approver and date named here"
+source = "Spec 'Analyses': The mentor (senior author) approves the scope and expectations before any new walker-group comparison is computed. Flip to true only with the approver's role and the date named here (no personal names: the repo is public)"
 
 [construct.periods]
 value = { before = ["00", "01", "03", "05", "06", "08"], at = ["10"], after = ["13", "14"] }
