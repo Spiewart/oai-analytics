@@ -192,3 +192,19 @@ def test_auc_ci_brackets_the_estimate():
     yes = pl.Series([True] * 200 + [False] * 200)
     out = pro.auc_with_ci(x, yes, reps=200, seed=3)
     assert out["auc_lo"] < out["auc"] < out["auc_hi"] and out["auc"] > 0.7
+
+
+def test_person_bands_average_each_persons_shares():
+    w = frame(
+        ID=[1, 1, 2, 2],
+        cnt=[0.0, 3000.0, 100.0, 100.0],
+        steps=[0.0, 110.0, 5.0, 5.0],
+    )
+    out = s.person_bands(w, [1, 100], mv_cutpoint=2020)
+    row = out.filter((pl.col("band") == "100+") & (pl.col("measure") == "share_of_minutes"))
+    r = row.row(0, named=True)
+    assert r["persons"] == 2 and r["mean"] == pytest.approx(0.25)  # 0.5 and 0 (no minutes)
+    mv = out.filter((pl.col("band") == "100+") & (pl.col("measure") == "share_minutes_mv"))
+    assert mv.row(0, named=True)["persons"] == 1  # only person 1 has minutes in the band
+    counts = out.filter((pl.col("band") == "1-99") & (pl.col("measure") == "share_of_counts"))
+    assert counts.row(0, named=True)["mean"] == pytest.approx(0.5)  # 0 and 1

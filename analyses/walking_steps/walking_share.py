@@ -9,7 +9,7 @@ from pathlib import Path
 
 import polars as pl
 from devices import device_rules
-from share import analysis_minutes, cadence_bands, shares
+from share import analysis_minutes, cadence_bands, person_bands, shares
 
 from oai.assumptions import current
 from oai.derive.accel import read_minutes
@@ -24,7 +24,7 @@ if primary not in cadences:
     raise ValueError(f"walking.primary_cadence {primary} is not in walking.cadences")
 results = Path(os.environ["OAI_RESULTS_DIR"])
 
-flows, share_frames, band_frames = [], [], []
+flows, share_frames, band_frames, person_frames = [], [], [], []
 for visit in ("06", "08"):
     w, flow = analysis_minutes(
         read_minutes(visit, steps=True), rules, int(A["sample.min_step_days"])
@@ -33,6 +33,9 @@ for visit in ("06", "08"):
     share_frames.append(shares(w, cadences).with_columns(pl.lit(visit).alias("visit")))
     bands = cadence_bands(w, [int(e) for e in A["walking.band_edges"]], rules.mv_cutpoint)
     band_frames.append(bands.with_columns(pl.lit(visit).alias("visit")))
+    edges = [int(e) for e in A["walking.band_edges"]]
+    person = person_bands(w, edges, rules.mv_cutpoint)
+    person_frames.append(person.with_columns(pl.lit(visit).alias("visit")))
     print(f"visit {visit}: {flow}")
 
 flow = pl.DataFrame(flows)
@@ -40,6 +43,9 @@ share_table = pl.concat(share_frames).select("visit", pl.exclude("visit"))
 band_table = pl.concat(band_frames).select("visit", pl.exclude("visit"))
 flow.write_csv(results / "flow.csv")
 share_table.write_csv(results / "walking_share.csv")
+pl.concat(person_frames).select("visit", pl.exclude("visit")).write_csv(
+    results / "cadence_bands_person.csv"
+)
 # raw totals can look like participant IDs to the egress check; shares and thousands suffice
 band_table.with_columns((pl.col("minutes") / 1000).round(1).alias("minutes_thousands")).drop(
     "minutes", "counts"

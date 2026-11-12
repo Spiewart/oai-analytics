@@ -31,6 +31,7 @@ Wear, valid days, intensity and bouts follow the release's rules (the `device.*`
 | `flow.csv` | Per visit: persons in the files, valid persons, valid days, valid days dropped for incomplete steps, persons and days analysed, wear minutes |
 | `walking_share.csv` | Per visit, threshold and measure: pooled share, per-person quartiles, and the number of persons with a non-zero denominator |
 | `cadence_bands.csv` | Per visit and cadence band: minutes, counts, median counts per minute, share of minutes at MV, and share of minutes and of counts |
+| `cadence_bands_person.csv` | Per visit and cadence band, across participants: mean (95% CI), median and quartiles of each person's share of wear minutes, share of counts, and share of the band's minutes at MV |
 
 ## Measures in `walking_share.csv`
 
