@@ -38,7 +38,7 @@ def test_find_col_is_case_insensitive():
 
 def test_xray_readings_filters_project_and_maps_side():
     base = xray_readings(["00"], project=15)
-    assert base.columns == ["ID", "SIDE", "visit", "KL", "JSM"]
+    assert base.columns == ["ID", "SIDE", "visit", "KL", "JSM", "JSL", "READPRJ"]
     assert 1000003 not in base["ID"].to_list()  # only read in Project 37
     assert knee(base, 1000009, "L") == {
         "ID": 1000009,
@@ -46,7 +46,24 @@ def test_xray_readings_filters_project_and_maps_side():
         "visit": "00",
         "KL": 4.0,
         "JSM": 3.0,
+        "JSL": 0.0,
+        "READPRJ": 15,
     }
+
+
+def test_xray_readings_project_preference():
+    # V06: knee 1000009 R read by Projects 37 (KL 4) and 43 (KL 3); 1000010 R by 15 and 42
+    latest = xray_readings(["06"], project=[43, 37])
+    row = knee(latest, 1000009, "R")
+    assert (row["READPRJ"], row["KL"], row["JSM"], row["JSL"]) == (43, 3.0, 2.6, 1.0)
+    assert knee(xray_readings(["06"], project=[37, 43]), 1000009, "R")["KL"] == 4.0
+    p42 = knee(latest, 1000010, "R")  # READPRJ 42 is Project 37's (kXR_SQ_BU_Descrip.pdf)
+    assert (p42["READPRJ"], p42["JSL"]) == (37, 0.4)
+    assert latest.filter((pl.col("ID") == 1000009) & (pl.col("SIDE") == "R")).height == 1
+    assert latest["READPRJ"].dtype == pl.Int64
+    # one knee-visit per row; Project 15 rows are not in the list
+    assert 1000001 not in latest["ID"].to_list()
+    assert knee(xray_readings(["06"], project=42), 1000010, "R")["READPRJ"] == 37
 
 
 def test_xray_readings_handles_lowercase_readprj_and_decimal_jsn():

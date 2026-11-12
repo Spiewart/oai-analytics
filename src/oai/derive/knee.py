@@ -30,28 +30,55 @@ def _side(col: Callable[[str], str]) -> pl.Expr:
     return pl.col(col("SIDE")).replace_strict(SIDE_CODES, return_dtype=pl.String).alias("SIDE")
 
 
-def xray_readings(visits: Sequence[str], *, project: int = 15) -> pl.DataFrame:
-    """ID, SIDE, visit, KL, JSM from kxr_sq_bu, one reading project only.
+# kXR_SQ_BU_Descrip.pdf: READPRJ 42 rows are Project 37 participants' readings.
+RECODE_PROJECT = {42: 37}
 
-    Follow-up medial JSN (JSM) keeps within-grade decimals such as 1.2, so
+
+def prefer_projects(readings: pl.DataFrame, projects: Sequence[int]) -> pl.DataFrame:
+    """One row per ID x SIDE x visit among `projects` (READPRJ), the earlier project in the list
+    winning; rows keep their input order."""
+    rank = {p: i for i, p in enumerate(projects)}
+    return (
+        readings.filter(pl.col("READPRJ").is_in(list(rank)))
+        .with_row_index("_row")
+        .with_columns(pl.col("READPRJ").replace_strict(rank, return_dtype=pl.Int64).alias("_rank"))
+        .sort("_rank", "_row")
+        .unique(["ID", "SIDE", "visit"], keep="first", maintain_order=True)
+        .sort("_row")
+        .drop("_row", "_rank")
+    )
+
+
+def xray_readings(visits: Sequence[str], *, project: int | Sequence[int] = 15) -> pl.DataFrame:
+    """ID, SIDE, visit, KL, JSM, JSL, READPRJ from kxr_sq_bu.
+
+    `project` is one reading project or a list in preference order: one row per knee-visit,
+    from the earliest project in the list that read it. READPRJ 42 is recoded to 37
+    (RECODE_PROJECT), so 37 also takes 42's rows; asking for 42 gives the same rows labelled 37.
+
+    Follow-up medial and lateral JSN (JSM, JSL) keep within-grade decimals such as 1.2, so
     "JSM follow-up > JSM baseline" captures within-grade worsening.
     """
+    projects = (project,) if isinstance(project, int) else tuple(project)
+    wanted = {*projects, *(raw for raw, to in RECODE_PROJECT.items() if to in projects)}
     frames = []
     for visit in visits:
         df = read_table("kxr_sq_bu", visit)
         col = partial(find_col, df, where=f"kxr_sq_bu{visit}")
+        readprj = pl.col(col("READPRJ")).cast(pl.Int64)
         frames.append(
-            df.filter(pl.col(col("READPRJ")) == project)
-            .select(
+            df.filter(readprj.is_in(list(wanted))).select(
                 pl.col(col("ID")).alias("ID"),
                 _side(col),
                 pl.lit(visit).alias("visit"),
                 pl.col(col(f"V{visit}XRKL")).cast(pl.Float64).alias("KL"),
                 pl.col(col(f"V{visit}XRJSM")).cast(pl.Float64).alias("JSM"),
+                pl.col(col(f"V{visit}XRJSL")).cast(pl.Float64).alias("JSL"),
+                readprj.replace(RECODE_PROJECT).alias("READPRJ"),
             )
-            .unique(["ID", "SIDE", "visit"], keep="first", maintain_order=True)
         )
-    return pl.concat(frames)
+    preference = list(dict.fromkeys(RECODE_PROJECT.get(p, p) for p in projects))
+    return prefer_projects(pl.concat(frames), preference)
 
 
 def _nonempty(df: pl.DataFrame, cols: Sequence[str]) -> pl.DataFrame:
