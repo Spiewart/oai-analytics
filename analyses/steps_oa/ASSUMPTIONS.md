@@ -69,7 +69,7 @@
 | `outcomes.roa_rule` | `same_visit` (choices: same_visit, ever) | Lo 2018 Methods: ROA = tibiofemoral KL >= 2; whether ROA is carried forward once seen is not stated |  |
 | `outcomes.soa_missing` | `both_required` (choices: both_required, known_false) | Lo 2018 does not say whether SOA is missing or known absent when one component (pain or KL) is missing | known_false: no frequent pain (or KL < 2) rules SOA out even if the other component is missing |
 | `progression.risk_kl` | `2-3` (choices: 2-3, 1-3) | Same entry as analyses/crepitus [progression.risk_kl]; no consensus, docs/reference/oai-progression-definition-crosswalk.md section 1 | KL progression needs a baseline grade that can still worsen (KL 4 cannot, except by replacement) and, for most definitions, existing radiographic OA. '1-3' also admits doubtful OA (KL 1). |
-| `readings.followup_project` | `latest` (choices: latest, 37) | Follow-up films (72 and 96 months) were read in Project 37 (some by Project 42); which project's grade counts is not fixed by the release | latest: the most recent project that read the film; 37: Project 37 only |
+| `readings.followup_project` | `latest` (choices: latest, p37) | Follow-up films (72 and 96 months) were read in Project 37 (some by Project 42); which project's grade counts is not fixed by the release | latest: Project 43 where it read the film, else Project 37 (the module's FOLLOWUP_PROJECTS); p37: Project 37 only |
 
 ## Variants
 
@@ -78,7 +78,7 @@
 | `anchor_p15` | `readings.anchor_project = p15` | 48-month anchor grade from Project 15 only |
 | `by_horizon` | `incidence.model = by_horizon` | Companion logistic 'outcome by V10' model in place of discrete-time |
 | `exclude_baseline_pain` | `sample.exclude_baseline_pain = true` | Drop people with any knee pain at 48 months |
-| `followup_p37` | `readings.followup_project = 37` | Follow-up grades from Project 37 only |
+| `followup_p37` | `readings.followup_project = p37` | Follow-up grades from Project 37 only |
 | `horizon_120` | `periods.horizon = 12` | Follow-up to 120 months (V12; depends on Project 43) |
 | `jsn_within_grade` | `progression.jsn_rule = within_grade` | JSN progression includes within-grade changes |
 | `jsw_fnih_middle` | `jsw.middle = exclude` | Drop knees losing 0.5 to 0.7 mm (FNIH contrast) |

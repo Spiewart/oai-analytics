@@ -3,6 +3,7 @@ from pathlib import Path
 import pytest
 
 from oai.assumptions import AssumptionsError, load_assumptions
+from oai.derive import knee_outcomes as ko
 from oai.manifest import load_analysis
 
 ANALYSES = Path(__file__).resolve().parents[1] / "analyses"
@@ -44,7 +45,7 @@ VARIANTS = {
     "log_steps": {"steps.transform": "log"},
     "by_horizon": {"incidence.model": "by_horizon"},
     "anchor_p15": {"readings.anchor_project": "p15"},
-    "followup_p37": {"readings.followup_project": "37"},
+    "followup_p37": {"readings.followup_project": "p37"},
     "reverse_count": {"reverse.coding": "count"},
     "r2_kl_worsening_read": {"reverse.r2_kl_read": True},
     "jsw_fnih_middle": {"jsw.middle": "exclude"},
@@ -126,3 +127,20 @@ def test_variants_resolve(variant):
     default = loaded.resolve("steps_oa", None, {})
     A = loaded.resolve("steps_oa", variant, {})
     assert {k: v for k, v in A.values.items() if v != default.values[k]} == VARIANTS[variant]
+
+
+MODULE_CHOICES = {
+    "outcomes.roa_replacement": ko.ROA_REPLACEMENT,
+    "readings.anchor_project": ko.ANCHOR_PROJECT,
+    "readings.followup_project": tuple(ko.FOLLOWUP_PROJECTS),
+    "progression.jsn_rule": ko.RULES,
+    "jsw.middle": ko.JSW_MIDDLE,
+    "tkr.censor": ko.TKR_CENSOR,
+    "horizon.selection": ko.SELECTIONS,
+}
+
+
+@pytest.mark.parametrize("key", sorted(MODULE_CHOICES))
+def test_ledger_choices_are_values_the_module_accepts(key):
+    item = load_assumptions(ANALYSIS).items[key]
+    assert item.choices and set(item.choices) <= set(MODULE_CHOICES[key])

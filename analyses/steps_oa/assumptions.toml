@@ -116,8 +116,8 @@ choices = ["followup", "p15"]
 value = "latest"
 status = "open"
 source = "Follow-up films (72 and 96 months) were read in Project 37 (some by Project 42); which project's grade counts is not fixed by the release"
-rationale = "latest: the most recent project that read the film; 37: Project 37 only"
-choices = ["latest", "37"]
+rationale = "latest: Project 43 where it read the film, else Project 37 (the module's FOLLOWUP_PROJECTS); p37: Project 37 only"
+choices = ["latest", "p37"]
 
 [incidence.model]
 value = "discrete_time"
@@ -274,7 +274,7 @@ set = { "readings.anchor_project" = "p15" }
 
 [variants.followup_p37]
 description = "Follow-up grades from Project 37 only"
-set = { "readings.followup_project" = "37" }
+set = { "readings.followup_project" = "p37" }
 
 [variants.reverse_count]
 description = "Reverse direction coded as the number of affected knees (0/1/2)"
