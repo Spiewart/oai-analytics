@@ -8,33 +8,16 @@ import os
 from pathlib import Path
 
 import polars as pl
+from devices import device_rules
 from share import analysis_minutes, cadence_bands, shares
 
 from oai.assumptions import current
-from oai.derive.accel import DeviceRules, read_minutes
+from oai.derive.accel import read_minutes
 
 A = current()
 if A["steps.day_rule"] != "complete":  # the only rule oai.derive.accel implements
     raise ValueError(f"steps.day_rule {A['steps.day_rule']!r} is not implemented")
-rules = DeviceRules(
-    **{
-        key.removeprefix("device."): A[key]
-        for key in (
-            "device.nonwear_minutes",
-            "device.interrupt_minutes",
-            "device.interrupt_ceiling",
-            "device.valid_day_hours",
-            "device.max_valid_days",
-            "device.min_valid_days",
-            "device.mv_cutpoint",
-            "device.light_floor",
-            "device.bout_window",
-            "device.bout_need",
-            "device.bout_stop_below",
-            "device.purposeful_bout_minutes",
-        )
-    }
-)
+rules = device_rules(A)
 cadences = [int(c) for c in A["walking.cadences"]]
 primary = int(A["walking.primary_cadence"])
 if primary not in cadences:
@@ -57,7 +40,10 @@ share_table = pl.concat(share_frames).select("visit", pl.exclude("visit"))
 band_table = pl.concat(band_frames).select("visit", pl.exclude("visit"))
 flow.write_csv(results / "flow.csv")
 share_table.write_csv(results / "walking_share.csv")
-band_table.write_csv(results / "cadence_bands.csv")
+# raw totals can look like participant IDs to the egress check; shares and thousands suffice
+band_table.with_columns((pl.col("minutes") / 1000).round(1).alias("minutes_thousands")).drop(
+    "minutes", "counts"
+).write_csv(results / "cadence_bands.csv")
 
 
 def pct(x: float | None) -> str:

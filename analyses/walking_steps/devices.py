@@ -1,0 +1,155 @@
+"""Person-wave device measures, count-based and step-based, and the device walker definitions.
+
+Count-based measures are the release's (oai.derive.accel). Step-based walking bouts mirror its
+purposeful MV bouts with steps in place of counts: the same 10-minute bout rule (8 of 10 minutes
+at or above the threshold to start, stop at 3 below) on wear minutes with at least `c`
+steps/min, and a bout counts when it lasts at least device.purposeful_bout_minutes.
+"""
+
+from __future__ import annotations
+
+from dataclasses import replace
+
+import numpy as np
+import polars as pl
+
+from oai.derive.accel import (
+    DAY_KEY_SCALE,
+    DeviceRules,
+    StepRules,
+    bout_spans,
+    daily_summary,
+    first_valid_days,
+    nonwear_mask,
+    person_summary,
+)
+
+COUNT_MEASURES = ["counts_per_day", "mv_min", "light_min", "purposeful_min", "bout_days_per_week"]
+
+
+def step_bout_measures(cadence: int) -> list[str]:
+    return [f"step_bout{cadence}_min", f"step_bout{cadence}_days_per_week"]
+
+
+def step_bouts_daily(
+    minutes: pl.DataFrame, rules: DeviceRules, cadences: list[int]
+) -> pl.DataFrame:
+    """ID, day and, per cadence c, step_bout<c>_min (minutes in walking bouts) and step_bouts<c>."""
+    m = minutes.sort(["ID", "day", "minute"])
+    key = m["ID"].to_numpy() * DAY_KEY_SCALE + m["day"].to_numpy()
+    wear = ~nonwear_mask(m["cnt"].to_numpy(), key, rules)
+    steps = m["steps"].cast(pl.Float64).to_numpy()
+    cols = []
+    for c in cadences:
+        in_bout = np.zeros(len(m), dtype=bool)
+        bout_start = np.zeros(len(m), dtype=bool)
+        for start, end in zip(
+            *bout_spans(steps, key, wear, replace(rules, mv_cutpoint=c)), strict=True
+        ):
+            if end - start >= rules.purposeful_bout_minutes:
+                in_bout[start:end] = True
+                bout_start[start] = True
+        cols += [pl.Series(f"_in{c}", in_bout), pl.Series(f"_start{c}", bout_start)]
+    return (
+        m.select("ID", "day")
+        .with_columns(cols)
+        .group_by(["ID", "day"], maintain_order=True)
+        .agg(
+            *[pl.col(f"_in{c}").sum().alias(f"step_bout{c}_min") for c in cadences],
+            *[pl.col(f"_start{c}").sum().alias(f"step_bouts{c}") for c in cadences],
+        )
+    )
+
+
+def person_wave(
+    minutes: pl.DataFrame, rules: DeviceRules, cadences: list[int], min_step_days: int
+) -> pl.DataFrame:
+    """One row per person: count measures (person_summary), step measures and step bouts.
+
+    Step measures are means over the person's first valid days (chosen by wear) whose steps are
+    complete, and are null when fewer than `min_step_days` such days exist.
+    """
+    step_rules = StepRules(cadence_cutpoints=tuple(cadences))
+    daily = daily_summary(minutes, rules, step_rules).join(
+        step_bouts_daily(minutes, rules, cadences), on=["ID", "day"], how="left"
+    )
+    bout_cols = [f"step_bout{c}_min" for c in cadences] + [f"step_bouts{c}" for c in cadences]
+    daily = daily.with_columns(  # a day whose steps are unusable has no step bouts either
+        pl.when(pl.col("steps").is_not_null()).then(pl.col(b)).alias(b) for b in bout_cols
+    )
+    persons = person_summary(daily, rules, step_rules)
+    bouts = (
+        first_valid_days(daily, rules)
+        .group_by("ID")
+        .agg(
+            *[pl.col(f"step_bout{c}_min").mean() for c in cadences],
+            *[
+                ((pl.col(f"step_bouts{c}").drop_nulls() > 0).mean() * 7).alias(
+                    f"step_bout{c}_days_per_week"
+                )
+                for c in cadences
+            ],
+        )
+    )
+    step_cols = [c for c in persons.columns if c.startswith(("steps", "peak_cadence", "cadence"))]
+    step_cols += [m for c in cadences for m in step_bout_measures(c)]
+    enough = pl.col("step_days") >= min_step_days
+    return persons.join(bouts, on="ID", how="left").with_columns(
+        pl.when(enough).then(pl.col(c)).alias(c) for c in step_cols
+    )
+
+
+def combine(device: pl.DataFrame, measures: list[str]) -> pl.DataFrame:
+    """Per person over valid waves: the mean of each measure (nulls skipped) and n_waves.
+
+    `device` has one row per person and wave (`wave`, `valid`). As walking_validation's
+    combine_waves, but a step measure missing at one wave uses the other wave alone.
+    """
+    return (
+        device.filter("valid")
+        .group_by("ID")
+        .agg(pl.len().alias("n_waves"), *[pl.col(m).mean() for m in measures])
+        .sort("ID")
+    )
+
+
+def walker_definitions(min_bout_days: float, min_bout_minutes: float, cadences: list[int]):
+    """(name, family, expression) for every device walker definition.
+
+    Each family uses one bout measure: count MV bouts or step walking bouts at a cadence. Each
+    has the three walking_validation rules: bout days >= min_bout_days a week, any bout, or
+    bout minutes >= min_bout_minutes a week.
+    """
+    families = [("counts_mv", "purposeful_min", "bout_days_per_week")]
+    families += [
+        (f"steps_{c}", f"step_bout{c}_min", f"step_bout{c}_days_per_week") for c in cadences
+    ]
+    out = []
+    for family, minutes, days in families:
+        out += [
+            (f"{family}:bout_days", family, pl.col(days) >= min_bout_days),
+            (f"{family}:any_bout", family, pl.col(days) > 0),
+            (f"{family}:bout_minutes", family, pl.col(minutes) * 7 >= min_bout_minutes),
+        ]
+    return out
+
+
+DEVICE_KEYS = (
+    "nonwear_minutes",
+    "interrupt_minutes",
+    "interrupt_ceiling",
+    "valid_day_hours",
+    "max_valid_days",
+    "min_valid_days",
+    "mv_cutpoint",
+    "light_floor",
+    "bout_window",
+    "bout_need",
+    "bout_stop_below",
+    "purposeful_bout_minutes",
+)
+
+
+def device_rules(assumptions) -> DeviceRules:
+    """DeviceRules from the ledger's device.* entries."""
+    return DeviceRules(**{k: assumptions[f"device.{k}"] for k in DEVICE_KEYS})
