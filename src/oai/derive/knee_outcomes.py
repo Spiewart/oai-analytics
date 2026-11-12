@@ -29,7 +29,16 @@ import polars as pl
 
 from oai.assumptions import Resolved
 from oai.derive.incident_soa import setting, soa_status
-from oai.derive.knee import prefer_projects, xray_readings
+from oai.derive.knee import (
+    SIDE_CODES,
+    find_col,
+    knee_replacement,
+    prefer_projects,
+    visit_days,
+    xray_readings,
+)
+from oai.loader import read_table
+from oai.visits import DAYS_PER_YEAR, nominal_month
 
 SIDES = ("R", "L")
 KEYS = ["ID", "SIDE"]
@@ -45,6 +54,11 @@ ANCHOR_PROJECT = ("followup", "p15")
 # kXR_SQ_BU_Descrip.pdf: Projects 37 (42 recoded) and 43 read 48 months onwards
 FOLLOWUP_PROJECTS = {"latest": (43, 37), "p37": (37,)}
 FIRST_FOLLOWUP_ANCHOR = "06"
+JSW_VISITS = ("06", "08", "10")  # kXR_QJSW_Duryea: project 16; there is no V12
+LAST_JSW_VISIT = "10"
+JSW_MIDDLE = ("keep", "exclude")
+TKR_CENSOR = ("last_visit",)
+DAY_VISITS = ("06", "08", "10", "11", "12", "13", "14")  # AllClinical tables with V##VISDYS
 KL_REPLACED = 4.0
 KL_ROA = 2
 
@@ -353,3 +367,129 @@ def selection_counts(status: pl.DataFrame, anchor: str, visits: Sequence[str]) -
         .sort("visit", "readprj", nulls_last=True)
         .select("visit", "knees_at_risk", "read", "unread", "readprj", "knees")
     )
+
+
+def jsw_widths(visits: Sequence[str] = JSW_VISITS) -> pl.DataFrame:
+    """ID, SIDE, visit, mjsw: medial minimum joint space width in mm (V##MCMJSW).
+
+    From kXR_QJSW_Duryea (reading project 16; visits 06, 08 and 10 only).
+    """
+    parts = []
+    for visit in visits:
+        df = read_table("kxr_qjsw_duryea", visit)
+        col = lambda name, df=df, visit=visit: find_col(df, name, f"kxr_qjsw_duryea{visit}")  # noqa: E731
+        parts.append(
+            df.select(
+                pl.col(col("ID")).alias("ID"),
+                pl.col(col("SIDE"))
+                .cast(pl.Int64)
+                .replace_strict(SIDE_CODES, return_dtype=pl.String)
+                .alias("SIDE"),
+                pl.lit(visit).alias("visit"),
+                pl.col(col(f"V{visit}MCMJSW")).cast(pl.Float64).alias("mjsw"),
+            )
+        )
+    return pl.concat(parts).unique(["ID", "SIDE", "visit"], keep="first", maintain_order=True)
+
+
+def jsw_change_from(widths: pl.DataFrame, anchor: str, horizon: str, A: Resolved) -> pl.DataFrame:
+    """ID, SIDE, base_mm, end_mm, change_mm, years, progressor, horizon_used.
+
+    `widths` is `jsw_widths`. change_mm = end - base (a loss is negative). `progressor` is a
+    loss of at least `jsw.threshold_mm` (0.7, the FNIH threshold); under `jsw.middle = "exclude"`
+    a loss over `jsw.nonprogressor_mm` (0.5) but under the threshold is null. A horizon past
+    V10 uses V10 (`horizon_used`). change_mm and progressor are null when either width is
+    missing; the width that was read stays in base_mm / end_mm.
+    """
+    threshold = float(setting(A, "jsw.threshold_mm", 0.7))
+    floor = float(setting(A, "jsw.nonprogressor_mm", 0.5))
+    middle = _choice(A, "jsw.middle", "keep", JSW_MIDDLE)
+    used = min(horizon, LAST_JSW_VISIT)
+    pick = lambda visit, name: (  # noqa: E731
+        widths.filter(pl.col("visit") == visit).select("ID", "SIDE", pl.col("mjsw").alias(name))
+    )
+    out = pick(anchor, "base_mm").join(pick(used, "end_mm"), on=KEYS, how="full", coalesce=True)
+    loss = (pl.col("base_mm") - pl.col("end_mm")).round(6)
+    progressor = pl.when(loss.is_null()).then(None).otherwise(loss >= threshold)
+    if middle == "exclude":
+        progressor = (
+            pl.when(loss.is_null() | ((loss > floor) & (loss < threshold)))
+            .then(None)
+            .otherwise(loss >= threshold)
+        )
+    years = (nominal_month(used) - nominal_month(anchor)) / 12
+    return out.select(
+        *KEYS,
+        "base_mm",
+        "end_mm",
+        (pl.col("end_mm") - pl.col("base_mm")).alias("change_mm"),
+        pl.lit(years).alias("years"),
+        progressor.alias("progressor"),
+        pl.lit(used).alias("horizon_used"),
+    ).sort(KEYS)
+
+
+def jsw_change(A: Resolved, anchor: str, horizon: str) -> pl.DataFrame:
+    """`jsw_change_from` on the release's measured widths at the anchor and the horizon."""
+    used = min(horizon, LAST_JSW_VISIT)
+    return jsw_change_from(jsw_widths(sorted({anchor, used})), anchor, horizon, A)
+
+
+def replacement_times_from(
+    rep: pl.DataFrame, visit_days_long: pl.DataFrame, anchor: str, A: Resolved
+) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """(ID, SIDE, time_yr, event), and a one-row flow frame of exclusions.
+
+    `rep` is `knee_replacement()` without `by_days` (replaced = a counted replacement);
+    `visit_days_long` is ID, visit, days. Time runs from the anchor visit's day to the
+    replacement day (event) or, under `tkr.censor = "last_visit"`, to the latest visit day
+    after the anchor. A replacement after that day is still an event at its own day. Flow
+    counts: replaced_by_anchor (replaced at baseline or on/before the anchor day),
+    excluded_no_day (counted but undated), excluded_no_anchor_day, excluded_no_followup_day.
+    """
+    _choice(A, "tkr.censor", "last_visit", TKR_CENSOR)
+    anchor_day = (
+        visit_days_long.filter(pl.col("visit") == anchor)
+        .group_by("ID")
+        .agg(pl.col("days").max().alias("anchor_day"))
+    )
+    last_day = (
+        visit_days_long.filter(pl.col("visit") > anchor)
+        .group_by("ID")
+        .agg(pl.col("days").max().alias("last_day"))
+    )
+    t = rep.join(anchor_day, on="ID", how="left").join(last_day, on="ID", how="left")
+    counted = pl.col("replaced").fill_null(False)
+    by_anchor = pl.col("replaced_at_baseline").fill_null(False) | (
+        counted & (pl.col("replaced_days") <= pl.col("anchor_day")).fill_null(False)
+    )
+    no_day = ~by_anchor & counted & pl.col("replaced_days").is_null()
+    no_anchor = ~by_anchor & ~no_day & pl.col("anchor_day").is_null()
+    no_follow = (
+        ~by_anchor & ~no_day & ~no_anchor & ~counted & (pl.col("last_day") <= pl.col("anchor_day"))
+    ) | (~by_anchor & ~no_day & ~no_anchor & ~counted & pl.col("last_day").is_null())
+    flow = t.select(
+        by_anchor.sum().cast(pl.Int64).alias("replaced_by_anchor"),
+        no_day.sum().cast(pl.Int64).alias("excluded_no_day"),
+        no_anchor.sum().cast(pl.Int64).alias("excluded_no_anchor_day"),
+        no_follow.sum().cast(pl.Int64).alias("excluded_no_followup_day"),
+    )
+    end = pl.when(counted).then(pl.col("replaced_days")).otherwise(pl.col("last_day"))
+    out = (
+        t.filter(~by_anchor & ~no_day & ~no_anchor & ~no_follow)
+        .select(
+            *KEYS,
+            ((end - pl.col("anchor_day")) / DAYS_PER_YEAR).alias("time_yr"),
+            counted.alias("event"),
+        )
+        .sort(KEYS)
+    )
+    return out, flow
+
+
+def replacement_times(A: Resolved, anchor: str) -> tuple[pl.DataFrame, pl.DataFrame]:
+    """`replacement_times_from` on OUTCOMES99 and the AllClinical visit days (V06 to V14)."""
+    days = pl.concat(
+        [visit_days(v).with_columns(pl.lit(v).alias("visit")) for v in DAY_VISITS]
+    ).drop_nulls("days")
+    return replacement_times_from(knee_replacement(), days, anchor, A)

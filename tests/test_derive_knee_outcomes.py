@@ -14,9 +14,11 @@ from oai.derive.knee_outcomes import (
     assemble_status,
     at_risk,
     by_horizon,
+    jsw_change_from,
     knee_status,
     periods,
     progression,
+    replacement_times_from,
     selection_counts,
 )
 
@@ -352,3 +354,76 @@ def test_knee_status_on_the_synthetic_release(isolated_settings, monkeypatch):
     assert value_at(later, "08", "readprj", id_=2000013) == 37  # READPRJ 42 read as 37
     with pytest.raises(ValueError, match="anchor"):
         knee_status(A, ("08", "10"), "06")
+
+
+def widths(*rows):
+    """A jsw_widths frame; each row is (ID, SIDE, {visit: width})."""
+    return pl.DataFrame(
+        [{"ID": i, "SIDE": s, "visit": v, "mjsw": w} for i, s, by in rows for v, w in by.items()],
+        schema={"ID": pl.Int64, "SIDE": pl.String, "visit": pl.String, "mjsw": pl.Float64},
+    )
+
+
+def jsw(end, middle="keep", base=4.0, horizon="10"):
+    w = widths((1, "R", {"06": base, "10": end}))
+    return jsw_change_from(w, "06", horizon, resolved(**{"jsw.middle": middle})).row(0, named=True)
+
+
+def test_jsw_progressor_threshold():
+    hit = jsw(3.3)
+    assert hit["change_mm"] == pytest.approx(-0.7)
+    assert hit["base_mm"] == 4.0 and hit["end_mm"] == 3.3
+    assert hit["progressor"] is True
+    assert jsw(3.4)["progressor"] is False
+    assert jsw(3.45, middle="keep")["progressor"] is False
+    assert jsw(3.45, middle="exclude")["progressor"] is None
+    assert jsw(3.6, middle="exclude")["progressor"] is False
+    assert jsw(3.3, middle="exclude")["progressor"] is True
+    gone = jsw(None)
+    assert gone["change_mm"] is None and gone["progressor"] is None
+    assert jsw(4.2)["progressor"] is False  # a gain is not progression
+    assert hit["years"] == pytest.approx(4.0)
+
+
+def test_jsw_horizon_fallback():
+    assert jsw(3.3)["horizon_used"] == "10"
+    assert jsw(3.3, horizon="12")["horizon_used"] == "10"
+    assert jsw(3.3, horizon="12")["progressor"] is True
+
+
+def test_replacement_times():
+    rep = pl.DataFrame(
+        {
+            "ID": [1, 2, 3, 4, 5],
+            "SIDE": ["R"] * 5,
+            "replaced_at_baseline": [False, False, False, False, True],
+            "replaced_days": [1400.0, None, 3000.0, None, None],
+            "replaced": [True, False, True, True, False],
+        }
+    )
+    rep = rep.vstack(
+        pl.DataFrame(
+            {
+                "ID": [6],
+                "SIDE": ["R"],
+                "replaced_at_baseline": [False],
+                "replaced_days": [900.0],
+                "replaced": [True],
+            }
+        )
+    )
+    days = pl.DataFrame(
+        {
+            "ID": [i for i in range(1, 7) for _ in (0, 1)],
+            "visit": ["06", "10"] * 6,
+            "days": [1000.0, 2500.0] * 6,
+        }
+    )
+    out, flow = replacement_times_from(rep, days, "06", resolved())
+    by_id = {r["ID"]: r for r in out.iter_rows(named=True)}
+    assert by_id[1]["event"] is True and by_id[1]["time_yr"] == pytest.approx(400 / 365.25)
+    assert by_id[2]["event"] is False and by_id[2]["time_yr"] == pytest.approx(1500 / 365.25)
+    assert by_id[3]["event"] is True and by_id[3]["time_yr"] == pytest.approx(2000 / 365.25)
+    assert set(by_id) == {1, 2, 3}  # 4: counted, no day; 5: baseline; 6: before the anchor
+    assert flow["excluded_no_day"][0] == 1
+    assert flow["replaced_by_anchor"][0] == 2

@@ -93,8 +93,6 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 ### Code health
 
-- **Consolidate progression derivations**: rebuild `kl_progression` and `fnih_jsw_progressor` in `src/oai/derive/progression.py` on the `oai.derive.knee` helpers (`xray_readings`, `with_fallback`, `knee_replacement`), or remove them, so there is one way to compute KL/JSN progression.
-  [src/oai/derive/progression.py](src/oai/derive/progression.py)
 
 ### Tooling
 
