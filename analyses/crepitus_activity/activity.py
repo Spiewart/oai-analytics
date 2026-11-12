@@ -120,7 +120,7 @@ def flow_and_descriptives(
                     rows.append(
                         {
                             "crepitus": crep,
-                            "count": int(level[0]),
+                            "knees": int(level[0]),
                             "activity": m,
                             "wave": wave,
                             "n": col.len(),
@@ -130,7 +130,7 @@ def flow_and_descriptives(
                     )
     return (
         pl.DataFrame(flow, schema=["step", "n"], orient="row"),
-        pl.DataFrame(rows).sort("crepitus", "activity", "wave", "count"),
+        pl.DataFrame(rows).sort("crepitus", "activity", "wave", "knees"),
     )
 
 
