@@ -67,7 +67,12 @@ def from_longterm(key):
 
 
 def test_manifest_and_assumptions_load():
-    assert [s.id for s in load_analysis(ANALYSIS).steps] == ["cohort", "models"]
+    assert [s.id for s in load_analysis(ANALYSIS).steps] == [
+        "cohort",
+        "models",
+        "posthoc_frame",
+        "posthoc",
+    ]
     loaded = load_assumptions(ANALYSIS)
     assert {k: loaded.items[k].value for k in NEW} == NEW
     assert set(loaded.variants) == set(VARIANTS)
