@@ -168,7 +168,3 @@ pa <- p[p$coding == "Any walking", ]; pf <- p[p$coding == "3+ days", ]
 ```
 
 "Any walking" looks like the Walking Question (sensitivity `r span(pa$sensitivity)`, specificity `r span(pa$specificity)`). Walking on 3+ days trades sensitivity (`r span(pf$sensitivity)`) for specificity (`r span(pf$specificity)`). Results are similar at all three visits.
-
-# Impression
-
-Self-reported walking may include walking that one device week misses, or walking a device would not record at any threshold; these data cannot tell which.
