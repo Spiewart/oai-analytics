@@ -4,6 +4,9 @@ Count-based measures are the release's (oai.derive.accel). Step-based walking bo
 purposeful MV bouts with steps in place of counts: the same 10-minute bout rule (8 of 10 minutes
 at or above the threshold to start, stop at 3 below) on wear minutes with at least `c`
 steps/min, and a bout counts when it lasts at least device.purposeful_bout_minutes.
+
+`covariates_48` (moved from analyses/crepitus_activity) gives the 48-month person covariates the
+device analyses share.
 """
 
 from __future__ import annotations
@@ -23,7 +26,10 @@ from oai.derive.accel import (
     nonwear_mask,
     person_summary,
 )
+from oai.derive.knee import find_col, xray_readings
+from oai.loader import read_table
 
+COVARIATES = ("age", "sex", "bmi", "kl_max", "womac_pain_max")
 COUNT_MEASURES = ["counts_per_day", "mv_min", "light_min", "purposeful_min", "bout_days_per_week"]
 
 
@@ -118,3 +124,32 @@ DEVICE_KEYS = (
 def device_rules(assumptions) -> DeviceRules:
     """DeviceRules from the ledger's device.* entries."""
     return DeviceRules(**{k: assumptions[f"device.{k}"] for k in DEVICE_KEYS})
+
+
+def covariates_48(project: int = 15) -> pl.DataFrame:
+    """ID, age, sex, bmi at 48 months; kl_max (higher Project 15 KL of the knees) and
+    womac_pain_max (worse knee's WOMAC pain) at 48 months."""
+    enrollees = read_table("enrollees", None)
+    sex = enrollees.select(
+        pl.col(find_col(enrollees, "ID")).cast(pl.Int64).alias("ID"),
+        pl.col(find_col(enrollees, "P02SEX")).cast(pl.Int64).alias("sex"),
+    )
+    clin = read_table("allclinical", "06")
+    col = lambda n: pl.col(find_col(clin, n, where="allclinical06"))  # noqa: E731
+    base = clin.select(
+        col("ID").cast(pl.Int64).alias("ID"),
+        col("V06AGE").cast(pl.Float64).alias("age"),
+        col("V06BMI").cast(pl.Float64).alias("bmi"),
+        pl.max_horizontal(
+            col("V06WOMKPR").cast(pl.Float64), col("V06WOMKPL").cast(pl.Float64)
+        ).alias("womac_pain_max"),
+    )
+    kl = (
+        xray_readings(["06"], project=project)
+        .group_by("ID")
+        .agg(pl.col("KL").max().alias("kl_max"))
+        .with_columns(pl.col("ID").cast(pl.Int64))
+    )
+    return (
+        sex.join(base, on="ID", how="left").join(kl, on="ID", how="left").select("ID", *COVARIATES)
+    )
