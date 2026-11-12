@@ -37,6 +37,11 @@ The analysis has the same shape as `analyses/crepitus_activity` (both directions
    - **Primary (c):** KL and JSN progression are descriptive only, and knee replacement carries the progression family.
    - **Sensitivity (a):** models fitted in the knees that were read, with a clear description of who those knees are.
    - No inverse-probability weighting.
+8. **Measured joint space width:**
+   - **Modeled outcome:** medial minimum JSW (`kXR_QJSW_Duryea`, one project) is the modeled structural progression outcome. It is secondary, because incidence leads.
+   - **Definition:** a loss of at least 0.7 mm from 48 to 96 months (the FNIH threshold) leads, with the continuous change in mm alongside.
+   - **Why it can be modeled:** its follow-up is nearly complete for non-end-stage OA knees (about 2,050 of 2,900 KL 2–3 knees have both widths).
+   - **Within the progression family:** semiquantitative KL and JSN stay descriptive (decision 6). Knee replacement still covers end-stage knees.
 7. **MRI-based incidence and progression** are wanted as secondaries. They will come later, from a separate reusable MRI module (its own project). This analysis leaves a slot for them and does not build them.
 
 ## Design
@@ -53,7 +58,7 @@ The analysis has the same shape as `analyses/crepitus_activity` (both directions
   - a random selection of knees that were KL 2–3 at baseline.
 
   For incidence, the readings are complete by design. For progression they are not.
-- **Which 48-month KL defines the samples (builder's call):** the reading OUTCOMES99 itself relies on, so that sample entry and outcome come from one source. Project 37 readers saw the Project 15 scores and could revise them. This becomes a ledger entry (`kl48.source`), with the Project 15-only reading as a variant.
+- **Which 48-month KL defines the samples (builder's call):** the reading OUTCOMES99 itself relies on, so that sample entry and outcome come from one source. Project 37 readers saw the Project 15 scores and could revise them. This becomes a ledger entry: `readings.anchor_project` in the shared knee-outcomes module (`2026-11-12-knee-outcomes-module-design.md`), with the Project 15-only reading as a variant.
 - **Replacement in the progression family (builder's call):** the Cox model includes KL 2–4 knees, because replacement is the only way a KL 4 knee can progress. The KL and JSN outcomes keep the `progression.risk_kl` set.
 
 ### Exposures
@@ -85,6 +90,11 @@ The outcome counts by V08 or V10. 120 months (V12) is a provisional horizon vari
   - knee replacement: a Cox model over the full OUTCOMES99 follow-up from the 48-month visit, clustered by person (builder's call, because replacement follow-up is longer).
 
   Each is fitted for E1, and for E1 + E2 with the outcome after 72 months.
+- **S3b, measured JSW**, in the progression sample (KL 2–3 at 48 months, `progression.risk_kl`):
+  - outcome: loss of at least 0.7 mm by 96 months (logistic GEE);
+  - companion: the change in mm (gaussian GEE);
+  - each fitted for E1, and for E1 + E2 (people valid at both waves);
+  - Model 2 adds the base width.
 - **S4:** MV minutes/day from counts as a second exposure for P1 and P2 only, reported in a supplementary table.
 
 ### Reverse models (OA → walking)
