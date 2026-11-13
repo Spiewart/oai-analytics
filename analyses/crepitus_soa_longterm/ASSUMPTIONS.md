@@ -52,6 +52,7 @@
 | `horizon_120` | `periods.horizon = 12` | Follow-up to 120 months (V12; depends on Project 43) |
 | `horizon_complete` | `horizon.selection = complete` | L3: only people whose outcome at the horizon is known |
 | `lo2018_48m` | `periods.horizon = 06`; `outcomes.roa_source = readings`; `model.period_term = none` | The 48-month design of lo2018_crepitus and exam_crepitus_soa (regression anchor) |
+| `lo2018_48m_common` | `periods.horizon = 06`; `outcomes.roa_source = readings`; `model.period_term = none`; `model.sample = common` | lo2018_48m with lo2018_crepitus's common model sample (its S2 regression anchor; lo2018_48m anchors exam_crepitus_soa) |
 | `period_term_none` | `model.period_term = none` | No period term (Lo 2018's model) |
 | `roa_kl2_jsn` | `outcomes.roa_definition = kl2_jsn` | ROA = incident KL >= 2 with JSN (V99E?XIOAN) |
 | `roa_unread_as_none` | `outcomes.roa_unread = no_roa` | OUTCOMES99 'no incidence' also counts at visits after the knee's last reading |

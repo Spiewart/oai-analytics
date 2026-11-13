@@ -192,3 +192,7 @@ set = { "horizon.selection" = "complete" }
 [variants.lo2018_48m]
 description = "The 48-month design of lo2018_crepitus and exam_crepitus_soa (regression anchor)"
 set = { "periods.horizon" = "06", "outcomes.roa_source" = "readings", "model.period_term" = "none" }
+
+[variants.lo2018_48m_common]
+description = "lo2018_48m with lo2018_crepitus's common model sample (its S2 regression anchor; lo2018_48m anchors exam_crepitus_soa)"
+set = { "periods.horizon" = "06", "outcomes.roa_source" = "readings", "model.period_term" = "none", "model.sample" = "common" }
