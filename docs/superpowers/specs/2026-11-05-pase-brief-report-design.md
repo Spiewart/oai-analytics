@@ -37,7 +37,7 @@ manuscript says "convergent validity with PASE", not "validated against".
 - The manuscript must state why the 400-meter walk was excluded, in terms a reviewer who knows the
   OAI will accept (see "The 400-meter walk").
 - Divergent validity on the PASE items is judged by an effect-size rule fixed before computing (see "Analyses", item 2).
-- Grace Lo approves the scope and expectations before any new comparison is computed by walker
+- The mentor approves the scope and expectations before any new comparison is computed by walker
   group. This is a hard stop in the plan.
 - Everyone stays in the main analysis, with a sensitivity analysis limited to visits at age 50 or
   older (see "Analyses", item 6).
@@ -56,7 +56,7 @@ manuscript says "convergent validity with PASE", not "validated against".
 
 - A submission-ready draft within the format limits, every number computed from the run.
 - Expectations recorded in the ledger before any new comparison is computed by walker group.
-- A Word copy for Grace Lo's edits, as with the abstract.
+- A Word copy for the mentor's edits, as with the abstract.
 
 **Non-goals**
 
@@ -249,10 +249,10 @@ File and step names; table layout; the sitting dichotomy; the GEE working correl
 in the ledger; how the `nlme` and `geepack` choices fit the `report` R profile; the Word copy's
 script, reusing `~/oai-work/tools/abstract_pase_docx.js` where it fits.
 
-## Open for the user and Grace Lo
+## Open for the user and the mentor
 
-- **Grace's review comes first.** The plan's sequence is: write the expectations and decision rule
-  into the ledger, build only what computes no comparison by walker group, send Grace a short scope
+- **The mentor's review comes first.** The plan's sequence is: write the expectations and decision rule
+  into the ledger, build only what computes no comparison by walker group, send the mentor a short scope
   summary, then stop until she approves. She steered the abstract toward PASE and questioned the
   BMI adjustment; her view on the function measures, the decision rule and the KL analysis is not
   known. Any change she asks for at this stop goes into the ledger before computing.

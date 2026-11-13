@@ -61,4 +61,4 @@ Bout-based walking definitions, cadence bands, the Walking Question and PASE, MR
 
 ## Authorship note
 
-The step data come from Northwestern. Its analyst, Jing, is to be a co-author on publications that use them, and the PARR group offers input (memory: nw-step-data).
+The step data come from Northwestern. Its analyst is to be a co-author on publications that use them, and the PARR group offers input (memory: nw-step-data).

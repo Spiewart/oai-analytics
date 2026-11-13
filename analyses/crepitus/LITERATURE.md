@@ -78,7 +78,7 @@ WOMAC has no crepitus item. V13 and V14 carry none of the three.
 
 ## To confirm
 
-- Estimates and n in the Lo 2014 OARSI abstract (ask Grace).
+- Estimates and n in the Lo 2014 OARSI abstract (ask the first author).
 - Whether de Klerk 2011 (Rotterdam) tested crepitus as a determinant of incident ROA.
 - Which OAI variable Pazzinatto 2019 used (exam item or KOOS S2).
 - Whether Davis 2017 and Kittelson 2021 analyzed the S2 item.

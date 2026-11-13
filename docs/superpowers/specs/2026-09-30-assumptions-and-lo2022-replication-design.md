@@ -254,5 +254,5 @@ that accounts for within-person correlation, but it does not settle the `open` i
 ## 10. Open questions (tracked, not blocking)
 
 - The `open` assumptions above; sensitivity variants cover the two largest.
-- Grace Lo's adjudicated alignment file could validate `alignment.*`; if obtained, it
+- The Lo 2022 authors' adjudicated alignment file could validate `alignment.*`; if obtained, it
   stays outside the repo (data) and is referenced via config.

@@ -18,7 +18,7 @@
 
 - Everything in `docs/superpowers/plans/2026-10-21-lo2018-crepitus-replication.md` Global Constraints applies: the branch is `claude/oai-crepitus-measures-768ff2`; commits carry the `Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` trailer; no OAI data goes in git; right knee only for Part 1; person-level frames.
 - Lo 2018 outputs must not change: `frame.parquet`, `persons.parquet` and `metrics_cohort.csv` from `oai run lo2018_crepitus --step cohort` stay identical to before Task 1.
-- Inherited Lo 2018 decisions keep Lo 2018's defaults. If the Lo 2018 ledger changes (for example, after Grace answers on blank baseline pain), this analysis must fail a test until it follows.
+- Inherited Lo 2018 decisions keep Lo 2018's defaults. If the Lo 2018 ledger changes (for example, after the mentor answers on blank baseline pain), this analysis must fail a test until it follows.
 - Exam exposure is binary (1 = crepitus present). Metric keys use `yes` / `no` for the two levels and `exam` for the OR term.
 - Mahmoudian targets are entered verbatim from the abstract and its Table 1 (user-supplied, 2026-10-21). The `sig` rule follows the Lo 2018 plan: no `sig` when a bound is exactly 1.0.
 - Part 2 uses both knees, then one knee per person. Its random pick is seeded (`mahmoudian.seed`).

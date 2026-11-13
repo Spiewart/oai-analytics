@@ -93,8 +93,6 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 ### Code health
 
-- **Consolidate progression derivations**: rebuild `kl_progression` and `fnih_jsw_progressor` in `src/oai/derive/progression.py` on the `oai.derive.knee` helpers (`xray_readings`, `with_fallback`, `knee_replacement`), or remove them, so there is one way to compute KL/JSN progression.
-  [src/oai/derive/progression.py](src/oai/derive/progression.py)
 
 ### Tooling
 
@@ -138,8 +136,19 @@ _Not generated yet: the `update-todo-patches` hook is not installed in this repo
 
 ### Crepitus and device-measured activity (`analyses/crepitus_activity`)
 
-- **Settle Northwestern's authorship terms before any write-up** — <!-- skip --> The per-minute steps (48 and 72 months) come from Northwestern (Alison Chang). Their terms: Jing, who retrieved and cleaned the data, is a co-author on publications that use them, and the PARR group (Physical Activity in Rheumatology Research) offers scientific input. Raise both before drafting an abstract or author list from this analysis.
+- **Settle Northwestern's authorship terms before any write-up** — <!-- skip --> The per-minute steps (48 and 72 months) come from Northwestern. Their terms: the Northwestern analyst who retrieved and cleaned the data is a co-author on publications that use them, and the PARR group (Physical Activity in Rheumatology Research) offers scientific input. Raise both before drafting an abstract or author list from this analysis.
   [analyses/crepitus_activity/README.md](analyses/crepitus_activity/README.md)
+
+### Steps and knee OA (`analyses/steps_oa`)
+
+- **Settle `readings.followup_project`** — <!-- skip --> `open` in `analyses/steps_oa/assumptions.toml` (default `latest`: Project 43 where it read the film, else Project 37; variant `followup_p37`). The release does not say which project's follow-up grade counts. Decide with the study team; the variant table in `analyses/steps_oa/README.md` shows how much it moves the KL and JSN estimates.
+- **Settle `horizon.selection` for the by-horizon companion model** — <!-- skip --> `open` (default `known_or_case`, which keeps cases who left and drops non-cases who left; `complete` keeps only knees with a known outcome at 96 months). It applies only to the companion logistic model (`--variant by_horizon`); the discrete-time primary does not need it.
+- **Settle Northwestern's authorship terms before any steps_oa write-up** — <!-- skip --> Same terms as crepitus_activity: the Northwestern analyst who prepared them is a co-author on publications that use the per-minute steps, and the PARR group offers scientific input. Raise both before drafting an abstract or author list.
+- **MRI outcomes module (separate project)** — <!-- skip --> MRI-based incidence and progression are wanted as steps_oa secondaries (spec decision 7) from a reusable MRI module, built as its own project. Waiting on the user to send Northwestern's references on MRI outcome definitions; design starts from those.
+- **Move `analyses/crepitus/crepitus.py` onto `oai.derive.knee_outcomes`** — Replace its own incidence and progression derivations with the shared module's, and show it reproduces the current `oai run crepitus` counts exactly before switching (any difference is a ledger question, not a silent change).
+- **Add WOMAC-based symptomatic progression to `oai.derive.knee_outcomes`** — Out of scope for steps_oa (spec: "WOMAC-only symptomatic progression"); add it to the module with a ledger entry for the threshold, so later analyses share one definition.
+- **Look at the 10 knees with OUTCOMES99 ROA at 48 months but anchor-reading KL 0** — <!-- skip --> In the P2 sample (SOA-free at 48 months), 10 knees are ROA by OUTCOMES99 at or before 48 months but KL 0 in the anchor reading (`readings.anchor_project = followup`). None had an event, so `drop_separated()` drops them from P2-with-ROA Model 2. Decide whether this is a reading revision to accept, or whether the samples should require the two sources to agree (a ledger entry).
+- **Reconcile the incomplete incidence readings with the design** — <!-- skip --> The steps_oa design (and `kXR_SQ_BU_Descrip.pdf`, as read for it) says incidence readings after 48 months are complete by design, but only 1,620 of 1,959 knees at risk of ROA (83%) were read at 96 months (`flow.csv`, `selection_incident_roa`). Check the document: are the unread knees missed visits (no film) or films not read, and does the release separate the two? P1 and P2 currently assume unread knees resemble read ones; if films were left unread by design, the discrete-time model's missing-at-random assumption needs a ledger entry.
 
 ### Future studies ([docs/study-ideas.md](docs/study-ideas.md))
 

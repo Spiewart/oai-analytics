@@ -5,7 +5,6 @@ from pathlib import Path
 
 import polars as pl
 from activity import (
-    covariates_48,
     crepitus_counts,
     crepitus_knees,
     exam120_knees,
@@ -15,7 +14,7 @@ from activity import (
 
 from oai.assumptions import current
 from oai.derive.accel import read_minutes
-from oai.derive.devices import device_rules, person_wave
+from oai.derive.devices import covariates_48, device_rules, person_wave
 
 # person_wave also builds step-bout measures at these cadences; this analysis does not use them
 UNUSED_BOUT_CADENCES = [100]

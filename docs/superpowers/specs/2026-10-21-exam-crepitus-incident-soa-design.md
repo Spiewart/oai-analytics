@@ -22,7 +22,7 @@ So the analysis has two parts:
 
 ## Part 1: exam crepitus → incident SOA
 
-The cohort, symptomatic-OA definition, observation periods, censoring, covariates and subgroups are Lo 2018's, taken from the replication without change. Its assumptions and their defaults are inherited, including the two choices still open with Grace: blank baseline pain, and the 84 "no valid outcome".
+The cohort, symptomatic-OA definition, observation periods, censoring, covariates and subgroups are Lo 2018's, taken from the replication without change. Its assumptions and their defaults are inherited, including the two choices still open with the mentor: blank baseline pain, and the 84 "no valid outcome".
 
 - **Exposure:** exam crepitus (`V##RKPFCRE`, yes/no) at V00, V01, V03 and V05, predicting SOA at the next annual visit. Binary, so each table has one OR per model, not four.
 - **Periods:** a period needs an exam value, and does not need S2 (`exposure.require_s2 = false`). The variant `require_s2` restricts to periods with both measures, so the exam and S2 estimates sit on the same rows.
