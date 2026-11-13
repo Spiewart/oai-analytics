@@ -295,3 +295,17 @@ def test_hex_cells_puts_identical_points_in_one_cell():
 def test_hex_cells_rejects_steps_above_200():
     with pytest.raises(ValueError, match="200"):
         r.hex_cells(np.array([100.0]), np.array([201.0]), 1.0, 50)
+
+
+def test_relation_outputs_pass_egress(tmp_path):
+    from oai.export.egress import check_egress
+
+    w = frame(cnt=[0.0, 300.0, 2500.0, 7000.0] * 50, steps=[0.0, 10.0, 105.0, 130.0] * 50)
+    r.bin_quantiles(w, EDGES).write_csv(tmp_path / "relation_bins.csv")
+    r.band_shares(w, EDGES, BANDS).write_csv(tmp_path / "relation_bands.csv")
+    cells, meta = r.hex_cells(w["cnt"].to_numpy(), w["steps"].to_numpy(), 0.999, 50)
+    cells.write_csv(tmp_path / "relation_hex.csv")
+    pl.DataFrame([meta]).write_csv(tmp_path / "relation_hex_meta.csv")
+    report = check_egress(tmp_path, min_cell=5, small_cell="fail")
+    assert report.ok, report.problems
+    assert not report.warnings, report.warnings

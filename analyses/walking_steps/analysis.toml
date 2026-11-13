@@ -15,6 +15,12 @@ stage = "local"
 entry = "walking_share.py"
 
 [[steps]]
+id = "relation"
+lang = "python"
+stage = "local"
+entry = "minute_relation.py"
+
+[[steps]]
 id = "persons"
 lang = "python"
 stage = "local"

@@ -1,6 +1,6 @@
 # Walking from per-minute steps
 
-Two questions, at 48 and 72 months: how much of the GT1M activity counts is walking (step `share`), and how self-reported walking agrees with count-based and step-based device walking (steps `persons` and `pro_validity`). `oai report walking_steps` renders `report.pdf`, a two-page exploratory summary of both for the study team and the Northwestern accelerometry group.
+Three questions, at 48 and 72 months: how much of the GT1M activity counts is walking (step `share`), how self-reported walking agrees with count-based and step-based device walking (steps `persons` and `pro_validity`), and how per-minute steps relate to per-minute counts (step `relation`). `oai report walking_steps` renders `report.pdf`, a two-page exploratory summary of both for the study team and the Northwestern accelerometry group.
 
 ## Part 1: share of the counts
 
@@ -58,6 +58,25 @@ Self-reports: the 96-month walking-for-exercise item (coded as in walking_valida
 | `PRO_VALIDITY.md` | Sensitivity / specificity by self-report and device definition |
 
 Person-level device measures go to `$OAI_WORK_DIR/walking_steps/<label>/device.parquet`, never to results.
+
+## Part 3: steps against counts within a minute
+
+The step `relation` shows how per-minute steps relate to per-minute activity counts at 48 and 72 months (the Northwestern group's Q1). It uses the same analysis minutes as `share`, and the unit is the wear minute, pooled over participants.
+
+The count bins are set by `relation.count_bin_edges`:
+- sedentary: 0–99
+- light, in four equal-width bins: 100–499, 500–999, 1000–1499 and 1500–2019
+- moderate: 2020–5998
+- vigorous: ≥ 5999
+
+The step bands are `walking.band_edges`. The hexbin x-axis stops at the `relation.hex_x_quantile` of counts in each wave.
+
+| File | Contents |
+|---|---|
+| `relation_hex.csv` | Per visit, the hexagon centres (`x` counts/min, `y` steps/min) and each hexagon's share of the wave's wear minutes |
+| `relation_hex_meta.csv` | Per visit: the x-axis cut-off, the share of minutes beyond it, and the hexagon width and height |
+| `relation_bins.csv` | Per visit and count bin: intensity, minutes (thousands), share of minutes, and the steps quartiles |
+| `relation_bands.csv` | Per visit, count bin and step band: the share of the bin's minutes in the band |
 
 ## Caveats
 
