@@ -116,7 +116,7 @@ rel_wave <- function(df) {
   df
 }
 edges <- unlist(assumption("relation.count_bin_edges"))
-vig_cut <- edges[length(edges)]
+vig_cut <- assumption("relation.vigorous_cutpoint")
 rbins <- rel_wave(run$relation_bins)
 rbands <- rel_wave(run$relation_bands)
 rhex <- rel_wave(run$relation_hex)
@@ -186,7 +186,7 @@ ggplot(rbands, aes(count_bin, share, fill = band)) +
             position = position_stack(vjust = 0.5), size = 2.8, show.legend = FALSE) +
   scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey15")) +
   facet_wrap(~wave, ncol = 1) +
-  scale_fill_manual(values = band_fill, name = "Steps a\nminute", breaks = rev(levels(rbands$band))) +
+  scale_fill_manual(values = band_fill, name = "Steps a\nminute") +
   scale_x_discrete(labels = bin_names) +
   scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), expand = expansion(0)) +
   labs(x = "Activity counts a minute", y = NULL) +

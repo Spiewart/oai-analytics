@@ -241,7 +241,7 @@ def test_count_bin_labels_and_intensity():
 @pytest.mark.parametrize("edges", [[0, 100, 500, 2000, 5999], [10, 100, 2020], [0, 500, 100, 2020]])
 def test_count_bins_reject_edges_off_the_device_cutpoints(edges):
     with pytest.raises(ValueError):
-        r.check_count_edges(edges, 100, 2020)
+        r.check_count_edges(edges, 100, 2020, 5999)
 
 
 def test_bin_quantiles_by_count_bin():
@@ -335,3 +335,26 @@ def test_hex_cells_suppresses_cells_with_few_people():
 def test_hex_cells_requires_min_people():
     with pytest.raises(TypeError):
         r.hex_cells(np.array([0.0]), np.array([0.0]), np.array([1]), 1.0, 50)
+
+
+@pytest.mark.parametrize("edges", [[0, 100, 2020], [0, 100, 500, 2020, 4000]])
+def test_count_bins_reject_a_missing_vigorous_cut(edges):
+    with pytest.raises(ValueError, match="vigorous"):
+        r.check_count_edges(edges, 100, 2020, 5999)
+
+
+def test_ledger_count_edges_pass():
+    r.check_count_edges(EDGES, 100, 2020, 5999)
+
+
+@pytest.mark.parametrize("bad", [np.nan, -1.0])
+def test_hex_cells_rejects_nan_or_negative_steps(bad):
+    with pytest.raises(ValueError):
+        r.hex_cells(
+            np.array([100.0, 100.0]),
+            np.array([bad, 300.0 if bad != bad else 10.0]),
+            np.array([1, 2]),
+            1.0,
+            50,
+            min_people=1,
+        )

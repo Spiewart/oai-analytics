@@ -29,9 +29,10 @@ if A["steps.day_rule"] != "complete":  # the only rule oai.derive.accel implemen
     raise ValueError(f"steps.day_rule {A['steps.day_rule']!r} is not implemented")
 rules = device_rules(A)
 count_edges = [int(e) for e in A["relation.count_bin_edges"]]
-check_count_edges(count_edges, rules.light_floor, rules.mv_cutpoint)
+vigorous = int(A["relation.vigorous_cutpoint"])
+check_count_edges(count_edges, rules.light_floor, rules.mv_cutpoint, vigorous)
 band_edges = [int(e) for e in A["walking.band_edges"]]
-intensity = intensity_of(count_edges, rules.light_floor, rules.mv_cutpoint, count_edges[-1])
+intensity = intensity_of(count_edges, rules.light_floor, rules.mv_cutpoint, vigorous)
 results = Path(os.environ["OAI_RESULTS_DIR"])
 
 hexes, metas, bins, bands = [], [], [], []

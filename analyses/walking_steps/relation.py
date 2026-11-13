@@ -17,8 +17,11 @@ def count_bin_labels(edges: list[int]) -> list[str]:
     return [f"{a}-{b - 1}" for a, b in zip(edges, edges[1:], strict=False)] + [f"{edges[-1]}+"]
 
 
-def check_count_edges(edges: list[int], light_floor: float, mv_cutpoint: float) -> None:
-    """Fail unless the edges start at 0, increase strictly and include both device cutpoints."""
+def check_count_edges(
+    edges: list[int], light_floor: float, mv_cutpoint: float, vigorous: int
+) -> None:
+    """Fail unless the edges start at 0, increase strictly, include both device cutpoints and
+    end at the vigorous cutpoint (above the MV cutpoint), so every bin's intensity is right."""
     if edges[0] != 0:
         raise ValueError(f"relation.count_bin_edges must start at 0, not {edges[0]}")
     if any(b <= a for a, b in zip(edges, edges[1:], strict=False)):
@@ -26,6 +29,11 @@ def check_count_edges(edges: list[int], light_floor: float, mv_cutpoint: float) 
     for name, cut in (("device.light_floor", light_floor), ("device.mv_cutpoint", mv_cutpoint)):
         if cut not in edges:
             raise ValueError(f"relation.count_bin_edges {edges} lacks {name} = {cut}")
+    if vigorous <= mv_cutpoint or edges[-1] != vigorous:
+        raise ValueError(
+            f"relation.count_bin_edges {edges} must end at the vigorous cutpoint {vigorous}, "
+            f"above device.mv_cutpoint {mv_cutpoint}"
+        )
 
 
 def intensity_of(
@@ -121,8 +129,8 @@ def hex_cells(
     Each cell's share is its minutes over all minutes passed in, so the shares plus share_beyond
     plus share_suppressed sum to 1. hex_dx and hex_dy size the hexagons for drawing.
     """
-    if len(steps) and float(np.max(steps)) > ymax:
-        raise ValueError(f"steps above {ymax:.0f}/min fall outside the hexbin y-axis")
+    if np.any(~((steps >= 0) & (steps <= ymax))):  # also catches NaN
+        raise ValueError(f"steps must lie in 0-{ymax:.0f}/min, the hexbin y-axis")
     xcap = float(np.quantile(cnt, quantile))
     keep = cnt <= xcap
     ny = round(gridsize / np.sqrt(3))

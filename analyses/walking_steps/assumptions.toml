@@ -109,6 +109,11 @@ status = "confirmed"
 source = "User's choice (2026-11-13): sedentary < 100, light 100-2019 in four equal-width bins, moderate 2020-5998, vigorous >= 5999 (Troiano 2008 vigorous cutpoint)"
 rationale = "Lower edges of the activity-count bins for the steps-vs-counts plots (step relation). Must include device.light_floor and device.mv_cutpoint."
 
+[relation.vigorous_cutpoint]
+value = 5999
+status = "confirmed"
+source = "Troiano 2008 vigorous cutpoint (>= 5999 counts/min), the user's choice (2026-11-13); relation.count_bin_edges must end at it"
+
 [relation.hex_x_quantile]
 value = 0.999
 status = "assumed"
