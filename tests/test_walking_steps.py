@@ -9,6 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "analyses" / "walking_steps"))
 
+import relation as r  # noqa: E402
 import share as s  # noqa: E402
 
 from oai.derive.accel import DeviceRules  # noqa: E402
@@ -214,3 +215,61 @@ def test_either_week_credits_a_walker_from_any_wave():
     per_wave = pl.DataFrame({"ID": [1, 1, 2, 2, 3], "w": [True, False, False, False, False]})
     out = dv.either_week(per_wave, ["w"])
     assert out["w"].to_list() == [True, False, False]
+
+
+# --- relation (Q1): steps against activity counts within a minute
+
+EDGES = [0, 100, 500, 1000, 1500, 2020, 5999]
+BANDS = [1, 20, 40, 60, 80, 100, 120]
+
+
+def test_count_bin_labels_and_intensity():
+    assert r.count_bin_labels(EDGES) == [
+        "0-99",
+        "100-499",
+        "500-999",
+        "1000-1499",
+        "1500-2019",
+        "2020-5998",
+        "5999+",
+    ]
+    m = r.intensity_of(EDGES, 100, 2020, 5999)
+    assert m["0-99"] == "sedentary" and m["1500-2019"] == "light"
+    assert m["2020-5998"] == "moderate" and m["5999+"] == "vigorous"
+
+
+@pytest.mark.parametrize("edges", [[0, 100, 500, 2000, 5999], [10, 100, 2020], [0, 500, 100, 2020]])
+def test_count_bins_reject_edges_off_the_device_cutpoints(edges):
+    with pytest.raises(ValueError):
+        r.check_count_edges(edges, 100, 2020)
+
+
+def test_bin_quantiles_by_count_bin():
+    w = frame(
+        cnt=[0.0, 50.0, 2019.0, 2020.0, 2020.0, 6000.0],
+        steps=[0.0, 0.0, 30.0, 90.0, 110.0, 150.0],
+    )
+    q = r.bin_quantiles(w, EDGES)
+    assert q["count_bin"].to_list() == r.count_bin_labels(EDGES)
+    row = q.filter(pl.col("count_bin") == "2020-5998")
+    assert row["steps_median"].item() == 100.0
+    assert row["share_of_minutes"].item() == pytest.approx(2 / 6)
+    assert q.filter(pl.col("count_bin") == "1500-2019")["steps_median"].item() == 30.0
+
+
+def test_band_shares_sum_to_one_within_bin():
+    w = frame(cnt=[2500.0] * 4, steps=[0.0, 19.0, 20.0, 125.0])
+    b = r.band_shares(w, EDGES, BANDS).filter(pl.col("count_bin") == "2020-5998")
+    got = dict(zip(b["band"], b["share"], strict=True))
+    assert got["0"] == 0.25 and got["1-19"] == 0.25 and got["20-39"] == 0.25
+    assert got["120+"] == 0.25
+    assert sum(got.values()) == pytest.approx(1.0)
+
+
+def test_empty_count_bin_is_kept():
+    w = frame(cnt=[0.0, 300.0], steps=[0.0, 10.0])
+    q = r.bin_quantiles(w, EDGES)
+    vig = q.filter(pl.col("count_bin") == "5999+")
+    assert vig.height == 1 and vig["steps_median"].item() is None
+    b = r.band_shares(w, EDGES, BANDS).filter(pl.col("count_bin") == "5999+")
+    assert b.height == 8 and b["share"].sum() == 0
