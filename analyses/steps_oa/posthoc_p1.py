@@ -18,8 +18,9 @@ import polars as pl
 KEYS = ["ID", "SIDE"]
 # Interim visits whose 12-month knee-injury item (V##INJ{side}12) covers the time up to 48 months
 INJURY_VISITS = ("01", "03", "05", "06")
-# Interim visit before each follow-up reading: its knee pain predicts being read at that reading
-INTERIM_BEFORE = {"08": "07", "10": "09"}
+# Interim visit before each follow-up reading: its knee pain predicts being read at that reading.
+# V12 (120 months) is a follow-up reading only under periods.horizon = "12".
+INTERIM_BEFORE = {"08": "07", "10": "09", "12": "11"}
 
 
 def injury_flags(raw: pl.DataFrame, visits: Sequence[str] = INJURY_VISITS) -> pl.DataFrame:
@@ -48,22 +49,26 @@ def injury_flags(raw: pl.DataFrame, visits: Sequence[str] = INJURY_VISITS) -> pl
 def read_flags(horizon: pl.DataFrame, periods: pl.DataFrame) -> pl.DataFrame:
     """The incident-ROA sample (`horizon`, one row per knee) with what was read afterwards.
 
-    - read_08, read_10: the knee has a follow-up interval ending at that visit (`periods`);
-    - event_08: the knee's V08 interval had the event (so it leaves the risk set for V10);
-    - any_read: read at either visit;
-    - known: status by the horizon is known (`horizon.event` not null).
+    For each follow-up reading <v> in `periods.end_visit` (keys of INTERIM_BEFORE):
+    - read_<v>: the knee has a follow-up interval ending at that visit;
+    - prior_event_<v>: an earlier interval had the event (so the knee is not at risk at <v>).
+    And any_read (read at any of them) and known (`horizon.event` not null).
     """
-    ends = periods.group_by(KEYS).agg(
-        (pl.col("end_visit") == "08").any().alias("read_08"),
-        (pl.col("end_visit") == "10").any().alias("read_10"),
-        ((pl.col("end_visit") == "08") & pl.col("event").cast(pl.Boolean)).any().alias("event_08"),
+    ends = sorted(periods["end_visit"].unique().to_list())
+    unknown = set(ends) - set(INTERIM_BEFORE)
+    if unknown:
+        raise ValueError(f"no interim visit for follow-up reading(s) {sorted(unknown)}")
+    event = pl.col("event").cast(pl.Boolean)
+    per_knee = periods.group_by(KEYS).agg(
+        *((pl.col("end_visit") == v).any().alias(f"read_{v}") for v in ends),
+        *(((pl.col("end_visit") < v) & event).any().alias(f"prior_event_{v}") for v in ends),
     )
-    flags = ["read_08", "read_10", "event_08"]
+    flags = [c for c in per_knee.columns if c not in KEYS]
     return (
-        horizon.join(ends, on=KEYS, how="left")
+        horizon.join(per_knee, on=KEYS, how="left")
         .with_columns(pl.col(f).fill_null(False) for f in flags)
         .with_columns(
-            (pl.col("read_08") | pl.col("read_10")).alias("any_read"),
+            pl.any_horizontal(f"read_{v}" for v in ends).alias("any_read"),
             pl.col("event").is_not_null().alias("known"),
         )
     )
@@ -94,13 +99,13 @@ def read_share(flags: pl.DataFrame, bands: Sequence[str]) -> pl.DataFrame:
 
 
 def interim_pain(per_visit: pl.DataFrame) -> pl.DataFrame:
-    """ID, SIDE, womac_<v>, freq_pain_<v> for each interim visit in INTERIM_BEFORE, wide.
+    """ID, SIDE, womac_<v>, freq_pain_<v> for each interim visit in `per_visit`, wide.
 
     `per_visit` is long: ID, SIDE, visit, womac, freq_pain. A knee whose person missed the visit
     has nulls there (the weight model codes that as its own indicator).
     """
-    wanted = sorted(INTERIM_BEFORE.values())
-    long = per_visit.filter(pl.col("visit").is_in(wanted))
+    long = per_visit
+    wanted = sorted(long["visit"].unique().to_list())
     out = long.select(KEYS).unique()
     for v in wanted:
         one = long.filter(pl.col("visit") == v).select(

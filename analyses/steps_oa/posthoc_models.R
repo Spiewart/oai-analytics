@@ -2,7 +2,7 @@
 #   sex       steps x women interaction; P1 within men and within women (linear and >= top band)
 #   injury    P1 with injury_48 (and baseline knee surgery) added; within uninjured and injured
 #             knees; steps x injury interaction
-#   read      odds of a later reading per 1,000 steps/day (logistic GEE): any reading, and
+#   read      odds of a later reading per 1,000 steps/day (per log unit under steps.transform = log) (logistic GEE): any reading, and
 #             status known by the horizon
 #   reweight  P1 weighted by the inverse probability of being read at each interval end
 #             (stabilized), from a logistic model of the knees at risk entering the interval
@@ -19,11 +19,13 @@ aux <- A[["posthoc.weight_predictors"]]
 known_aux <- c("interim_womac", "interim_freq_pain", "interim_missed")
 if (length(setdiff(aux, known_aux))) stop("unknown posthoc.weight_predictors: ", setdiff(aux, known_aux))
 edges <- as.numeric(A[["steps.bands"]])
-INTERIM <- c("08" = "07", "10" = "09")
+INTERIM <- c("08" = "07", "10" = "09", "12" = "11")
+log_scale <- identical(A[["steps.transform"]], "log")
+lin_term <- if (log_scale) "per_log" else "per_1000"  # as in models.R
 
 read <- function(name) {
   d <- as.data.frame(oaimodels::read_frame(file.path(frame_dir, sprintf("%s.parquet", name))))
-  d$x <- d$steps_48 / 1000
+  d$x <- if (log_scale) log(d$steps_48 + 1) else d$steps_48 / 1000
   d$women <- as.integer(d$sex == 2)
   d$band <- cut(d$steps_48, c(-Inf, edges, Inf), right = FALSE)
   levels(d$band) <- paste0("b", seq_along(levels(d$band)))
@@ -35,6 +37,8 @@ p$event <- as.integer(p$event)
 p$inj <- as.integer(p$injury_48)
 p$surg <- as.integer(p$surgery_00)
 h <- read("posthoc_read")
+ENDS <- sort(unique(p$end_visit))
+if (!all(ENDS %in% names(INTERIM))) stop("no interim visit for reading(s) ", setdiff(ENDS, names(INTERIM)))
 TOP <- paste0("b", length(edges) + 1)
 
 covs <- list(m1 = c("age", "women", "bmi", "wear_hr_48"),
@@ -72,7 +76,7 @@ record <- function(check, subset, model, term, res, coef = term) {
     p = est[4])
 }
 lin <- function(check, subset, model, d, cv, extra = character()) {
-  record(check, subset, model, "per_1000", fit(d, c("x", cv, extra)), "x")
+  record(check, subset, model, lin_term, fit(d, c("x", cv, extra)), "x")
 }
 top <- function(check, subset, model, d, cv, extra = character()) {
   record(check, subset, model, "band_top", fit(d, c("band", cv, extra)), paste0("band", TOP))
@@ -96,7 +100,7 @@ for (m in names(covs)) {
   pk <- p[!is.na(p$inj), , drop = FALSE]
   lin("injury", "flag_known", m, pk, cv)
   r <- fit(pk, c("x", cv, "inj"))
-  record("injury", "adjusted", m, "per_1000", r, "x")
+  record("injury", "adjusted", m, lin_term, r, "x")
   record("injury", "adjusted", m, "injury_48", r, "inj")
   lin("injury", "adjusted_surgery", m, pk, cv, c("inj", "surg"))
   top("injury", "adjusted", m, pk, cv, "inj")
@@ -107,9 +111,9 @@ for (m in names(covs)) {
   # ---- being read (one row per knee; logistic)
   hk <- h
   hk$event <- as.integer(hk$any_read)
-  record("read", "any_reading", m, "per_1000", fit(hk, c("x", cv), periods = FALSE), "x")
+  record("read", "any_reading", m, lin_term, fit(hk, c("x", cv), periods = FALSE), "x")
   hk$event <- as.integer(hk$known)
-  record("read", "status_known", m, "per_1000", fit(hk, c("x", cv), periods = FALSE), "x")
+  record("read", "status_known", m, lin_term, fit(hk, c("x", cv), periods = FALSE), "x")
 }
 
 # ---- reweighting: stabilized inverse probability of being read at each interval end
@@ -117,9 +121,9 @@ weights_rows <- list()
 for (m in names(covs)) {
   cv <- covs[[m]]
   w_all <- list()
-  for (v in names(INTERIM)) {
+  for (v in ENDS) {
     iv <- INTERIM[[v]]
-    r <- if (v == "08") h else h[!h$event_08, , drop = FALSE]
+    r <- h[!h[[paste0("prior_event_", v)]], , drop = FALSE]
     r$o <- as.integer(r[[paste0("read_", v)]])
     r$aux_womac <- r[[paste0("womac_", iv)]]
     r$aux_missed <- as.integer(is.na(r$aux_womac))
@@ -142,7 +146,9 @@ for (m in names(covs)) {
   }
   W <- do.call(rbind, w_all)
   pw <- merge(p, W, by = c("key", "end_visit"))
-  record("reweight", "weighted", m, "per_1000", fit(pw, c("x", cv), weights = "w"), "x")
+  n_p1 <- sum(stats::complete.cases(p[, c("x", cv)]))
+  if (nrow(pw) != n_p1) message("reweight ", m, ": ", n_p1 - nrow(pw), " P1 rows without a weight")
+  record("reweight", "weighted", m, lin_term, fit(pw, c("x", cv), weights = "w"), "x")
   record("reweight", "weighted", m, "band_top",
          fit(pw, c("band", cv), weights = "w"), paste0("band", TOP))
 }

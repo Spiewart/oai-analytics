@@ -4,6 +4,7 @@ import importlib.util
 from pathlib import Path
 
 import polars as pl
+import pytest
 
 from oai.assumptions import load_assumptions
 
@@ -55,7 +56,8 @@ def test_read_flags_follow_the_periods_rows():
     # (1, L), (1, R), (2, R), (3, R)
     assert out["read_08"].to_list() == [True, True, False, False]
     assert out["read_10"].to_list() == [True, False, True, False]
-    assert out["event_08"].to_list() == [False, True, False, False]
+    assert out["prior_event_10"].to_list() == [False, True, False, False]
+    assert out["prior_event_08"].to_list() == [False, False, False, False]
     assert out["any_read"].to_list() == [True, True, True, False]
     assert out["known"].to_list() == [True, True, False, False]
 
@@ -83,6 +85,32 @@ def test_read_share_by_band_in_band_order():
     assert low["share_injury"] == 0.0  # the unknown flag is left out of the share
 
 
+def test_read_flags_cover_a_120_month_reading():
+    horizon = pl.DataFrame({"ID": [1, 2], "SIDE": ["R", "R"], "event": [True, False]})
+    periods = pl.DataFrame(
+        {
+            "ID": [1, 1, 2, 2],
+            "SIDE": ["R"] * 4,
+            "end_visit": ["10", "12", "08", "12"],
+            "span": [1, 1, 1, 2],
+            "event": [True, False, False, False],
+        }
+    )
+    out = H.read_flags(horizon, periods).sort("ID")
+    assert out["read_12"].to_list() == [True, True]
+    assert out["prior_event_12"].to_list() == [True, False]
+    assert out["prior_event_10"].to_list() == [False, False]
+
+
+def test_read_flags_refuse_a_reading_without_an_interim_visit():
+    horizon = pl.DataFrame({"ID": [1], "SIDE": ["R"], "event": [False]})
+    periods = pl.DataFrame(
+        {"ID": [1], "SIDE": ["R"], "end_visit": ["14"], "span": [1], "event": [False]}
+    )
+    with pytest.raises(ValueError, match="14"):
+        H.read_flags(horizon, periods)
+
+
 def test_interim_pain_is_wide_by_visit():
     long = pl.DataFrame(
         {
@@ -107,4 +135,4 @@ def test_ledger_entries_match_the_code():
         "interim_freq_pain",
         "interim_missed",
     }
-    assert H.INTERIM_BEFORE == {"08": "07", "10": "09"}
+    assert H.INTERIM_BEFORE == {"08": "07", "10": "09", "12": "11"}

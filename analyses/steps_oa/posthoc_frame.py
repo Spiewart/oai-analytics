@@ -57,6 +57,9 @@ for v in INJURY_VISITS:
     raw = raw.join(per_side(v, {f"inj12_{v}": f"V{v}INJ{{side}}12"}), on=KEYS, how="left")
 injury = injury_flags(raw)
 
+periods = pl.read_parquet(frames / "periods_roa.parquet")
+horizon = pl.read_parquet(frames / "horizon_roa.parquet")
+ends = sorted(periods["end_visit"].unique().to_list())
 pain = pl.concat(
     per_side(v, {"womac": f"V{v}WOMKP{{side}}", "freq_pain": f"V{v}KP{{side}}12CV"}).select(
         *KEYS,
@@ -64,11 +67,8 @@ pain = pl.concat(
         pl.col("womac").cast(pl.Float64),
         (pl.col("freq_pain") == 1).alias("freq_pain"),
     )
-    for v in sorted(INTERIM_BEFORE.values())
+    for v in (INTERIM_BEFORE[e] for e in ends if e in INTERIM_BEFORE)
 )
-
-periods = pl.read_parquet(frames / "periods_roa.parquet")
-horizon = pl.read_parquet(frames / "horizon_roa.parquet")
 periods.join(injury, on=KEYS, how="left").write_parquet(frames / "posthoc_periods.parquet")
 flags = read_flags(horizon, periods).join(injury, on=KEYS, how="left")
 flags.join(interim_pain(pain), on=KEYS, how="left").write_parquet(frames / "posthoc_read.parquet")
