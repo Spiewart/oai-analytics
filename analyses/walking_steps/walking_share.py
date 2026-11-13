@@ -13,6 +13,7 @@ from share import analysis_minutes, cadence_bands, person_bands, shares
 
 from oai.assumptions import current
 from oai.derive.accel import read_minutes
+from oai.results import md_table
 
 A = current()
 if A["steps.day_rule"] != "complete":  # the only rule oai.derive.accel implements
@@ -54,11 +55,6 @@ band_table.with_columns((pl.col("minutes") / 1000).round(1).alias("minutes_thous
 
 def pct(x: float | None) -> str:
     return "" if x is None else f"{100 * x:.0f}%"
-
-
-def md(df: pl.DataFrame) -> str:
-    head = "| " + " | ".join(df.columns) + " |\n|" + "---|" * len(df.columns) + "\n"
-    return head + "".join("| " + " | ".join(str(v) for v in r) + " |\n" for r in df.iter_rows())
 
 
 LABELS = {
@@ -103,11 +99,11 @@ minutes reach the MV cut-point ({rules.mv_cutpoint} counts/min).
 
 ## Sample
 
-{md(flow)}
+{md_table(flow)}
 ## Pooled shares by walking threshold (steps/min)
 
-{md(pooled.sort(["Measure", "Visit"]))}
+{md_table(pooled.sort(["Measure", "Visit"]))}
 ## Cadence bands
 
-{md(bands_md)}"""
+{md_table(bands_md)}"""
 (results / "WALKING_SHARE.md").write_text(text)

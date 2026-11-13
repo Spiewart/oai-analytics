@@ -42,7 +42,7 @@ persons <- scale_activity(persons)
 knees <- scale_activity(knees)
 
 rows <- list()
-metrics <- list()
+metrics <- oaimodels::metrics_recorder()
 na_est <- c(estimate = NA_real_, lo = NA_real_, hi = NA_real_)
 record <- function(table, activity, crepitus, term, model, n, est) {
   rows[[length(rows) + 1]] <<- data.frame(table = table, activity = activity, crepitus = crepitus,
@@ -50,10 +50,8 @@ record <- function(table, activity, crepitus, term, model, n, est) {
                                           estimate = est[["estimate"]], lo = est[["lo"]],
                                           hi = est[["hi"]])
   key <- sprintf("%s.%s.%s.%s.%s", table, activity, crepitus, term, model)
-  metrics[[key]] <<- est[["estimate"]]
-  metrics[[paste0(key, ".lo")]] <<- est[["lo"]]
-  metrics[[paste0(key, ".hi")]] <<- est[["hi"]]
-  metrics[[paste0(key, ".n")]] <<- n
+  metrics$put_est(key, est, "estimate")
+  metrics$put(paste0(key, ".n"), n)
 }
 complete <- function(d, vars) d[stats::complete.cases(d[, unique(vars), drop = FALSE]), , drop = FALSE]
 sparse <- function(d, factor_var) {
@@ -164,6 +162,5 @@ for (table in unique(all_rows$table)) {
   utils::write.csv(all_rows[all_rows$table == table, ], file.path(out_dir, sprintf("table_%s.csv", table)),
                    row.names = FALSE)
 }
-utils::write.csv(data.frame(metric = names(metrics), value = unlist(metrics)),
-                 file.path(out_dir, "metrics_models.csv"), row.names = FALSE)
+metrics$write(out_dir)
 cat("Tables A1-A3 and B1-B3 written to", out_dir, "\n")

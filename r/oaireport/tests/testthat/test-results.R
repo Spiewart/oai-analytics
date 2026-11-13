@@ -58,3 +58,13 @@ test_that("parse_or reads graded odds-ratio text", {
   expect_equal(out$sig, c(TRUE, FALSE, NA, NA))
   expect_equal(nrow(parse_or(character())), 0)
 })
+
+test_that("load_results(analysis =) reads a sibling analysis's runs", {
+  base <- withr::local_tempdir()
+  write_run(file.path(base, "other"), "default")
+  dir.create(file.path(base, "this"))
+  withr::local_envvar(OAI_RESULTS_ROOT = file.path(base, "this"), OAI_REPORT_RUNS = "x,y")
+  runs <- load_results(analysis = "other", labels = "default")
+  expect_named(runs, "default")
+  expect_equal(runs$default$metrics[["c"]], 3)
+})

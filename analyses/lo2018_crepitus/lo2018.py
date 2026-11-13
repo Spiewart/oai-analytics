@@ -24,6 +24,7 @@ from oai.derive.incident_soa import (  # noqa: F401  (re-exported for build_fram
     periods,
     soa_status,
 )
+from oai.results import metrics_frame
 
 LEVELS = ("never", "rarely", "sometimes", "often", "always")
 
@@ -59,7 +60,4 @@ def cohort_metrics(
         m[f"r.womac.{sub}"] = _spearman(
             persons.filter(pl.col("subgroup") == sub), "crep0", "womac0"
         )
-    return pl.DataFrame(
-        {"metric": list(m), "value": [None if v is None else float(v) for v in m.values()]},
-        schema={"metric": pl.String, "value": pl.Float64},
-    )
+    return metrics_frame(m)

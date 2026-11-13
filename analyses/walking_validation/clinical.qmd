@@ -89,7 +89,6 @@ class_table <- function(sample) {
   names(tab) <- ci_header(names(tab))
   tab
 }
-lower_first <- function(x) paste0(tolower(substr(x, 1, 1)), substring(x, 2))
 and_list <- function(x) if (length(x) <= 1) x else paste(paste(x[-length(x)], collapse = ", "), "and", x[length(x)])
 flow <- stats::setNames(run$flow$persons, run$flow$step)
 n_val <- run$metrics[["sample.validation.persons"]]

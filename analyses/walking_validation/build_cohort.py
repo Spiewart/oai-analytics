@@ -2,7 +2,6 @@
 
 import json
 import os
-from functools import partial
 from pathlib import Path
 
 import polars as pl
@@ -27,21 +26,17 @@ from oai.assumptions import current
 from oai.config import get_settings
 from oai.derive.construct import MEASURES as CONSTRUCT_MEASURES
 from oai.derive.construct import kl_group, visit_measures, womac_pain
-from oai.derive.knee import find_col, frequent_knee_pain, xray_readings
+from oai.derive.knee import frequent_knee_pain, select_cols, xray_readings
 from oai.derive.pase import pase_visit, pase_walking_answers, score_pase
 from oai.derive.walking import walker_status, walking_answers, walking_sessions
 from oai.loader import read_table
+from oai.results import metrics_frame
 from oai.visits import nominal_month
 
 A = current()
 settings = get_settings()
 frames, results = Path(os.environ["OAI_FRAME_DIR"]), Path(os.environ["OAI_RESULTS_DIR"])
 results_base = Path(os.environ["OAI_RESULTS_BASE"])
-
-
-def select(df: pl.DataFrame, **columns: str) -> pl.DataFrame:
-    col = partial(find_col, df)
-    return df.select([pl.col(col(src)).alias(dst) for dst, src in columns.items()])
 
 
 answered = (
@@ -64,8 +59,8 @@ for visit in ("06", "08", "10"):
         scored = scored.join(pase_walking_answers(table, visit), on="ID", how="full", coalesce=True)
     pase = scored if pase is None else pase.join(scored, on="ID", how="full", coalesce=True)
 
-people = select(read_table("enrollees"), ID="ID", sex="P02SEX").join(
-    select(read_table("allclinical", "00"), ID="ID", age="V00AGE", bmi="P01BMI"),
+people = select_cols(read_table("enrollees"), ID="ID", sex="P02SEX").join(
+    select_cols(read_table("allclinical", "00"), ID="ID", age="V00AGE", bmi="P01BMI"),
     on="ID",
     how="left",
 )
@@ -152,7 +147,7 @@ person = (
         on="ID",
         how="left",
     )
-    .join(select(read_table("enrollees"), ID="ID", cohort="V00COHORT"), on="ID", how="left")
+    .join(select_cols(read_table("enrollees"), ID="ID", cohort="V00COHORT"), on="ID", how="left")
 )
 long_parts = []
 for visit in A["pase.all_visits"]:
@@ -255,9 +250,7 @@ metrics = [
         lo_unanswered_with_device(answered, combined, lo_people),
     ),
 ]
-metrics_table = pl.DataFrame(
-    [(m, float(v)) for m, v in metrics], schema=["metric", "value"], orient="row"
-)
+metrics_table = metrics_frame(metrics)
 
 # Everything above can stop the step; nothing is written until it has all succeeded.
 persons.write_parquet(frames / "frame.parquet")
