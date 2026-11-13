@@ -103,6 +103,32 @@ status = "assumed"
 source = "20-step bands: Tudor-Locke & Rowe 2012's 60-79 to 120+ bands, with 1-59 split at 20 and 40"
 rationale = "Lower edges of the cadence bands in cadence_bands.csv; 0 steps is its own band."
 
+[relation.count_bin_edges]
+value = [0, 100, 500, 1000, 1500, 2020, 5999]
+status = "confirmed"
+source = "User's choice (2026-11-13): sedentary < 100, light 100-2019 in four equal-width bins, moderate 2020-5998, vigorous >= 5999 (Troiano 2008 vigorous cutpoint)"
+rationale = "Lower edges of the activity-count bins for the steps-vs-counts plots (step relation). Must include device.light_floor and device.mv_cutpoint."
+
+[relation.vigorous_cutpoint]
+value = 5999
+status = "confirmed"
+source = "Troiano 2008 vigorous cutpoint (>= 5999 counts/min), the user's choice (2026-11-13); relation.count_bin_edges must end at it"
+
+[relation.hex_x_quantile]
+value = 0.999
+status = "assumed"
+source = "The hexbin x-axis stops at this quantile of wear-minute counts per wave; the share of minutes beyond is reported"
+
+[relation.hex_gridsize]
+value = 50
+status = "assumed"
+source = "Hexagons across the hexbin x-axis; rows = round(50 / sqrt(3))"
+
+[relation.hex_min_people]
+value = 10
+status = "assumed"
+source = "As walking_validation components.min_cell_count: hexagons with minutes from fewer participants are not written (their share is reported as share_suppressed), so the hexbin stays aggregate"
+
 [reference.step_cadences]
 value = [40, 60, 100]
 status = "assumed"

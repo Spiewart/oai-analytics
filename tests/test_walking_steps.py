@@ -9,6 +9,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "analyses" / "walking_steps"))
 
+import relation as r  # noqa: E402
 import share as s  # noqa: E402
 
 from oai.derive.accel import DeviceRules  # noqa: E402
@@ -214,3 +215,146 @@ def test_either_week_credits_a_walker_from_any_wave():
     per_wave = pl.DataFrame({"ID": [1, 1, 2, 2, 3], "w": [True, False, False, False, False]})
     out = dv.either_week(per_wave, ["w"])
     assert out["w"].to_list() == [True, False, False]
+
+
+# --- relation (Q1): steps against activity counts within a minute
+
+EDGES = [0, 100, 500, 1000, 1500, 2020, 5999]
+BANDS = [1, 20, 40, 60, 80, 100, 120]
+
+
+def test_count_bin_labels_and_intensity():
+    assert r.count_bin_labels(EDGES) == [
+        "0-99",
+        "100-499",
+        "500-999",
+        "1000-1499",
+        "1500-2019",
+        "2020-5998",
+        "5999+",
+    ]
+    m = r.intensity_of(EDGES, 100, 2020, 5999)
+    assert m["0-99"] == "sedentary" and m["1500-2019"] == "light"
+    assert m["2020-5998"] == "moderate" and m["5999+"] == "vigorous"
+
+
+@pytest.mark.parametrize("edges", [[0, 100, 500, 2000, 5999], [10, 100, 2020], [0, 500, 100, 2020]])
+def test_count_bins_reject_edges_off_the_device_cutpoints(edges):
+    with pytest.raises(ValueError):
+        r.check_count_edges(edges, 100, 2020, 5999)
+
+
+def test_bin_quantiles_by_count_bin():
+    w = frame(
+        cnt=[0.0, 50.0, 2019.0, 2020.0, 2020.0, 6000.0],
+        steps=[0.0, 0.0, 30.0, 90.0, 110.0, 150.0],
+    )
+    q = r.bin_quantiles(w, EDGES)
+    assert q["count_bin"].to_list() == r.count_bin_labels(EDGES)
+    row = q.filter(pl.col("count_bin") == "2020-5998")
+    assert row["steps_median"].item() == 100.0
+    assert row["share_of_minutes"].item() == pytest.approx(2 / 6)
+    assert q.filter(pl.col("count_bin") == "1500-2019")["steps_median"].item() == 30.0
+
+
+def test_band_shares_sum_to_one_within_bin():
+    w = frame(cnt=[2500.0] * 4, steps=[0.0, 19.0, 20.0, 125.0])
+    b = r.band_shares(w, EDGES, BANDS).filter(pl.col("count_bin") == "2020-5998")
+    got = dict(zip(b["band"], b["share"], strict=True))
+    assert got["0"] == 0.25 and got["1-19"] == 0.25 and got["20-39"] == 0.25
+    assert got["120+"] == 0.25
+    assert sum(got.values()) == pytest.approx(1.0)
+
+
+def test_empty_count_bin_is_kept():
+    w = frame(cnt=[0.0, 300.0], steps=[0.0, 10.0])
+    q = r.bin_quantiles(w, EDGES)
+    vig = q.filter(pl.col("count_bin") == "5999+")
+    assert vig.height == 1 and vig["steps_median"].item() is None
+    b = r.band_shares(w, EDGES, BANDS).filter(pl.col("count_bin") == "5999+")
+    assert b.height == 8 and b["share"].sum() == 0
+
+
+def test_hex_cells_shares_sum_to_one_with_beyond():
+    rng = np.random.default_rng(1)
+    cnt = rng.integers(0, 4000, 5000).astype(float)
+    cnt[:3] = 20000.0  # 0.06% of minutes: above the 99.9th percentile
+    steps = rng.integers(0, 201, 5000).astype(float)
+    cells, meta = r.hex_cells(cnt, steps, np.arange(5000), 0.999, 50, min_people=1)
+    assert meta["share_beyond"] > 0
+    assert cells["share"].sum() + meta["share_beyond"] == pytest.approx(1.0)
+    assert cells["x"].max() <= meta["xcap"] + meta["hex_dx"]
+
+
+def test_hex_cells_puts_identical_points_in_one_cell():
+    cells, _ = r.hex_cells(
+        np.array([0.0] * 9 + [1000.0]),
+        np.array([0.0] * 9 + [100.0]),
+        np.arange(10),
+        1.0,
+        50,
+        min_people=1,
+    )
+    assert cells.height == 2
+    assert sorted(cells["share"].to_list()) == pytest.approx([0.1, 0.9])
+
+
+def test_hex_cells_rejects_steps_above_200():
+    with pytest.raises(ValueError, match="200"):
+        r.hex_cells(np.array([100.0]), np.array([201.0]), np.array([1]), 1.0, 50, min_people=1)
+
+
+def test_relation_outputs_pass_egress(tmp_path):
+    from oai.export.egress import check_egress
+
+    w = frame(cnt=[0.0, 300.0, 2500.0, 7000.0] * 50, steps=[0.0, 10.0, 105.0, 130.0] * 50)
+    r.bin_quantiles(w, EDGES).write_csv(tmp_path / "relation_bins.csv")
+    r.band_shares(w, EDGES, BANDS).write_csv(tmp_path / "relation_bands.csv")
+    cells, meta = r.hex_cells(
+        w["cnt"].to_numpy(), w["steps"].to_numpy(), w["ID"].to_numpy(), 0.999, 50, min_people=1
+    )
+    cells.write_csv(tmp_path / "relation_hex.csv")
+    pl.DataFrame([meta]).write_csv(tmp_path / "relation_hex_meta.csv")
+    report = check_egress(tmp_path, min_cell=5, small_cell="fail")
+    assert report.ok, report.problems
+    assert not report.warnings, report.warnings
+
+
+def test_hex_cells_suppresses_cells_with_few_people():
+    # 9 minutes from 9 people in one cell; 6 minutes from 1 person in another
+    cnt = np.array([0.0] * 9 + [1000.0] * 6)
+    steps = np.array([0.0] * 9 + [100.0] * 6)
+    ids = np.array(list(range(9)) + [99] * 6)
+    cells, meta = r.hex_cells(cnt, steps, ids, 1.0, 50, min_people=5)
+    assert cells.height == 1 and cells["share"].item() == pytest.approx(9 / 15)
+    assert meta["share_suppressed"] == pytest.approx(6 / 15)
+    total = cells["share"].sum() + meta["share_beyond"] + meta["share_suppressed"]
+    assert total == pytest.approx(1.0)
+
+
+def test_hex_cells_requires_min_people():
+    with pytest.raises(TypeError):
+        r.hex_cells(np.array([0.0]), np.array([0.0]), np.array([1]), 1.0, 50)
+
+
+@pytest.mark.parametrize("edges", [[0, 100, 2020], [0, 100, 500, 2020, 4000]])
+def test_count_bins_reject_a_missing_vigorous_cut(edges):
+    with pytest.raises(ValueError, match="vigorous"):
+        r.check_count_edges(edges, 100, 2020, 5999)
+
+
+def test_ledger_count_edges_pass():
+    r.check_count_edges(EDGES, 100, 2020, 5999)
+
+
+@pytest.mark.parametrize("bad", [np.nan, -1.0])
+def test_hex_cells_rejects_nan_or_negative_steps(bad):
+    with pytest.raises(ValueError):
+        r.hex_cells(
+            np.array([100.0, 100.0]),
+            np.array([bad, 300.0 if bad != bad else 10.0]),
+            np.array([1, 2]),
+            1.0,
+            50,
+            min_people=1,
+        )
