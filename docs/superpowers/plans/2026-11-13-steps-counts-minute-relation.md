@@ -2,7 +2,7 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** add a `relation` step to `analyses/walking_steps` that writes aggregate tables of per-minute steps against activity counts, and a report section that draws Alison's three Q1 plots from them.
+**Goal:** add a `relation` step to `analyses/walking_steps` that writes aggregate tables of per-minute steps against activity counts, and a report section that draws the Northwestern accelerometry group's three Q1 plots from them.
 
 **Architecture:**
 - `relation.py` holds pure polars/numpy functions over the analysis minutes from `share.analysis_minutes()`.
