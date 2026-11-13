@@ -17,10 +17,14 @@ NEW = {
     "outcomes.roa_unread": "unknown",
     "horizon.selection": "known_or_case",
 }
+# Shared with lo2018_crepitus but deliberately different: each model is fitted on its own
+# complete cases (lo2018 fits a block's unadjusted and adjusted ORs on one sample).
+DIVERGES = {"model.sample": "per_model"}
 
 
 def shared_keys():
-    return sorted(set(load_assumptions(ANALYSIS).items) & set(load_assumptions(LO2018).items))
+    both = set(load_assumptions(ANALYSIS).items) & set(load_assumptions(LO2018).items)
+    return sorted(both - set(DIVERGES))
 
 
 def test_manifest_and_assumptions_load():
@@ -37,6 +41,12 @@ def test_manifest_and_assumptions_load():
         "lo2018_48m",
     }
     assert len(shared_keys()) >= 15
+
+
+def test_divergences_from_lo2018_are_the_listed_ones():
+    ours, theirs = load_assumptions(ANALYSIS).items, load_assumptions(LO2018).items
+    for key, value in DIVERGES.items():
+        assert ours[key].value == value != theirs[key].value
 
 
 @pytest.mark.parametrize("key", shared_keys())

@@ -4,6 +4,9 @@
 #   L3  baseline measure, SOA by the horizon among people whose outcome there is known (logistic)
 #   L4  L2 by baseline subgroup with the measure x subgroup Wald test, and both measures together
 # Periods after 48 months are two years long; model.period_term = "factor" adds factor(period).
+# L2 and L4 are logistic (odds ratios per period, model.link); steps_oa's discrete-time models use
+# a complementary log-log link with a log(span) offset (hazard ratios). Both fit with
+# oaimodels::fit_cluster_gee.
 
 A <- oaimodels::assumptions()
 frame_dir <- Sys.getenv("OAI_FRAME_DIR")
@@ -48,11 +51,10 @@ fit_table <- function(table, measure, kind, d, group, fit, with_period) {
   extra <- if (with_period) period_term else character()
   models <- list(or_unadj = c(e$rhs, extra), or_adj = c(e$rhs, extra, covariates))
   if (measure == "exam") models$or_adj_s2 <- c(e$rhs, extra, covariates, sprintf("factor(%s)", e$s2))
+  samples <- oaimodels::model_samples(d, models, A[["model.sample"]])
   rows <- list()
   for (model in names(models)) {
-    needs <- unique(c("event", e$col, covariates[covariates %in% models[[model]]],
-                      if (model == "or_adj_s2") e$s2, if (with_period && length(period_term)) "period"))
-    dd <- d[stats::complete.cases(d[, needs, drop = FALSE]), , drop = FALSE]
+    dd <- samples[[model]]
     for (term in names(e$terms)) {
       est <- fit(dd, paste(models[[model]], collapse = " + "), e$terms[[term]])
       key <- sprintf("%s.%s.%s.%s.%s", table, measure, group, term, model)
@@ -82,11 +84,9 @@ oaimodels::write_rows(lapply(measures, function(m) {
 wald_interaction <- function(d, e) {
   base <- paste(c(e$rhs, "subgroup", period_term, covariates), collapse = " + ")
   d <- d[stats::complete.cases(d[, c("event", e$col, "subgroup", covariates)]), ]
-  d <- d[order(d$ID), ]
-  fit0 <- geepack::geeglm(stats::as.formula(paste("event ~", base)), id = ID, data = d,
-                          family = stats::binomial, corstr = A[["model.corstr"]])
-  fit1 <- geepack::geeglm(stats::as.formula(paste("event ~", base, "+", e$rhs, ": subgroup")),
-                          id = ID, data = d, family = stats::binomial, corstr = A[["model.corstr"]])
+  fit0 <- oaimodels::fit_cluster_gee(d, base, "event", stats::binomial, A[["model.corstr"]])
+  fit1 <- oaimodels::fit_cluster_gee(d, c(base, paste(e$rhs, ": subgroup")), "event",
+                                     stats::binomial, A[["model.corstr"]])
   list(p = stats::anova(fit1, fit0)[["P(>|Chi|)"]][1], n = nrow(d), events = sum(d$event))
 }
 l4 <- list()
@@ -110,8 +110,7 @@ joint <- local({
   d <- d[order(d$ID, d$period), ]
   rhs <- paste(c("exam0", "factor(crep0)", "exam0:I(crep0 >= 1)", period_term, covariates),
                collapse = " + ")
-  fit <- geepack::geeglm(stats::as.formula(paste("event ~", rhs)), id = ID, data = d,
-                         family = stats::binomial, corstr = A[["model.corstr"]])
+  fit <- oaimodels::fit_cluster_gee(d, rhs, "event", stats::binomial, A[["model.corstr"]])
   b <- stats::coef(fit)
   V <- fit$geese$vbeta
   dimnames(V) <- list(names(b), names(b))

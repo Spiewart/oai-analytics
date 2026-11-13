@@ -77,7 +77,12 @@ from oai.replication import compare_step             # a whole `compare` step: c
 metrics <- oaimodels::metrics_recorder()             # metrics$put(key, v); metrics$put_est(key, est)
 oaimodels::write_rows(rows, "table_e1", out_dir)     # list of data.frames -> table_e1.csv
 metrics$write(out_dir)                               # metrics_models.csv
+samples <- oaimodels::model_samples(d, models, A[["model.sample"]])  # per_model | common
+oaimodels::sparse_levels(oaimodels::level_events(d, "band", "event"), A[["model.min_events"]])
+oaimodels::fit_cluster_gee(d, rhs, "event", stats::binomial(link = "cloglog"), "independence")
 ```
+
+Model-fitting choices that shared code makes are ledger items, so they show in each analysis's `ASSUMPTIONS.md`: `model.sample` (which rows each model is fitted on), `model.min_events` (sparse levels are NA, not fitted), and the discrete-time link (`incidence.link` in steps_oa, `model.link` in crepitus_soa_longterm).
 
 Coded cells (`1: Right`) load as their code, with labels in the codebook. Missing codes (`.: Missing Form/…`) currently all become null; `oai missing TABLE [VISIT]` shows what was nulled, and [docs/missing-values.md](docs/missing-values.md) explains the codes and how to change the policy. `V##` is **not** elapsed months (V06 = 48 mo), so always use `oai.visits`.
 

@@ -4,7 +4,7 @@
 #   C1  Framing 1, within early OA: exam crepitus vs tenderness only; self-reported crepitus
 #   C2  Framing 2, KL 0-1 knees meeting the KOOS criterion: exam crepitus vs none; self-report
 # Model 1 adds age, sex and BMI; model 2 adds the other crepitus measure. A term whose level
-# (or reference) has fewer than MIN_EVENTS events is written as NA, not fitted.
+# (or reference) has fewer than model.min_events events is written as NA, not fitted.
 
 A <- oaimodels::assumptions()
 frame_dir <- Sys.getenv("OAI_FRAME_DIR")
@@ -12,7 +12,7 @@ out_dir <- Sys.getenv("OAI_RESULTS_DIR")
 covariates <- A[["model.covariates"]]
 outcomes <- c("roa48", "roa96", "soa48", "soa96")
 s2_levels <- c("never", "rarely", "sometimes", "often", "always")
-MIN_EVENTS <- 5
+min_events <- A[["model.min_events"]]
 
 knees <- oaimodels::read_frame(file.path(frame_dir, "knees.parquet"))
 knees <- knees[order(knees$ID), , drop = FALSE]
@@ -29,17 +29,17 @@ put <- metrics$put
 
 # Events per level of the term's variable, so a sparse level is not fitted
 too_sparse <- function(d, variable, outcome) {
-  counts <- tapply(d[[outcome]], d[[variable]], sum)
-  any(is.na(counts)) || any(counts < MIN_EVENTS) || length(counts) < 2
+  counts <- oaimodels::level_events(d, variable, outcome)
+  any(oaimodels::sparse_levels(counts, min_events)) || length(counts) < 2
 }
 
 fit_rows <- function(table, d, variable, terms, other, outcome) {
   models <- list(or_unadj = variable, or_adj = c(variable, covariates))
   if (!is.null(other)) models$or_adj_other <- c(variable, covariates, other)
+  samples <- oaimodels::model_samples(d, models, A[["model.sample"]], outcome = outcome)
   rows <- list()
   for (model in names(models)) {
-    needs <- unique(c(outcome, "ID", models[[model]]))
-    dd <- d[stats::complete.cases(d[, needs, drop = FALSE]), , drop = FALSE]
+    dd <- samples[[model]]
     dd[[outcome]] <- as.integer(dd[[outcome]])
     sparse <- too_sparse(dd, variable, outcome)
     for (term in names(terms)) {
