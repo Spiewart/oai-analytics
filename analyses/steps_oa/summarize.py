@@ -1015,6 +1015,74 @@ def posthoc_section(run: Run) -> list[str]:
     return out
 
 
+def posthoc_rows(run: Run) -> dict[tuple[str, str, str], dict[str, str]]:
+    """Model 1 rows of posthoc_p1.csv keyed by (check, subset, term); {} if the run has none."""
+    path = run.folder / "posthoc_p1.csv"
+    if not path.is_file():
+        return {}
+    out = {}
+    for r in read_csv(path):
+        if r["model"] == "m1":
+            r["_kind"] = "ratio"
+            out[(r["check"], r["subset"], r["term"])] = r
+    return out
+
+
+def posthoc_variant_section(runs: dict[str, Run]) -> list[str]:
+    """The post hoc checks in each variant whose P1 sample, outcome or scale differs."""
+    rows = {label: posthoc_rows(run) for label, run in runs.items()}
+    if not rows.get("default"):
+        return []
+
+    def key(r: dict[tuple[str, str, str], dict[str, str]]) -> list[tuple[str, ...]]:
+        return sorted((*k, v["n"], v["events"], v["estimate"]) for k, v in r.items())
+
+    same = [
+        lb for lb in runs if lb != "default" and rows[lb] and key(rows[lb]) == key(rows["default"])
+    ]
+    shown = [lb for lb in runs if lb == "default" or (rows[lb] and lb not in same)]
+    absent = [lb for lb in runs if not rows[lb]]
+    out = [
+        "**The post hoc checks in each variant** (Model 1; HR per 1,000 steps/day, `log_steps` "
+        "per unit of log(steps + 1); interactions are ratios of HRs):",
+        "",
+        "| Run | P1 knees / events | P1 | Reweighted for being read | Status known, OR | "
+        "Steps × women (p) | Adjusted for injury | Steps × injury (p) |",
+        "|---|---|---|---|---|---|---|---|",
+    ]
+
+    def p(r: dict[str, str] | None) -> str:
+        v = None if r is None else num(r["p"])
+        return "—" if v is None else ("< 0.001" if v < 0.001 else f"{v:.2f}")
+
+    for label in shown:
+        r = rows[label]
+        lt = "per_log" if ("p1", "all", "per_log") in r else "per_1000"
+        p1 = r.get(("p1", "all", lt))
+        sx = r.get(("sex", "all", "steps_x_women"))
+        sxi = r.get(("injury", "all", "steps_x_injury"))
+        out.append(
+            f"| `{label}` | {nev(p1)} | {ci(p1)} | {ci(r.get(('reweight', 'weighted', lt)))} "
+            f"| {ci(r.get(('read', 'status_known', lt)))} | {ci(sx)} ({p(sx)}) "
+            f"| {ci(r.get(('injury', 'adjusted', lt)))} | {ci(sxi)} ({p(sxi)}) |"
+        )
+    out.append("")
+    if same:
+        note = (
+            " The checks always use P1's discrete-time model, so `by_horizon` is among them."
+            if "by_horizon" in same
+            else ""
+        )
+        out.append(
+            "Model 1 results identical to the default run (the variant leaves P1's knees, "
+            "outcome and steps scale alone): " + ", ".join(f"`{lb}`" for lb in same) + "." + note
+        )
+    if absent:
+        out.append("No post hoc outputs: " + ", ".join(f"`{lb}`" for lb in absent) + ".")
+    out.append("")
+    return out
+
+
 def build(results: Path, ledger: dict) -> str:
     base = results / "steps_oa"
     labels = ["default", *ledger.get("variants", {}).keys()]
@@ -1055,6 +1123,7 @@ def build(results: Path, ledger: dict) -> str:
     lines += variant_section(runs, ledger)
     lines += reading_section(runs)
     lines += posthoc_section(d)
+    lines += posthoc_variant_section(runs)
     lines.append(END)
     return "\n".join(lines) + "\n"
 
