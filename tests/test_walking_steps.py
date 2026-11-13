@@ -273,3 +273,25 @@ def test_empty_count_bin_is_kept():
     assert vig.height == 1 and vig["steps_median"].item() is None
     b = r.band_shares(w, EDGES, BANDS).filter(pl.col("count_bin") == "5999+")
     assert b.height == 8 and b["share"].sum() == 0
+
+
+def test_hex_cells_shares_sum_to_one_with_beyond():
+    rng = np.random.default_rng(1)
+    cnt = rng.integers(0, 4000, 5000).astype(float)
+    cnt[:3] = 20000.0  # 0.06% of minutes: above the 99.9th percentile
+    steps = rng.integers(0, 201, 5000).astype(float)
+    cells, meta = r.hex_cells(cnt, steps, 0.999, 50)
+    assert meta["share_beyond"] > 0
+    assert cells["share"].sum() + meta["share_beyond"] == pytest.approx(1.0)
+    assert cells["x"].max() <= meta["xcap"] + meta["hex_dx"]
+
+
+def test_hex_cells_puts_identical_points_in_one_cell():
+    cells, _ = r.hex_cells(np.array([0.0] * 9 + [1000.0]), np.array([0.0] * 9 + [100.0]), 1.0, 50)
+    assert cells.height == 2
+    assert sorted(cells["share"].to_list()) == pytest.approx([0.1, 0.9])
+
+
+def test_hex_cells_rejects_steps_above_200():
+    with pytest.raises(ValueError, match="200"):
+        r.hex_cells(np.array([100.0]), np.array([201.0]), 1.0, 50)

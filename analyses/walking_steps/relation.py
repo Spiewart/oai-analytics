@@ -7,6 +7,7 @@ shares (or minutes in thousands), never raw minute totals.
 
 from __future__ import annotations
 
+import numpy as np
 import polars as pl
 from share import band_labels
 
@@ -98,3 +99,39 @@ def band_shares(w: pl.DataFrame, count_edges: list[int], band_edges: list[int]) 
         )
         .select("count_bin", "band", "share")
     )
+
+
+def hex_cells(
+    cnt: np.ndarray, steps: np.ndarray, quantile: float, gridsize: int, ymax: float = 200.0
+) -> tuple[pl.DataFrame, dict[str, float]]:
+    """Hexagonal cells of counts (x) by steps (y), on matplotlib's hexbin lattice.
+
+    The x-axis stops at the `quantile` of `cnt`; minutes beyond it are left out of the cells and
+    reported as share_beyond. Each cell's share is its minutes over all minutes passed in, so the
+    shares plus share_beyond sum to 1. hex_dx and hex_dy size the hexagons for drawing.
+    """
+    if len(steps) and float(np.max(steps)) > ymax:
+        raise ValueError(f"steps above {ymax:.0f}/min fall outside the hexbin y-axis")
+    xcap = float(np.quantile(cnt, quantile))
+    keep = cnt <= xcap
+    ny = round(gridsize / np.sqrt(3))
+    sx = xcap / gridsize if xcap > 0 else 1.0
+    sy = ymax / ny
+    ix, iy = cnt[keep] / sx, steps[keep] / sy
+    i1, j1 = np.round(ix), np.round(iy)  # lattice 1: (i * sx, j * sy)
+    i2, j2 = np.floor(ix) + 0.5, np.floor(iy) + 0.5  # lattice 2: offset by half a cell
+    first = (ix - i1) ** 2 + 3 * (iy - j1) ** 2 <= (ix - i2) ** 2 + 3 * (iy - j2) ** 2
+    cells = (
+        pl.DataFrame({"x": np.where(first, i1, i2) * sx, "y": np.where(first, j1, j2) * sy})
+        .group_by("x", "y")
+        .len("minutes")
+        .select("x", "y", (pl.col("minutes") / len(cnt)).alias("share"))
+        .sort("x", "y")
+    )
+    meta = {
+        "xcap": xcap,
+        "share_beyond": float((~keep).sum() / len(cnt)),
+        "hex_dx": sx,
+        "hex_dy": sy,
+    }
+    return cells, meta
