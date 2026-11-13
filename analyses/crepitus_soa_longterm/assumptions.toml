@@ -102,6 +102,13 @@ source = "Each model drops rows missing a covariate (models.R, dual.R); Lo 2018 
 rationale = "Few rows (Table 1 never: 7,297 fitted of 7,300 observations)"
 choices = ["complete_cases"]
 
+[model.sample]
+value = "per_model"
+status = "assumed"
+source = "models.R: each model (unadjusted, adjusted, + S2) is fitted on the complete cases of its own terms"
+rationale = "per_model uses every row a model can; common fits all of a block's models on one sample, as lo2018_crepitus does"
+choices = ["per_model", "common"]
+
 [periods.horizon]
 value = "10"
 status = "assumed"
@@ -150,6 +157,14 @@ source = "Periods after 48 months are two years long, not one; a period factor l
 rationale = "none reproduces Lo 2018's one-period model"
 choices = ["factor", "none"]
 
+[model.link]
+value = "logit"
+status = "open"
+source = "models.R: L2 and L4 are logistic GEE on the person-period frame, extending Lo 2018's one-year logistic model; steps_oa's discrete-time models are grouped-time proportional hazards (incidence.link = cloglog, offset(log(span)))"
+rationale = "Periods after 48 months are two years long. A logistic model with factor(period) gives odds ratios per period of unequal length; a complementary log-log link with a log(period length) offset would give hazard ratios per year comparable with steps_oa's. Open: should L2 and L4 move to cloglog?"
+alternatives = ["cloglog"]
+choices = ["logit"]
+
 [variants.horizon_120]
 description = "Follow-up to 120 months (V12; depends on Project 43)"
 set = { "periods.horizon" = "12" }
@@ -177,3 +192,7 @@ set = { "horizon.selection" = "complete" }
 [variants.lo2018_48m]
 description = "The 48-month design of lo2018_crepitus and exam_crepitus_soa (regression anchor)"
 set = { "periods.horizon" = "06", "outcomes.roa_source" = "readings", "model.period_term" = "none" }
+
+[variants.lo2018_48m_common]
+description = "lo2018_48m with lo2018_crepitus's common model sample (its S2 regression anchor; lo2018_48m anchors exam_crepitus_soa)"
+set = { "periods.horizon" = "06", "outcomes.roa_source" = "readings", "model.period_term" = "none", "model.sample" = "common" }

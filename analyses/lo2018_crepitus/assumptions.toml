@@ -99,6 +99,13 @@ source = "Each model drops rows missing a covariate (models.R, dual.R); Lo 2018 
 rationale = "Few rows (Table 1 never: 7,297 fitted of 7,300 observations)"
 choices = ["complete_cases"]
 
+[model.sample]
+value = "common"
+status = "assumed"
+source = "models.R: each table block fits its unadjusted and adjusted ORs on the adjusted model's complete cases; Lo 2018 reports one n per level"
+rationale = "common keeps the unadjusted and adjusted ORs comparable; per_model fits each on its own complete cases (the other crepitus analyses' rule)"
+choices = ["common", "per_model"]
+
 [model.trend]
 value = "cochran_armitage"
 status = "assumed"

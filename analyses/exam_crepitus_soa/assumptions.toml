@@ -101,6 +101,13 @@ source = "Each model drops rows missing a covariate (models.R, dual.R); Lo 2018 
 rationale = "Few rows (Table 1 never: 7,297 fitted of 7,300 observations)"
 choices = ["complete_cases"]
 
+[model.sample]
+value = "per_model"
+status = "assumed"
+source = "models.R: each model (unadjusted, adjusted, + S2) is fitted on the complete cases of its own terms"
+rationale = "per_model uses every row a model can; common fits all of a block's models on one sample, as lo2018_crepitus does"
+choices = ["per_model", "common"]
+
 [exposure.require_s2]
 value = false
 status = "assumed"

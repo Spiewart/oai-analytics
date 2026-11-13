@@ -65,11 +65,15 @@ def test_longterm_runs_and_egress_is_clean():
 
 
 def test_48_month_settings_reproduce_existing_analyses():
-    ours = run("crepitus_soa_longterm", variant="lo2018_48m")
+    ours = run(
+        "crepitus_soa_longterm", variant="lo2018_48m"
+    )  # exam_crepitus_soa's per-model sample
+    common = run("crepitus_soa_longterm", variant="lo2018_48m_common")  # lo2018_crepitus's
     exam = run("exam_crepitus_soa", steps=["cohort", "anchor", "models"])
     lo = run("lo2018_crepitus", steps=["cohort", "models"])
-    m, e, s = (
+    m, mc, e, s = (
         metrics(ours, "metrics_models.csv"),
+        metrics(common, "metrics_models.csv"),
         metrics(exam, "metrics_models.csv"),
         metrics(lo, "metrics_models.csv"),
     )
@@ -78,13 +82,11 @@ def test_48_month_settings_reproduce_existing_analyses():
             model
         )
     for level in LEVELS:
-        assert m[f"l1.s2.all.{level}.or_adj"] == pytest.approx(s[f"t1.{level}.or_adj"], abs=1e-9), (
-            level
-        )
-        # lo2018's models drop rows missing any covariate even for the unadjusted model
-        assert m[f"l1.s2.all.{level}.or_unadj"] == pytest.approx(
-            s[f"t1.{level}.or_unadj"], abs=0.01
-        ), level
+        for model in ("or_unadj", "or_adj"):
+            key = f"l1.s2.all.{level}.{model}"
+            assert mc[key] == pytest.approx(s[f"t1.{level}.{model}"], abs=1e-9), key
+        # the adjusted model's sample is the same under either rule
+        assert m[f"l1.s2.all.{level}.or_adj"] == pytest.approx(s[f"t1.{level}.or_adj"], abs=1e-9)
     c, ce, cl = (
         metrics(ours, "metrics_cohort.csv"),
         metrics(exam, "metrics_cohort.csv"),

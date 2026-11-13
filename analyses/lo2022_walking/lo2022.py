@@ -17,6 +17,7 @@ from oai.derive.knee import (
     frequent_knee_pain,
     knee_alignment,
     knee_replacement,
+    select_cols,
     visit_days,
     with_fallback,
     xray_readings,
@@ -29,6 +30,7 @@ from oai.derive.walking import (
     walking_sessions,
 )
 from oai.loader import read_table
+from oai.results import metrics_frame
 from oai.visits import nominal_month
 
 FLOW_STEPS = (
@@ -56,13 +58,9 @@ class Built:
     fallback_visit: str | None
 
 
-def _select(df: pl.DataFrame, **columns: str) -> pl.DataFrame:
-    return df.select([pl.col(find_col(df, src)).alias(dst) for dst, src in columns.items()])
-
-
 def _people(A: Resolved) -> pl.DataFrame:
-    enrollees = _select(read_table("enrollees"), ID="ID", sex="P02SEX")
-    baseline = _select(read_table("allclinical", "00"), ID="ID", age="V00AGE", bmi="P01BMI")
+    enrollees = select_cols(read_table("enrollees"), ID="ID", sex="P02SEX")
+    baseline = select_cols(read_table("allclinical", "00"), ID="ID", age="V00AGE", bmi="P01BMI")
     ac10 = read_table("allclinical", "10")
     answered = pl.any_horizontal(
         [pl.col(find_col(ac10, item)).is_not_null() for item in A["cohort.survey_completed_items"]]
@@ -241,13 +239,6 @@ def build(A: Resolved) -> Built:
     return Built(knees=frame, flow=pl.DataFrame(flow), fallback_visit=fallback_visit)
 
 
-def _metrics(rows: list[tuple[str, float | int | None]]) -> pl.DataFrame:
-    return pl.DataFrame(
-        [{"metric": key, "value": None if value is None else float(value)} for key, value in rows],
-        schema={"metric": pl.String, "value": pl.Float64},
-    )
-
-
 def _by_group(df: pl.DataFrame) -> dict[str, pl.DataFrame]:
     return {
         "walkers": df.filter(pl.col("walker")),
@@ -277,7 +268,7 @@ def flow_metrics(built: Built) -> pl.DataFrame:
         ("flow.knees", built.knees.height),
         ("flow.fallback36.persons", fallback["ID"].n_unique()),
     ]
-    return _metrics(rows)
+    return metrics_frame(rows)
 
 
 def table1(built: Built) -> pl.DataFrame:
@@ -306,7 +297,7 @@ def table1(built: Built) -> pl.DataFrame:
             (f"t1.replaced48.{group}", k["replaced"].sum()),
         ]
         rows += [(f"t1.{cat}.{group}", (k["alignment"] == cat).sum()) for cat in ALIGNMENTS]
-    return _metrics(rows)
+    return metrics_frame(rows)
 
 
 def table3(built: Built) -> pl.DataFrame:
@@ -321,4 +312,4 @@ def table3(built: Built) -> pl.DataFrame:
                     (f"t3.{outcome}.{cat}.{group}.events", cell[outcome].sum()),
                     (f"t3.{outcome}.{cat}.{group}.n", cell.height),
                 ]
-    return _metrics(rows)
+    return metrics_frame(rows)

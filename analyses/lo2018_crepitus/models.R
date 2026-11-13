@@ -30,16 +30,18 @@ trend_p <- function(d, crep, fit, adjust) {
   2 * stats::pnorm(-abs(est[["log_or"]] / est[["se"]]))
 }
 
-metrics <- list()
-put <- function(key, value) metrics[[key]] <<- value
+metrics <- oaimodels::metrics_recorder()
+put <- metrics$put
 
-# One table block: cases and n per level, unadjusted and adjusted ORs for levels 1-4.
+# One table block: cases and n per level, unadjusted and adjusted ORs for levels 1-4. Each
+# model's sample follows model.sample ("common": both on the adjusted model's complete cases);
+# the counts and the trend test use the adjusted model's sample.
 fit_block <- function(d, prefix, crep, fit, adjust, group) {
-  d <- d[stats::complete.cases(d[, c("event", crep, adjust)]), , drop = FALSE]
-  d <- d[order(d$ID), , drop = FALSE]
-  rows <- list()
   rhs <- c(or_unadj = sprintf("factor(%s)", crep),
            or_adj = paste(c(sprintf("factor(%s)", crep), adjust), collapse = " + "))
+  samples <- oaimodels::model_samples(d, rhs, A[["model.sample"]])
+  d <- samples$or_adj
+  rows <- list()
   for (k in 0:4) {
     level <- levels[k + 1]
     part <- d[d[[crep]] == k, , drop = FALSE]
@@ -48,12 +50,10 @@ fit_block <- function(d, prefix, crep, fit, adjust, group) {
     row <- data.frame(group = group, level = level, cases = sum(part$event), n = nrow(part))
     for (model in names(rhs)) {
       est <- if (k == 0) c(or = 1, lo = NA, hi = NA) else {
-        fit(d, rhs[[model]], sprintf("factor(%s)%d", crep, k))
+        fit(samples[[model]], rhs[[model]], sprintf("factor(%s)%d", crep, k))
       }
       if (k > 0) {
-        put(sprintf("%s.%s.%s", prefix, level, model), est[["or"]])
-        put(sprintf("%s.%s.%s.lo", prefix, level, model), est[["lo"]])
-        put(sprintf("%s.%s.%s.hi", prefix, level, model), est[["hi"]])
+        metrics$put_est(sprintf("%s.%s.%s", prefix, level, model), est)
       }
       row[[model]] <- est[["or"]]
       row[[paste0(model, ".lo")]] <- est[["lo"]]
@@ -66,13 +66,9 @@ fit_block <- function(d, prefix, crep, fit, adjust, group) {
   out
 }
 
-write_table <- function(rows, n) {
-  utils::write.csv(do.call(rbind, rows), file.path(out_dir, sprintf("table%d.csv", n)),
-                   row.names = FALSE)
-}
-
 # Table 1: one-year, everyone
-write_table(list(fit_block(periods, "t1", "crep", gee, covariates, "all")), 1)
+oaimodels::write_rows(list(fit_block(periods, "t1", "crep", gee, covariates, "all")),
+                      "table1", out_dir)
 
 # Table 2: one-year, by baseline ROA / symptom subgroup
 t2 <- lapply(subgroups, function(s) {
@@ -82,16 +78,17 @@ t2 <- lapply(subgroups, function(s) {
   put(sprintf("t2.%s.cases", s), sum(d$event))
   fit_block(d, sprintf("t2.%s", s), "crep", gee, covariates, s)
 })
-write_table(t2, 2)
+oaimodels::write_rows(t2, "table2", out_dir)
 
 # Table 3: four-year, everyone
-write_table(list(fit_block(persons, "t3", "crep0", logit, covariates, "all")), 3)
+oaimodels::write_rows(list(fit_block(persons, "t3", "crep0", logit, covariates, "all")),
+                      "table3", out_dir)
 
 # Table 4: four-year, by subgroup
-write_table(lapply(subgroups, function(s) {
+oaimodels::write_rows(lapply(subgroups, function(s) {
   fit_block(persons[persons$subgroup == s, , drop = FALSE], sprintf("t4.%s", s), "crep0", logit,
             covariates, s)
-}), 4)
+}), "table4", out_dir)
 
 # Table 5: interaction of numeric crepitus with each covariate (four-year model), not graded
 interaction_p <- function(d, covariate) {
@@ -105,7 +102,7 @@ t5 <- do.call(rbind, lapply(c("all", subgroups), function(g) {
   data.frame(group = g, age = interaction_p(d, "age"), sex = interaction_p(d, "sex"),
              bmi = interaction_p(d, "bmi"))
 }))
-utils::write.csv(t5, file.path(out_dir, "table5.csv"), row.names = FALSE)
+oaimodels::write_rows(t5, "table5", out_dir)
 
 # Table 6: four-year, by sex (adjusted for age and BMI) and age (adjusted for sex and BMI)
 strata <- list(
@@ -114,13 +111,12 @@ strata <- list(
   age_lt65 = list(rows = persons$age < 65, adjust = setdiff(covariates, "age")),
   age_ge65 = list(rows = persons$age >= 65, adjust = setdiff(covariates, "age"))
 )
-write_table(lapply(names(strata), function(s) {
+oaimodels::write_rows(lapply(names(strata), function(s) {
   d <- persons[which(strata[[s]]$rows), , drop = FALSE]
   put(sprintf("t6.%s.persons", s), nrow(d))
   put(sprintf("t6.%s.cases", s), sum(d$event))
   fit_block(d, sprintf("t6.%s", s), "crep0", logit, strata[[s]]$adjust, s)
-}), 6)
+}), "table6", out_dir)
 
-utils::write.csv(data.frame(metric = names(metrics), value = unlist(metrics)),
-                 file.path(out_dir, "metrics_models.csv"), row.names = FALSE)
+metrics$write(out_dir)
 cat("Tables 1-6 written to", out_dir, "\n")

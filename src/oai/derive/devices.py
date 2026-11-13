@@ -11,6 +11,7 @@ device analyses share.
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import replace
 
 import numpy as np
@@ -102,6 +103,25 @@ def person_wave(
     enough = pl.col("step_days") >= min_step_days
     return persons.join(bouts, on="ID", how="left").with_columns(
         pl.when(enough).then(pl.col(c)).alias(c) for c in step_cols
+    )
+
+
+def mean_over_waves(
+    device: pl.DataFrame, measures: Sequence[str], waves: Sequence[str] | None = None
+) -> pl.DataFrame:
+    """One row per person: n_waves and each measure's mean over the person's valid waves.
+
+    `device` has one row per person and wave (`ID`, `wave`, `valid` and the measures), as
+    person_wave() writes. `waves` keeps only those waves (one wave gives that wave's values). A
+    measure missing at one wave is the mean of the others (nulls are skipped). Sorted by ID.
+    """
+    valid = device.filter("valid")
+    if waves is not None:
+        valid = valid.filter(pl.col("wave").is_in(list(waves)))
+    return (
+        valid.group_by("ID")
+        .agg(pl.len().alias("n_waves"), *[pl.col(m).mean() for m in measures])
+        .sort("ID")
     )
 
 

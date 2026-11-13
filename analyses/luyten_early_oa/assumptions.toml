@@ -167,6 +167,19 @@ status = "confirmed"
 source = "Lo 2018 Methods, Statistical analysis: GEE with an exchangeable correlation structure"
 choices = ["exchangeable", "independence"]
 
+[model.sample]
+value = "per_model"
+status = "assumed"
+source = "models.R: each model (unadjusted, model 1, model 2) is fitted on the complete cases of its own terms"
+rationale = "per_model uses every row a model can; common fits all of a block's models on one sample, as lo2018_crepitus does"
+choices = ["per_model", "common"]
+
+[model.min_events]
+value = 5
+status = "assumed"
+source = "models.R: a term is written as NA, not fitted, when any level of its variable (or the reference) has fewer events than this"
+rationale = "Early-OA cells are small; an odds ratio on fewer than 5 events in a level is unstable or does not converge"
+
 [variants.right_knee]
 description = "Right knees only"
 set = { "cohort.knees" = "right" }

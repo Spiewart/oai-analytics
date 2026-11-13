@@ -9,6 +9,7 @@ from oai.derive.devices import (  # noqa: F401 (re-exported)
     COUNT_MEASURES,
     DEVICE_KEYS,
     device_rules,
+    mean_over_waves,
     person_wave,
     step_bout_measures,
     step_bouts_daily,
@@ -18,15 +19,10 @@ from oai.derive.devices import (  # noqa: F401 (re-exported)
 def combine(device: pl.DataFrame, measures: list[str]) -> pl.DataFrame:
     """Per person over valid waves: the mean of each measure (nulls skipped) and n_waves.
 
-    `device` has one row per person and wave (`wave`, `valid`). As walking_validation's
-    combine_waves, but a step measure missing at one wave uses the other wave alone.
+    `device` has one row per person and wave (`wave`, `valid`); oai.derive.devices.mean_over_waves,
+    as walking_validation's combine_waves uses.
     """
-    return (
-        device.filter("valid")
-        .group_by("ID")
-        .agg(pl.len().alias("n_waves"), *[pl.col(m).mean() for m in measures])
-        .sort("ID")
-    )
+    return mean_over_waves(device, measures)
 
 
 def walker_definitions(min_bout_days: float, min_bout_minutes: float, cadences: list[int]):

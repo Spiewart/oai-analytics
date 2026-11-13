@@ -205,6 +205,12 @@ value = 20
 status = "assumed"
 source = "Knee replacement models are fitted only with at least this many events; fewer are reported descriptively"
 
+[model.min_events]
+value = 5
+status = "assumed"
+source = "models.R: a step band with fewer events than this is written as NA (every band, when the lowest band is the one short)"
+rationale = "A band odds or hazard ratio on fewer than 5 events is unstable; the ge10000 band has about 24"
+
 [tkr.censor]
 value = "last_visit"
 status = "assumed"

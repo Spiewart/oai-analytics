@@ -20,6 +20,7 @@ import polars as pl
 from oai.assumptions import Resolved
 from oai.derive import incident_soa as isoa
 from oai.derive.knee import xray_readings
+from oai.results import metrics_frame
 
 MEASURES = {"koos_s2": ("crep", "crep0"), "exam_crepitus": ("exam", "exam0")}
 RECODE_PROJECT = {42: 37}  # kXR_SQ_BU_Descrip.pdf: READPRJ 42 participants belong to Project 37
@@ -90,10 +91,7 @@ def coverage(A: Resolved, base: Base) -> pl.DataFrame:
     m["cov.roa48.disagree"] = both.filter(p15 != pl.col("roa")).height
     m["cov.roa48.p15_only"] = both.filter(p15 & ~pl.col("roa")).height
     m["cov.roa48.outcomes99_only"] = both.filter(~p15 & pl.col("roa")).height
-    return pl.DataFrame(
-        {"metric": list(m), "value": [float(v) for v in m.values()]},
-        schema={"metric": pl.String, "value": pl.Float64},
-    )
+    return metrics_frame(m)
 
 
 def cohort_metrics(base: Base, frames: dict[str, tuple]) -> pl.DataFrame:
@@ -108,7 +106,4 @@ def cohort_metrics(base: Base, frames: dict[str, tuple]) -> pl.DataFrame:
         for name, frame in (("obs", periods), ("hazard", hazard), ("horizon", horizon)):
             m[f"{short}.{name}.n"] = frame.height
             m[f"{short}.{name}.cases"] = int(frame["event"].sum())
-    return pl.DataFrame(
-        {"metric": list(m), "value": [float(v) for v in m.values()]},
-        schema={"metric": pl.String, "value": pl.Float64},
-    )
+    return metrics_frame(m)

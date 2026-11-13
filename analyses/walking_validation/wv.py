@@ -12,6 +12,7 @@ from typing import Any
 import polars as pl
 
 from oai.derive.accel import DeviceRules
+from oai.derive.devices import mean_over_waves
 from oai.errors import OAIError
 
 # Device measures carried into the frame, combined and per wave. mv_min (all moderate-to-vigorous
@@ -43,10 +44,7 @@ def combine_waves(device: pl.DataFrame, combination: str) -> pl.DataFrame:
         )
         per_wave = per_wave.join(one, on="ID", how="left")
     per_wave = per_wave.unique("ID")
-    used = valid if combination == "mean" else valid.filter(pl.col("wave") == combination)
-    combined = used.group_by("ID").agg(
-        pl.len().alias("n_waves"), *[pl.col(m).mean() for m in MEASURES]
-    )
+    combined = mean_over_waves(valid, MEASURES, None if combination == "mean" else [combination])
     return combined.join(per_wave, on="ID", how="left").sort("ID")
 
 

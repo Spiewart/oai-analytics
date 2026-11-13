@@ -20,6 +20,7 @@ from oai.assumptions import current
 from oai.derive.pase import pase_visit
 from oai.derive.walking import walker_status, walking_answers
 from oai.loader import read_table
+from oai.results import md_table
 from oai.visits import nominal_month
 
 A = current()
@@ -148,11 +149,6 @@ def fmt(x: float | None) -> str:
     return "" if x is None else f"{x:.2f}"
 
 
-def md(df: pl.DataFrame) -> str:
-    head = "| " + " | ".join(df.columns) + " |\n|" + "---|" * len(df.columns) + "\n"
-    return head + "".join("| " + " | ".join(str(v) for v in r) + " |\n" for r in df.iter_rows())
-
-
 def summary(rule: str) -> str:
     rows = acc.filter(pl.col("definition").str.ends_with(f":{rule}")).with_columns(
         (
@@ -162,7 +158,7 @@ def summary(rule: str) -> str:
         ).alias("se_sp")
     )
     wide = rows.pivot(on="family", index=["pro_label", "device", "n"], values="se_sp")
-    return md(wide.rename({"pro_label": "Self-report", "device": "Device"}))
+    return md_table(wide.rename({"pro_label": "Self-report", "device": "Device"}))
 
 
 text = f"""# Self-reported walking against device walking [{A.label}]

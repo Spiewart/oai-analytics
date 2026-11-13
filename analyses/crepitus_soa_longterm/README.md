@@ -21,7 +21,7 @@ oai run crepitus_soa_longterm --variant lo2018_48m   # reproduces the 48-month a
 
 Run 2026-10-21 on the full release. Right knee; Lo 2018 cohort (3,576 people at 96 months). Radiographic OA comes from OUTCOMES99, and is unknown after a knee's last reading without ROA (`V99E?XNOA`). The exam is carried forward from V06 for the periods after 48 months. All ORs are adjusted for age, sex and BMI.
 
-**Regression anchor.** With 48-month settings (`--variant lo2018_48m`) the L1 exam ORs equal `exam_crepitus_soa`'s E1, and the adjusted S2 ORs equal `lo2018_crepitus`'s Table 1, to within 1e-9 (`tests/test_longterm_realdata.py`).
+**Regression anchor.** With 48-month settings (`--variant lo2018_48m`) the L1 exam ORs equal `exam_crepitus_soa`'s E1, and the adjusted S2 ORs equal `lo2018_crepitus`'s Table 1, to within 1e-9 (`tests/test_longterm_realdata.py`). The two analyses choose model samples differently (`model.sample`): `exam_crepitus_soa` fits each model on its own complete cases, as this analysis does, while `lo2018_crepitus` fits the unadjusted OR on the adjusted model's sample. `--variant lo2018_48m_common` adds that rule, and then the unadjusted S2 ORs equal Table 1's too.
 
 **How to read the three models.**
 - **L2 (discrete-time hazard, baseline measure)** uses every observed period and does not count dropouts as non-cases. It is the censoring-robust estimate.

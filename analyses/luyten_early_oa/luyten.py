@@ -21,6 +21,7 @@ from oai.derive.incident_soa import ALL_OUTCOME_VISITS as OUTCOME_VISITS
 from oai.derive.incident_soa import horizon_of
 from oai.derive.knee import find_col, xray_readings
 from oai.loader import read_table
+from oai.results import metrics_frame
 
 KOOS = ("pain", "symptoms", "adl", "qol")
 WOMAC_FUNCTION_MAX = 68
@@ -182,13 +183,7 @@ def group_metrics(knees: pl.DataFrame) -> pl.DataFrame:
     }
     for group in ("crepitus_jlt", "crepitus_only", "jlt_only"):
         metrics[f"g.sign.{group}"] = early.filter(pl.col("sign_group") == group).height
-    return pl.DataFrame(
-        {
-            "metric": list(metrics),
-            "value": [None if v is None else float(v) for v in metrics.values()],
-        },
-        schema={"metric": pl.String, "value": pl.Float64},
-    )
+    return metrics_frame(metrics)
 
 
 # ---------------------------------------------------------------- outcomes
@@ -268,7 +263,7 @@ def _level(frame: str) -> pl.Expr:
 
 def cohort_metrics(knees: pl.DataFrame) -> pl.DataFrame:
     """group_metrics plus o.<frame>.<outcome>.<level>.cases and .n (knees with a known outcome)."""
-    rows = group_metrics(knees).to_dicts()
+    rows = list(group_metrics(knees).iter_rows())
     for frame, levels in FRAMES.items():
         d = knees.with_columns(_level(frame).alias("_level"))
         for level in levels:
@@ -276,6 +271,6 @@ def cohort_metrics(knees: pl.DataFrame) -> pl.DataFrame:
             for outcome in OUTCOMES:
                 known = at_level.filter(pl.col(outcome).is_not_null())
                 key = f"o.{frame}.{outcome}.{level}"
-                rows.append({"metric": f"{key}.cases", "value": float(known[outcome].sum())})
-                rows.append({"metric": f"{key}.n", "value": float(known.height)})
-    return pl.DataFrame(rows, schema={"metric": pl.String, "value": pl.Float64})
+                rows.append((f"{key}.cases", known[outcome].sum()))
+                rows.append((f"{key}.n", known.height))
+    return metrics_frame(rows)
