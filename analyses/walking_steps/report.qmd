@@ -108,6 +108,91 @@ ggplot(bars, aes(band, mean, fill = what)) +
 - **Most MV is walking.** At 40 or more steps a minute, `r pct(sh("mv_minutes_walking"))` of MV minutes are walking minutes.
 - **Most walking is not MV.** Only `r pct(band_mean("60-79", "share_minutes_mv"))` of minutes at 60–79 steps a minute are MV.
 
+# Steps and activity counts within a minute
+
+Every wear minute in the analysis counts once, pooled over participants. Activity-count bins: sedentary < `r count(assumption("device.light_floor"))`, light in four equal-width bins, moderate `r mv_cut`–`r count(vig_cut - 1)` and vigorous ≥ `r count(vig_cut)` counts a minute.
+
+```{r relation-setup}
+rel_wave <- function(df) {
+  df$wave <- factor(ifelse(wave(df$visit) == "06", "48 months", "72 months"), levels = c("48 months", "72 months"))
+  df
+}
+edges <- unlist(assumption("relation.count_bin_edges"))
+vig_cut <- edges[length(edges)]
+rbins <- rel_wave(run$relation_bins)
+rbands <- rel_wave(run$relation_bands)
+rhex <- rel_wave(run$relation_hex)
+rmeta <- rel_wave(run$relation_hex_meta)
+bin_levels <- unique(rbins$count_bin)
+bin_names <- setNames(
+  paste0(tools::toTitleCase(rbins$intensity[match(bin_levels, rbins$count_bin)]), "\n",
+         gsub("-", "–", bin_levels)),
+  bin_levels
+)
+rbins$count_bin <- factor(rbins$count_bin, levels = bin_levels)
+rbands$count_bin <- factor(rbands$count_bin, levels = bin_levels)
+rbands$band <- factor(rbands$band, levels = rev(unique(rbands$band)))
+meta_txt <- paste0(
+  "48 months: ", count(one(rmeta, wave = "48 months")$xcap), " counts a minute (",
+  pct(one(rmeta, wave = "48 months")$share_beyond), " beyond); 72 months: ",
+  count(one(rmeta, wave = "72 months")$xcap), " (", pct(one(rmeta, wave = "72 months")$share_beyond), ")"
+)
+```
+
+```{r fig-hex, fig.height = 5.2, fig.cap = paste0("Steps against activity counts in the same wear minute. Each hexagon's colour is the share of wear minutes it holds (log scale). Dashed lines: sedentary/light (", count(assumption("device.light_floor")), ") and light/MV (", mv_cut, ") cut-points. The x-axis stops at the 99.9th percentile of counts (", meta_txt, "), which is below the vigorous cut-point (", count(vig_cut), ").")}
+hex_poly <- function(h, m) {
+  h <- merge(h, m[, c("visit", "hex_dx", "hex_dy")], by = "visit")
+  ox <- c(0.5, 0.5, 0, -0.5, -0.5, 0)
+  oy <- c(-1, 1, 2, 1, -1, -2) / 6
+  idx <- rep(seq_len(nrow(h)), each = 6)
+  data.frame(id = idx, wave = h$wave[idx], share = h$share[idx],
+             px = h$x[idx] + rep(ox, nrow(h)) * h$hex_dx[idx],
+             py = h$y[idx] + rep(oy, nrow(h)) * h$hex_dy[idx])
+}
+poly <- hex_poly(rhex, rmeta)
+ggplot(poly, aes(px, py, group = id, fill = share)) +
+  geom_polygon(colour = NA) +
+  geom_vline(xintercept = c(assumption("device.light_floor"), assumption("device.mv_cutpoint")),
+             linetype = "dashed", colour = "grey30", linewidth = 0.35) +
+  facet_wrap(~wave, ncol = 1) +
+  scale_fill_viridis_c(trans = "log10", name = "Share of\nminutes",
+                       labels = function(x) paste0(signif(100 * x, 1), "%")) +
+  scale_x_continuous(labels = function(x) formatC(x, format = "d", big.mark = ","), expand = expansion(mult = 0.01)) +
+  scale_y_continuous(limits = c(-5, 205), breaks = seq(0, 200, 50), expand = expansion(0)) +
+  labs(x = "Activity counts a minute", y = "Steps a minute") +
+  theme_minimal(base_size = 11) +
+  theme(strip.text = element_text(face = "bold", hjust = 0), panel.grid.minor = element_blank())
+```
+
+```{r fig-bin-quartiles, fig.height = 4.4, fig.cap = "Steps a minute by activity-count bin: median (point) and middle 50% of minutes (line)."}
+ggplot(rbins, aes(count_bin, steps_median)) +
+  geom_linerange(aes(ymin = steps_q1, ymax = steps_q3), colour = colours[["navy"]], linewidth = 1.1) +
+  geom_point(colour = colours[["navy"]], size = 2.4) +
+  facet_wrap(~wave, ncol = 1) +
+  scale_x_discrete(labels = bin_names) +
+  scale_y_continuous(limits = c(0, NA), expand = expansion(mult = c(0, 0.05))) +
+  labs(x = "Activity counts a minute", y = "Steps a minute") +
+  theme_minimal(base_size = 11) +
+  theme(strip.text = element_text(face = "bold", hjust = 0), panel.grid.major.x = element_blank())
+```
+
+```{r fig-bin-bands, fig.height = 5.4, fig.cap = "Share of each activity-count bin's wear minutes by steps a minute. Labels on segments of 10% or more."}
+band_fill <- setNames(colorRampPalette(c("#eef3f9", colours[["navy"]]))(nlevels(rbands$band)), rev(levels(rbands$band)))
+ggplot(rbands, aes(count_bin, share, fill = band)) +
+  geom_col(width = 0.75) +
+  geom_text(aes(label = ifelse(share >= 0.1, paste0(round(100 * share), "%"), ""),
+                colour = as.integer(band) <= nlevels(band) / 2),
+            position = position_stack(vjust = 0.5), size = 2.8, show.legend = FALSE) +
+  scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey15")) +
+  facet_wrap(~wave, ncol = 1) +
+  scale_fill_manual(values = band_fill, name = "Steps a\nminute", breaks = rev(levels(rbands$band))) +
+  scale_x_discrete(labels = bin_names) +
+  scale_y_continuous(labels = function(x) paste0(round(100 * x), "%"), expand = expansion(0)) +
+  labs(x = "Activity counts a minute", y = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(strip.text = element_text(face = "bold", hjust = 0), panel.grid.major.x = element_blank())
+```
+
 # Device walkers
 
 A **device walker** is defined by a bout type and a frequency rule, none of them a published standard for walking. **Bout:** 10 or more minutes, 8 of every 10 at or above `r mv_cut` counts a minute (an MV bout) or `r paste(cads, collapse = ", ")` steps a minute (a step bout; 100 is roughly moderate intensity). **Frequency:** a bout on at least 1 or 2 days a week, or at least `r count(assumption("reference.min_bout_minutes_per_week"))` bout minutes a week.

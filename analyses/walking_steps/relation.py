@@ -102,13 +102,20 @@ def band_shares(w: pl.DataFrame, count_edges: list[int], band_edges: list[int]) 
 
 
 def hex_cells(
-    cnt: np.ndarray, steps: np.ndarray, quantile: float, gridsize: int, ymax: float = 200.0
+    cnt: np.ndarray,
+    steps: np.ndarray,
+    quantile: float,
+    gridsize: int,
+    ymax: float = 200.0,
+    min_count: int = 1,
 ) -> tuple[pl.DataFrame, dict[str, float]]:
     """Hexagonal cells of counts (x) by steps (y), on matplotlib's hexbin lattice.
 
     The x-axis stops at the `quantile` of `cnt`; minutes beyond it are left out of the cells and
-    reported as share_beyond. Each cell's share is its minutes over all minutes passed in, so the
-    shares plus share_beyond sum to 1. hex_dx and hex_dy size the hexagons for drawing.
+    reported as share_beyond. Cells with fewer than `min_count` minutes are dropped, as the
+    sibling hexbin in walking_validation drops small cells, and reported as share_suppressed.
+    Each cell's share is its minutes over all minutes passed in, so the shares plus share_beyond
+    plus share_suppressed sum to 1. hex_dx and hex_dy size the hexagons for drawing.
     """
     if len(steps) and float(np.max(steps)) > ymax:
         raise ValueError(f"steps above {ymax:.0f}/min fall outside the hexbin y-axis")
@@ -125,12 +132,14 @@ def hex_cells(
         pl.DataFrame({"x": np.where(first, i1, i2) * sx, "y": np.where(first, j1, j2) * sy})
         .group_by("x", "y")
         .len("minutes")
-        .select("x", "y", (pl.col("minutes") / len(cnt)).alias("share"))
-        .sort("x", "y")
+        .with_columns((pl.col("minutes") / len(cnt)).alias("share"))
     )
+    small = cells.filter(pl.col("minutes") < min_count)["share"].sum()
+    cells = cells.filter(pl.col("minutes") >= min_count).select("x", "y", "share").sort("x", "y")
     meta = {
         "xcap": xcap,
         "share_beyond": float((~keep).sum() / len(cnt)),
+        "share_suppressed": float(small),
         "hex_dx": sx,
         "hex_dy": sy,
     }

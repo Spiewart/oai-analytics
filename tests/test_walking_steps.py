@@ -309,3 +309,14 @@ def test_relation_outputs_pass_egress(tmp_path):
     report = check_egress(tmp_path, min_cell=5, small_cell="fail")
     assert report.ok, report.problems
     assert not report.warnings, report.warnings
+
+
+def test_hex_cells_suppresses_cells_under_min_count():
+    cnt = np.array([0.0] * 9 + [1000.0])
+    steps = np.array([0.0] * 9 + [100.0])
+    cells, meta = r.hex_cells(cnt, steps, 1.0, 50, min_count=5)
+    assert cells.height == 1 and cells["share"].item() == pytest.approx(0.9)
+    assert meta["share_suppressed"] == pytest.approx(0.1)
+    assert cells["share"].sum() + meta["share_beyond"] + meta["share_suppressed"] == pytest.approx(
+        1.0
+    )

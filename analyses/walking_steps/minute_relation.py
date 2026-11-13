@@ -22,6 +22,7 @@ from relation import (
 from share import analysis_minutes
 
 from oai.assumptions import current
+from oai.config import load_settings
 from oai.derive.accel import read_minutes
 
 A = current()
@@ -33,6 +34,7 @@ check_count_edges(count_edges, rules.light_floor, rules.mv_cutpoint)
 band_edges = [int(e) for e in A["walking.band_edges"]]
 intensity = intensity_of(count_edges, rules.light_floor, rules.mv_cutpoint, count_edges[-1])
 results = Path(os.environ["OAI_RESULTS_DIR"])
+min_cell = int(load_settings().project["egress"]["min_cell"])  # drop hexagons under it
 
 hexes, metas, bins, bands = [], [], [], []
 for visit in ("06", "08"):
@@ -45,6 +47,7 @@ for visit in ("06", "08"):
         w["steps"].to_numpy(),
         float(A["relation.hex_x_quantile"]),
         int(A["relation.hex_gridsize"]),
+        min_count=min_cell,
     )
     hexes.append(cells.with_columns(tag))
     metas.append({"visit": visit, **meta})
