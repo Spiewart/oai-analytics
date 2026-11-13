@@ -15,8 +15,11 @@ A count that needs its own tolerance is a table instead of an int:
 
 from __future__ import annotations
 
+import os
+import tomllib
 from collections import Counter
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from pathlib import Path
 from typing import Any
 
 import polars as pl
@@ -202,3 +205,39 @@ def summarize(table: pl.DataFrame, *, section: str, label: str) -> str:
             + ", ".join(f"{k} ({n})" for k, n in implicated.most_common(8)),
         ]
     return "\n".join(lines)
+
+
+def read_metrics(results: Path) -> dict[str, float]:
+    """Every metric in the run's metrics_*.csv files (missing values, R's NA, are left out)."""
+    ours: dict[str, float] = {}
+    for path in sorted(results.glob("metrics_*.csv")):
+        for metric, value in pl.read_csv(path, null_values=["NA"]).iter_rows():
+            if value is not None:
+                ours[metric] = float(value)
+    return ours
+
+
+def compare_step(
+    source: str = "published.toml",
+    *,
+    rows: Callable[[Mapping[str, Any]], Mapping[str, Any]] | None = None,
+) -> pl.DataFrame:
+    """The `compare` step: grade this run's metrics against `source`, write comparison.csv.
+
+    Run from the analysis folder by `oai run`. The section graded is chosen by
+    `select_section`; `rows`, if given, filters that section's rows before grading (a run
+    whose settings make some published values inapplicable). Prints the summary.
+    """
+    from oai.assumptions import current, load_assumptions
+
+    resolved = current()
+    results = Path(os.environ["OAI_RESULTS_DIR"])
+    expected = tomllib.loads(Path(source).read_text())
+    variant_sets = {name: v.set for name, v in load_assumptions(Path.cwd()).variants.items()}
+    section = select_section(expected, resolved.variant, resolved.values, variant_sets)
+    published = expected[section] if rows is None else rows(expected[section])
+    statuses = {key: item.status for key, item in resolved.items.items()}
+    table = grade(published, read_metrics(results), expected.get("related", {}), statuses)
+    table.write_csv(results / "comparison.csv")
+    print(summarize(table, section=section, label=resolved.label))
+    return table

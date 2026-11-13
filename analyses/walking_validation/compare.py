@@ -1,35 +1,29 @@
 """Step `compare`: grade device reproduction and sample sizes against expected.toml."""
 
-import os
-import tomllib
 from pathlib import Path
 
-import polars as pl
 from wv import without_ungradable_device_rows
 
 from oai.assumptions import current, load_assumptions
-from oai.replication import grade, select_section, summarize
+from oai.replication import compare_step
 
 A = current()
-results = Path(os.environ["OAI_RESULTS_DIR"])
-expected = tomllib.loads(Path("expected.toml").read_text())
-ledger = load_assumptions(Path.cwd())
-variant_sets = {name: v.set for name, v in ledger.variants.items()}
-section = select_section(expected, A.variant, A.values, variant_sets)
-published, changed, omitted = without_ungradable_device_rows(
-    expected[section], A.values, {key: item.value for key, item in ledger.items.items()}
-)
-ours: dict[str, float] = {}
-for path in sorted(results.glob("metrics_*.csv")):
-    for metric, value in pl.read_csv(path, null_values=["NA"]).iter_rows():
-        if value is not None:
-            ours[metric] = float(value)
-statuses = {key: item.status for key, item in A.items.items()}
-table = grade(published, ours, expected.get("related", {}), statuses)
-table.write_csv(results / "comparison.csv")
-print(summarize(table, section=section, label=A.label))
-if omitted:
+defaults = {key: item.value for key, item in load_assumptions(Path.cwd()).items.items()}
+skipped: dict[str, list[str]] = {}
+
+
+def gradable(rows):
+    """The section's rows without device.* rows a changed device rule makes ungradable."""
+    kept, skipped["changed"], skipped["omitted"] = without_ungradable_device_rows(
+        rows, A.values, defaults
+    )
+    return kept
+
+
+compare_step("expected.toml", rows=gradable)
+if skipped["omitted"]:
     print(
-        f"\nNot graded: {len(omitted)} device.* rows ({', '.join(omitted)}), because this run "
-        f"changes the device rules {', '.join(changed)}; they are the release's own counts"
+        f"\nNot graded: {len(skipped['omitted'])} device.* rows ({', '.join(skipped['omitted'])}), "
+        f"because this run changes the device rules {', '.join(skipped['changed'])}; they are the "
+        "release's own counts"
     )

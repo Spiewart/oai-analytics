@@ -8,6 +8,7 @@ import polars as pl
 
 from oai.assumptions import Resolved
 from oai.derive.incident_soa import Cohort
+from oai.results import metrics_frame
 
 FLOW_STEPS = ("arthroplasty", "no_baseline_kl", "baseline_soa", "no_outcome")
 
@@ -36,7 +37,4 @@ def exposure_metrics(
     m["d.age_mean"] = cohort.people["age"].mean()
     m["d.bmi_mean"] = cohort.people["bmi"].mean()
     m["d.male"] = cohort.people.filter(pl.col("sex") == 1).height
-    return pl.DataFrame(
-        {"metric": list(m), "value": [float(v) for v in m.values()]},
-        schema={"metric": pl.String, "value": pl.Float64},
-    )
+    return metrics_frame(m)

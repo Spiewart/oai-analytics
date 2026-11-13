@@ -3,9 +3,13 @@
 
 reserved_parts <- c("metrics", "assumptions", "run_info")
 
+# `analysis` reads another analysis's runs instead (its folder beside OAI_RESULTS_ROOT); pass
+# its `labels` too, since OAI_REPORT_RUNS names this report's runs.
 load_results <- function(root = Sys.getenv("OAI_RESULTS_ROOT"),
-                         labels = strsplit(Sys.getenv("OAI_REPORT_RUNS"), ",", fixed = TRUE)[[1]]) {
+                         labels = strsplit(Sys.getenv("OAI_REPORT_RUNS"), ",", fixed = TRUE)[[1]],
+                         analysis = NULL) {
   if (!nzchar(root)) stop("no results root: pass `root` or render with `oai report`", call. = FALSE)
+  if (!is.null(analysis)) root <- file.path(dirname(root), analysis)
   if (!length(labels)) stop("no run labels: pass `labels` or render with `oai report`", call. = FALSE)
   stats::setNames(lapply(labels, function(label) load_run(file.path(root, label), label)), labels)
 }
