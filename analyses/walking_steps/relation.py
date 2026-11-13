@@ -104,16 +104,20 @@ def band_shares(w: pl.DataFrame, count_edges: list[int], band_edges: list[int]) 
 def hex_cells(
     cnt: np.ndarray,
     steps: np.ndarray,
+    ids: np.ndarray,
     quantile: float,
     gridsize: int,
+    *,
+    min_people: int,
     ymax: float = 200.0,
-    min_count: int = 1,
 ) -> tuple[pl.DataFrame, dict[str, float]]:
     """Hexagonal cells of counts (x) by steps (y), on matplotlib's hexbin lattice.
 
     The x-axis stops at the `quantile` of `cnt`; minutes beyond it are left out of the cells and
-    reported as share_beyond. Cells with fewer than `min_count` minutes are dropped, as the
-    sibling hexbin in walking_validation drops small cells, and reported as share_suppressed.
+    reported as share_beyond. Cells with minutes from fewer than `min_people` participants (`ids`,
+    one per minute) are dropped, as walking_validation's agreement hexbin drops cells with few
+    participants, and reported as share_suppressed. `min_people` has no default, so every caller
+    sets the threshold.
     Each cell's share is its minutes over all minutes passed in, so the shares plus share_beyond
     plus share_suppressed sum to 1. hex_dx and hex_dy size the hexagons for drawing.
     """
@@ -125,17 +129,19 @@ def hex_cells(
     sx = xcap / gridsize if xcap > 0 else 1.0
     sy = ymax / ny
     ix, iy = cnt[keep] / sx, steps[keep] / sy
+    who = ids[keep]
     i1, j1 = np.round(ix), np.round(iy)  # lattice 1: (i * sx, j * sy)
     i2, j2 = np.floor(ix) + 0.5, np.floor(iy) + 0.5  # lattice 2: offset by half a cell
     first = (ix - i1) ** 2 + 3 * (iy - j1) ** 2 <= (ix - i2) ** 2 + 3 * (iy - j2) ** 2
     cells = (
-        pl.DataFrame({"x": np.where(first, i1, i2) * sx, "y": np.where(first, j1, j2) * sy})
+        pl.DataFrame(
+            {"x": np.where(first, i1, i2) * sx, "y": np.where(first, j1, j2) * sy, "id": who}
+        )
         .group_by("x", "y")
-        .len("minutes")
-        .with_columns((pl.col("minutes") / len(cnt)).alias("share"))
+        .agg((pl.len() / len(cnt)).alias("share"), pl.col("id").n_unique().alias("people"))
     )
-    small = cells.filter(pl.col("minutes") < min_count)["share"].sum()
-    cells = cells.filter(pl.col("minutes") >= min_count).select("x", "y", "share").sort("x", "y")
+    small = cells.filter(pl.col("people") < min_people)["share"].sum()
+    cells = cells.filter(pl.col("people") >= min_people).select("x", "y", "share").sort("x", "y")
     meta = {
         "xcap": xcap,
         "share_beyond": float((~keep).sum() / len(cnt)),

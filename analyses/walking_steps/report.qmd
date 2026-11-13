@@ -110,8 +110,6 @@ ggplot(bars, aes(band, mean, fill = what)) +
 
 # Steps and activity counts within a minute
 
-Every wear minute in the analysis counts once, pooled over participants. Activity-count bins: sedentary < `r count(assumption("device.light_floor"))`, light in four equal-width bins, moderate `r mv_cut`–`r count(vig_cut - 1)` and vigorous ≥ `r count(vig_cut)` counts a minute.
-
 ```{r relation-setup}
 rel_wave <- function(df) {
   df$wave <- factor(ifelse(wave(df$visit) == "06", "48 months", "72 months"), levels = c("48 months", "72 months"))
@@ -132,12 +130,15 @@ bin_names <- setNames(
 rbins$count_bin <- factor(rbins$count_bin, levels = bin_levels)
 rbands$count_bin <- factor(rbands$count_bin, levels = bin_levels)
 rbands$band <- factor(rbands$band, levels = rev(unique(rbands$band)))
+pct1 <- function(x) paste0(num(100 * x, 1), "%")
 meta_txt <- paste0(
   "48 months: ", count(one(rmeta, wave = "48 months")$xcap), " counts a minute (",
-  pct(one(rmeta, wave = "48 months")$share_beyond), " beyond); 72 months: ",
-  count(one(rmeta, wave = "72 months")$xcap), " (", pct(one(rmeta, wave = "72 months")$share_beyond), ")"
+  pct1(one(rmeta, wave = "48 months")$share_beyond), " of minutes beyond); 72 months: ",
+  count(one(rmeta, wave = "72 months")$xcap), " (", pct1(one(rmeta, wave = "72 months")$share_beyond), ")"
 )
 ```
+
+Every wear minute in the analysis counts once, pooled over participants. Activity-count bins: sedentary < `r count(assumption("device.light_floor"))`, light in four equal-width bins, moderate `r mv_cut`–`r count(vig_cut - 1)` and vigorous ≥ `r count(vig_cut)` counts a minute.
 
 ```{r fig-hex, fig.height = 5.2, fig.cap = paste0("Steps against activity counts in the same wear minute. Each hexagon's colour is the share of wear minutes it holds (log scale). Dashed lines: sedentary/light (", count(assumption("device.light_floor")), ") and light/MV (", mv_cut, ") cut-points. The x-axis stops at the 99.9th percentile of counts (", meta_txt, "), which is below the vigorous cut-point (", count(vig_cut), ").")}
 hex_poly <- function(h, m) {
@@ -181,7 +182,7 @@ band_fill <- setNames(colorRampPalette(c("#eef3f9", colours[["navy"]]))(nlevels(
 ggplot(rbands, aes(count_bin, share, fill = band)) +
   geom_col(width = 0.75) +
   geom_text(aes(label = ifelse(share >= 0.1, paste0(round(100 * share), "%"), ""),
-                colour = as.integer(band) <= nlevels(band) / 2),
+                colour = as.integer(band) <= nlevels(band) / 2, group = band),
             position = position_stack(vjust = 0.5), size = 2.8, show.legend = FALSE) +
   scale_colour_manual(values = c(`TRUE` = "white", `FALSE` = "grey15")) +
   facet_wrap(~wave, ncol = 1) +

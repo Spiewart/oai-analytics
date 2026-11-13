@@ -74,7 +74,7 @@ The step bands are `walking.band_edges`. The hexbin x-axis stops at the `relatio
 | File | Contents |
 |---|---|
 | `relation_hex.csv` | Per visit, the hexagon centres (`x` counts/min, `y` steps/min) and each hexagon's share of the wave's wear minutes |
-| `relation_hex_meta.csv` | Per visit: the x-axis cut-off, the share of minutes beyond it, the share in hexagons under `[egress] min_cell` minutes (dropped, as in walking_validation), and the hexagon width and height |
+| `relation_hex_meta.csv` | Per visit: the x-axis cut-off, the share of minutes beyond it, the share in hexagons with minutes from fewer than `relation.hex_min_people` participants (dropped, as in walking_validation), and the hexagon width and height |
 | `relation_bins.csv` | Per visit and count bin: intensity, minutes (thousands), share of minutes, and the steps quartiles |
 | `relation_bands.csv` | Per visit, count bin and step band: the share of the bin's minutes in the band |
 

@@ -280,21 +280,28 @@ def test_hex_cells_shares_sum_to_one_with_beyond():
     cnt = rng.integers(0, 4000, 5000).astype(float)
     cnt[:3] = 20000.0  # 0.06% of minutes: above the 99.9th percentile
     steps = rng.integers(0, 201, 5000).astype(float)
-    cells, meta = r.hex_cells(cnt, steps, 0.999, 50)
+    cells, meta = r.hex_cells(cnt, steps, np.arange(5000), 0.999, 50, min_people=1)
     assert meta["share_beyond"] > 0
     assert cells["share"].sum() + meta["share_beyond"] == pytest.approx(1.0)
     assert cells["x"].max() <= meta["xcap"] + meta["hex_dx"]
 
 
 def test_hex_cells_puts_identical_points_in_one_cell():
-    cells, _ = r.hex_cells(np.array([0.0] * 9 + [1000.0]), np.array([0.0] * 9 + [100.0]), 1.0, 50)
+    cells, _ = r.hex_cells(
+        np.array([0.0] * 9 + [1000.0]),
+        np.array([0.0] * 9 + [100.0]),
+        np.arange(10),
+        1.0,
+        50,
+        min_people=1,
+    )
     assert cells.height == 2
     assert sorted(cells["share"].to_list()) == pytest.approx([0.1, 0.9])
 
 
 def test_hex_cells_rejects_steps_above_200():
     with pytest.raises(ValueError, match="200"):
-        r.hex_cells(np.array([100.0]), np.array([201.0]), 1.0, 50)
+        r.hex_cells(np.array([100.0]), np.array([201.0]), np.array([1]), 1.0, 50, min_people=1)
 
 
 def test_relation_outputs_pass_egress(tmp_path):
@@ -303,7 +310,9 @@ def test_relation_outputs_pass_egress(tmp_path):
     w = frame(cnt=[0.0, 300.0, 2500.0, 7000.0] * 50, steps=[0.0, 10.0, 105.0, 130.0] * 50)
     r.bin_quantiles(w, EDGES).write_csv(tmp_path / "relation_bins.csv")
     r.band_shares(w, EDGES, BANDS).write_csv(tmp_path / "relation_bands.csv")
-    cells, meta = r.hex_cells(w["cnt"].to_numpy(), w["steps"].to_numpy(), 0.999, 50)
+    cells, meta = r.hex_cells(
+        w["cnt"].to_numpy(), w["steps"].to_numpy(), w["ID"].to_numpy(), 0.999, 50, min_people=1
+    )
     cells.write_csv(tmp_path / "relation_hex.csv")
     pl.DataFrame([meta]).write_csv(tmp_path / "relation_hex_meta.csv")
     report = check_egress(tmp_path, min_cell=5, small_cell="fail")
@@ -311,12 +320,18 @@ def test_relation_outputs_pass_egress(tmp_path):
     assert not report.warnings, report.warnings
 
 
-def test_hex_cells_suppresses_cells_under_min_count():
-    cnt = np.array([0.0] * 9 + [1000.0])
-    steps = np.array([0.0] * 9 + [100.0])
-    cells, meta = r.hex_cells(cnt, steps, 1.0, 50, min_count=5)
-    assert cells.height == 1 and cells["share"].item() == pytest.approx(0.9)
-    assert meta["share_suppressed"] == pytest.approx(0.1)
-    assert cells["share"].sum() + meta["share_beyond"] + meta["share_suppressed"] == pytest.approx(
-        1.0
-    )
+def test_hex_cells_suppresses_cells_with_few_people():
+    # 9 minutes from 9 people in one cell; 6 minutes from 1 person in another
+    cnt = np.array([0.0] * 9 + [1000.0] * 6)
+    steps = np.array([0.0] * 9 + [100.0] * 6)
+    ids = np.array(list(range(9)) + [99] * 6)
+    cells, meta = r.hex_cells(cnt, steps, ids, 1.0, 50, min_people=5)
+    assert cells.height == 1 and cells["share"].item() == pytest.approx(9 / 15)
+    assert meta["share_suppressed"] == pytest.approx(6 / 15)
+    total = cells["share"].sum() + meta["share_beyond"] + meta["share_suppressed"]
+    assert total == pytest.approx(1.0)
+
+
+def test_hex_cells_requires_min_people():
+    with pytest.raises(TypeError):
+        r.hex_cells(np.array([0.0]), np.array([0.0]), np.array([1]), 1.0, 50)

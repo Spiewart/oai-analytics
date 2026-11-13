@@ -119,6 +119,11 @@ value = 50
 status = "assumed"
 source = "Hexagons across the hexbin x-axis; rows = round(50 / sqrt(3))"
 
+[relation.hex_min_people]
+value = 10
+status = "assumed"
+source = "As walking_validation components.min_cell_count: hexagons with minutes from fewer participants are not written (their share is reported as share_suppressed), so the hexbin stays aggregate"
+
 [reference.step_cadences]
 value = [40, 60, 100]
 status = "assumed"
