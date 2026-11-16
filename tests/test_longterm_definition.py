@@ -17,10 +17,14 @@ NEW = {
     "outcomes.roa_unread": "unknown",
     "horizon.selection": "known_or_case",
 }
+# Shared with lo2018_crepitus but deliberately different: each model is fitted on its own
+# complete cases (lo2018 fits a block's unadjusted and adjusted ORs on one sample).
+DIVERGES = {"model.sample": "per_model"}
 
 
 def shared_keys():
-    return sorted(set(load_assumptions(ANALYSIS).items) & set(load_assumptions(LO2018).items))
+    both = set(load_assumptions(ANALYSIS).items) & set(load_assumptions(LO2018).items)
+    return sorted(both - set(DIVERGES))
 
 
 def test_manifest_and_assumptions_load():
@@ -35,14 +39,30 @@ def test_manifest_and_assumptions_load():
         "roa_unread_as_none",
         "horizon_complete",
         "lo2018_48m",
+        "lo2018_48m_common",
     }
     assert len(shared_keys()) >= 15
+
+
+def test_divergences_from_lo2018_are_the_listed_ones():
+    ours, theirs = load_assumptions(ANALYSIS).items, load_assumptions(LO2018).items
+    for key, value in DIVERGES.items():
+        assert ours[key].value == value != theirs[key].value
 
 
 @pytest.mark.parametrize("key", shared_keys())
 def test_inherited_decisions_match_lo2018(key):
     ours, theirs = load_assumptions(ANALYSIS).items[key], load_assumptions(LO2018).items[key]
     assert (ours.value, ours.status, ours.choices) == (theirs.value, theirs.status, theirs.choices)
+
+
+def test_lo2018_48m_common_adds_lo2018s_sample_to_the_48_month_design():
+    resolve = load_assumptions(ANALYSIS).resolve
+    A = resolve("crepitus_soa_longterm", "lo2018_48m", {})
+    C = resolve("crepitus_soa_longterm", "lo2018_48m_common", {})
+    assert (A["model.sample"], C["model.sample"]) == ("per_model", "common")
+    for key in ("periods.horizon", "outcomes.roa_source", "model.period_term"):
+        assert C[key] == A[key]
 
 
 def test_lo2018_48m_variant_restores_the_48_month_design():

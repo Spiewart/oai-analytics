@@ -36,16 +36,12 @@ fit_block <- function(d, prefix, exam, s2, fit, adjust, group) {
     put(sprintf("%s.%s.cases", prefix, level), sum(part$event))
     put(sprintf("%s.%s.n", prefix, level), nrow(part))
   }
-  models <- list(
-    or_unadj = list(rhs = exam, needs = character()),
-    or_adj = list(rhs = paste(c(exam, adjust), collapse = " + "), needs = adjust),
-    or_adj_s2 = list(rhs = paste(c(exam, adjust, sprintf("factor(%s)", s2)), collapse = " + "),
-                     needs = c(adjust, s2))
-  )
+  models <- list(or_unadj = exam, or_adj = c(exam, adjust),
+                 or_adj_s2 = c(exam, adjust, sprintf("factor(%s)", s2)))
+  samples <- oaimodels::model_samples(d, models, A[["model.sample"]])
   rows <- lapply(names(models), function(model) {
-    dd <- d[stats::complete.cases(d[, c("event", exam, models[[model]]$needs), drop = FALSE]), ]
-    dd <- dd[order(dd$ID), , drop = FALSE]
-    est <- fit(dd, models[[model]]$rhs, exam)
+    dd <- samples[[model]]
+    est <- fit(dd, paste(models[[model]], collapse = " + "), exam)
     metrics$put_est(sprintf("%s.exam.%s", prefix, model), est)
     data.frame(group = group, model = model, n = nrow(dd), events = sum(dd$event),
                exposed_n = sum(dd[[exam]] == 1), exposed_events = sum(dd$event[dd[[exam]] == 1]),

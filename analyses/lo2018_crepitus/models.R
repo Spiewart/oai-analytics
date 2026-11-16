@@ -33,13 +33,15 @@ trend_p <- function(d, crep, fit, adjust) {
 metrics <- oaimodels::metrics_recorder()
 put <- metrics$put
 
-# One table block: cases and n per level, unadjusted and adjusted ORs for levels 1-4.
+# One table block: cases and n per level, unadjusted and adjusted ORs for levels 1-4. Each
+# model's sample follows model.sample ("common": both on the adjusted model's complete cases);
+# the counts and the trend test use the adjusted model's sample.
 fit_block <- function(d, prefix, crep, fit, adjust, group) {
-  d <- d[stats::complete.cases(d[, c("event", crep, adjust)]), , drop = FALSE]
-  d <- d[order(d$ID), , drop = FALSE]
-  rows <- list()
   rhs <- c(or_unadj = sprintf("factor(%s)", crep),
            or_adj = paste(c(sprintf("factor(%s)", crep), adjust), collapse = " + "))
+  samples <- oaimodels::model_samples(d, rhs, A[["model.sample"]])
+  d <- samples$or_adj
+  rows <- list()
   for (k in 0:4) {
     level <- levels[k + 1]
     part <- d[d[[crep]] == k, , drop = FALSE]
@@ -48,7 +50,7 @@ fit_block <- function(d, prefix, crep, fit, adjust, group) {
     row <- data.frame(group = group, level = level, cases = sum(part$event), n = nrow(part))
     for (model in names(rhs)) {
       est <- if (k == 0) c(or = 1, lo = NA, hi = NA) else {
-        fit(d, rhs[[model]], sprintf("factor(%s)%d", crep, k))
+        fit(samples[[model]], rhs[[model]], sprintf("factor(%s)%d", crep, k))
       }
       if (k > 0) {
         metrics$put_est(sprintf("%s.%s.%s", prefix, level, model), est)

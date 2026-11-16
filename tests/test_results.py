@@ -96,3 +96,21 @@ def test_compare_step_uses_the_variant_section_and_row_filter(analysis):
     analysis()
     kept = compare_step(rows=lambda rows: {k: v for k, v in rows.items() if k != "flow.knees"})
     assert kept["metric"].to_list() == ["flow.persons"]
+
+
+def test_mean_over_waves_skips_invalid_waves_and_nulls():
+    from oai.derive.devices import mean_over_waves
+
+    device = pl.DataFrame(
+        {
+            "ID": [2, 2, 1, 1, 3],
+            "wave": ["06", "08", "06", "08", "06"],
+            "valid": [True, True, True, False, False],
+            "steps": [100.0, None, 50.0, 70.0, 10.0],
+            "mv": [1.0, 3.0, 2.0, 2.0, 2.0],
+        }
+    )
+    both = mean_over_waves(device, ["steps", "mv"])
+    assert both.rows() == [(1, 1, 50.0, 2.0), (2, 2, 100.0, 2.0)]
+    assert both.columns == ["ID", "n_waves", "steps", "mv"]
+    assert mean_over_waves(device, ["mv"], ["08"]).rows() == [(2, 1, 3.0)]

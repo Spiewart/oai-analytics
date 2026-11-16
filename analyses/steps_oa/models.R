@@ -18,7 +18,7 @@
 #   R3   mean and SD of steps_48 by the higher KL grade and by SOA at 48 months (descriptive)
 # Every model runs as m1 (age, sex, BMI, wear at each wave) and m2 (+ the knee's KL and WOMAC
 # pain at 48 for knee models; + the higher KL and the worse knee's pain for person models), on
-# complete cases of its own terms. A fit error, or a band with fewer than MIN_EVENTS events,
+# complete cases of its own terms. A fit error, or a band with fewer than model.min_events events,
 # writes NA. Discrete-time models (every model on a periods frame: P1, P2, S1, S4) are grouped-time
 # proportional hazards: binomial GEE with a complementary log-log link, offset(log(span)) and
 # factor(end_visit) (no span factor), independence working correlation with person-clustered
@@ -53,7 +53,7 @@ knot_q <- as.numeric(A[["steps.spline_knots"]])
 min_tkr <- as.numeric(A[["tkr.min_events"]])
 coding <- A[["reverse.coding"]]
 risk_kl <- A[["progression.risk_kl"]]
-MIN_EVENTS <- 5
+min_events <- A[["model.min_events"]]
 CURVE_AT <- seq(2000, 14000, by = 500)
 CURVE_REF <- 5000
 lin_term <- if (log_scale) "per_log" else "per_1000"
@@ -111,7 +111,7 @@ is_periods <- function(d) all(c("end_visit", "span") %in% names(d))
 # a span factor that its few rows would perfectly predict
 period_terms <- function(d) {
   if (!is_periods(d)) return(character())
-  c(fac(d, "end_visit"), "offset(log(span))")
+  oaimodels::discrete_time_terms(d, "end_visit", "span")
 }
 period_vars <- function(d) intersect(c("end_visit", "span"), names(d))
 # Knees in a level of a factor term (kl48 as a factor, end_visit) with no events or no non-events
@@ -150,21 +150,16 @@ cov_terms <- function(d, covs, kl_factor) {
 # ------------------------------------------------------------------ fitting
 # Binomial on a periods frame: complementary log-log link (hazard ratios) and independence
 # working correlation (person-period rows break Pepe & Anderson's condition for a non-diagonal
-# one); robust SEs are clustered by person either way. Rows are ordered by ID and the cluster is an
-# integer, as in oaimodels::fit_knee_gee (r/oaimodels/R/gee.R: geepack finds clusters from
-# diff(as.numeric(id))).
+# one); robust SEs are clustered by person either way (oaimodels::fit_cluster_gee).
 gee_fit <- function(d, outcome, rhs, family) {
-  d <- d[order(d$ID), , drop = FALSE]
   if (identical(family, "binomial")) d[[outcome]] <- as.integer(as.logical(d[[outcome]]))
-  d$cluster_ <- match(d$ID, unique(d$ID))
-  f <- stats::as.formula(paste(outcome, "~", paste(rhs, collapse = " + ")))
   periods <- is_periods(d)
   fam <- if (identical(family, "binomial")) {
     if (periods) stats::binomial(link = link) else stats::binomial()
   } else stats::gaussian()
   cs <- if (identical(family, "gaussian_person") || periods) "independence" else corstr
   tryCatch(
-    geepack::geeglm(f, id = cluster_, data = d, family = fam, corstr = cs),
+    oaimodels::fit_cluster_gee(d, rhs, outcome, fam, cs),
     error = function(e) {
       message("fit failed (", outcome, " ~ ", paste(rhs, collapse = " + "), "): ", conditionMessage(e))
       NULL
@@ -206,14 +201,13 @@ forward_shapes <- function(table, d, outcome, model, kl_factor, curve = NULL) {
 
   # Bands: lowest band is the reference; NA for a band (all bands if the reference) with too few
   dd$band <- band_of(dd$steps_48)
-  band_events <- tapply(as.logical(dd$event), dd$band, sum)
-  band_events[is.na(band_events)] <- 0
-  fit_b <- if (band_events[[BANDS[1]]] >= MIN_EVENTS) gee_fit(dd, "event", c("band", rhs_rest), "binomial")
+  sparse <- oaimodels::sparse_levels(oaimodels::level_events(dd, "band", "event", BANDS), min_events)
+  fit_b <- if (!sparse[[BANDS[1]]]) gee_fit(dd, "event", c("band", rhs_rest), "binomial")
   for (b in BANDS) {
     db <- dd[dd$band == b, , drop = FALSE]
     est <- if (b == BANDS[1]) {
       if (is.null(fit_b)) na_est else c(estimate = 1, lo = NA_real_, hi = NA_real_)
-    } else if (band_events[[b]] < MIN_EVENTS) na_est else coef_est(fit_b, paste0("band", b), TRUE)
+    } else if (sparse[[b]]) na_est else coef_est(fit_b, paste0("band", b), TRUE)
     record(table, "steps_48", outcome, paste0("band_", b), model, knees_n(db), events_n(db, "event"), est,
            dropped)
   }
