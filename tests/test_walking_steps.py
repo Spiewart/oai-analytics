@@ -395,3 +395,81 @@ def test_device_waves_mean_matches_combine():
     assert mean["steps"].to_list() == [6000.0, 3000.0]
     assert mean["steps_100:bout_days"].to_list() == [False, False]  # (3 + 0) / 2 = 1.5 < 2
     assert w["06"].sort("ID")["steps_100:bout_days"].to_list() == [True, False]
+
+
+def test_worse_knee_kl_replacement_rules():
+    st = pl.DataFrame(
+        {
+            "ID": [1, 1, 1, 1],
+            "SIDE": [1, 2, 1, 2],
+            "visit": ["06", "06", "10", "10"],
+            "kl": [2, None, 3, None],
+            "replaced": [False, False, True, False],
+        }
+    )
+    keep = d.worse_knee_kl(st, "keep_kl4").sort("visit")
+    assert keep["kl_worse"].to_list() == [2, 4]
+    cens = d.worse_knee_kl(st, "censor").sort("visit")
+    assert cens.filter(pl.col("visit") == "10")["kl_worse"].item() is None
+
+
+ORDER = ["00", "01", "03", "05", "06", "08", "10"]
+
+
+def test_window_uses_nearest_visit_and_reports_it():
+    long = pl.DataFrame(
+        {"ID": [1, 1], "visit": ["01", "06"], "measure": ["m", "m"], "value": [10.0, 13.0]}
+    )
+    w = d.window_values(long, "00", "06", 1, ORDER)
+    assert w.row(0, named=True) == {
+        "ID": 1,
+        "measure": "m",
+        "start_used": "01",
+        "end_used": "06",
+        "change": 3.0,
+    }
+
+
+def test_window_blank_beyond_one_visit():
+    long = pl.DataFrame(
+        {"ID": [1, 1], "visit": ["03", "06"], "measure": ["m", "m"], "value": [10.0, 13.0]}
+    )
+    assert d.window_values(long, "00", "06", 1, ORDER).height == 0
+
+
+def test_window_tie_goes_to_earlier_visit():
+    long = pl.DataFrame(
+        {
+            "ID": [1, 1, 1],
+            "visit": ["05", "08", "10"],
+            "measure": ["m"] * 3,
+            "value": [1.0, 2.0, 5.0],
+        }
+    )
+    w = d.window_values(long, "06", "10", 1, ORDER)
+    assert w.row(0, named=True)["start_used"] == "05" and w["change"].item() == 4.0
+
+
+def test_knee_level_censors_replaced_knee_from_replacement_on():
+    per_knee = pl.DataFrame(
+        {
+            "ID": [1] * 4,
+            "SIDE": ["R", "L", "R", "L"],
+            "visit": ["06", "06", "10", "10"],
+            "measure": ["womac_pain"] * 4,
+            "value": [3.0, 1.0, 9.0, 2.0],
+        }
+    )
+    status = pl.DataFrame(
+        {
+            "ID": [1] * 4,
+            "SIDE": ["R", "L", "R", "L"],
+            "visit": ["06", "06", "10", "10"],
+            "kl": [2.0, 1.0, None, 1.0],
+            "replaced": [False, False, True, False],
+        }
+    )
+    keep = d.knee_level(per_knee, status, "keep_kl4").sort("visit")
+    assert keep["value"].to_list() == [3.0, 9.0]
+    cens = d.knee_level(per_knee, status, "censor").sort("visit")
+    assert cens["value"].to_list() == [3.0, 2.0]
