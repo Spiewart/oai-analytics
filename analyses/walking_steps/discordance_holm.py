@@ -4,8 +4,8 @@ Reads the raw model rows that discordance_trends.R wrote to OAI_FRAME_DIR. Each 
 visit p (`p_interaction`) is Holm-adjusted across measures, one family per comparison and
 replacement rule (`censored`); a measure whose model failed, and every row that did not converge,
 keeps a null. A visit whose contrast rests on fewer than [egress] min_cell people in either "Yes"
-group has its estimate nulled. Writes discordance_trends.csv to results and rewrites DISCORDANCE.md
-with stage 1 (discordance_screen.csv) and stage 2 together.
+group has its estimate nulled. Writes discordance_trends.csv to results, and DISCORDANCE.md (this
+step is its only writer) with stage 1 (discordance_screen.csv) and stage 2 together.
 """
 
 import os

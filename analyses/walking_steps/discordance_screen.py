@@ -4,7 +4,8 @@ Per comparison: each time-varying measure's level at the anchor visit and its ch
 ledger window (the nearest visit holding the measure, within discordance.nearest_visit_steps
 scheduled visits of each endpoint, used and reported), and each fixed measure. Knee-level
 measures are screened under both replacement rules (`censored`). Also the flow of persons per
-group and visit, and KL coverage by group and visit. Aggregates only.
+group and visit, and KL coverage by group and visit. Aggregates only. DISCORDANCE.md is written
+by discordance_holm, which runs after this step and discordance_trends.
 """
 
 import os
@@ -34,10 +35,7 @@ anchor = A["discordance.anchor_visit"]
 steps = int(A["discordance.nearest_visit_steps"])
 order = list(A["discordance.trend_visits"])  # the scheduled clinic visits, in time order
 kinds = {m: spec[1] for m, spec in d.MEASURES.items()}
-# PASE item 2 (walking outside the home) is the PASE comparison's self-report: its measures
-# describe how the groups were formed, so DISCORDANCE.md shows them as context
-SELF_REPORT_MEASURES = list(A["discordance.self_report_context"])
-change_kinds = {m: "continuous" if k == "binary" else k for m, k in kinds.items()}
+change_kinds = d.change_kinds(kinds)
 
 groups = pl.read_parquet(frames / "discordance_groups.parquet")
 long = pl.read_parquet(frames / "discordance_long.parquet")
@@ -86,7 +84,8 @@ def screen_one(name: str) -> pl.DataFrame:
         if v.height == 0:
             continue
         is_change = pl.col("window").str.starts_with("change_")
-        # a change in a 0/1 measure is -1, 0 or 1: summarised and compared as continuous
+        # a change in a 0/1 measure is -1, 0 or 1: compared as continuous, its summary masked
+        # when any of the three values stands for 1..min_cell-1 people
         parts = [
             d.screen(g, v.filter(~is_change), kinds, A, min_cell=min_cell),
             d.screen(g, v.filter(is_change), change_kinds, A, min_cell=min_cell),
@@ -148,16 +147,3 @@ print(
     sorted(c for c, g in gaps.items() if g is None or g > float(A["discordance.kl_coverage_gap"]))
     or "none",
 )
-
-text = d.render_markdown(
-    screen,
-    pl.DataFrame(),
-    coverage_gap=gaps,
-    label=A.label,
-    threshold=float(A["discordance.kl_coverage_gap"]),
-    self_report_measures={
-        name: SELF_REPORT_MEASURES if pro_id.startswith("pase") else []
-        for name, (pro_id, _, _) in A["discordance.comparisons"].items()
-    },
-)
-(results / "DISCORDANCE.md").write_text(text)

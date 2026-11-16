@@ -935,3 +935,84 @@ def test_merge_categories_maps_release_codes():
         d.merge_categories(fixed.with_columns(pl.lit(7.0).alias("value")), mapping)
     nulls = fixed.with_columns(pl.lit(None, dtype=pl.Float64).alias("value"))
     assert d.merge_categories(nulls, mapping)["value"].null_count() == 6
+
+
+ANALYSIS_DIR = Path(__file__).resolve().parents[1] / "analyses" / "walking_steps"
+
+
+def test_change_kinds_marks_binary_changes():
+    kinds = {"replaced_any": "binary", "bmi": "continuous", "race": "categorical"}
+    assert d.change_kinds(kinds) == {
+        "replaced_any": "binary_change",
+        "bmi": "continuous",
+        "race": "categorical",
+    }
+
+
+def test_binary_change_smd_is_continuous_on_minus_one_zero_one():
+    a = np.array([1.0] * 10 + [0.0] * 30 + [-1.0] * 6)
+    b = np.array([1.0] * 5 + [0.0] * 40 + [-1.0] * 8)
+    assert d.smd(a, b, "binary_change") == pytest.approx(d.smd(a, b, "continuous"))
+
+
+def test_summary_masks_small_counts_in_binary_changes():
+    # mean and SD with the group size known give the number of non-zero changes exactly
+    four_up = np.array([1.0] * 4 + [0.0] * 337)
+    assert d._summary(four_up, "binary_change", min_cell=5) == "<5"
+    four_down = np.array([-1.0] * 4 + [1.0] * 20 + [0.0] * 300)
+    assert d._summary(four_down, "binary_change", min_cell=5) == "<5"
+    few_zero = np.array([0.0] * 3 + [1.0] * 30)
+    assert d._summary(few_zero, "binary_change", min_cell=5) == "<5"
+    fine = np.array([-1.0] * 5 + [1.0] * 6 + [0.0] * 30)
+    assert d._summary(fine, "binary_change", min_cell=5) == d._summary(fine, "continuous")
+    assert d._summary(np.array([0.0] * 30), "binary_change", min_cell=5) == "0.00 (0.00)"
+
+
+def test_screen_masks_small_binary_change_and_blanks_smd():
+    n_step, n_not = 341, 400
+    groups = pl.DataFrame(
+        {
+            "ID": list(range(n_step + n_not)),
+            "group": ["Yes, step walker"] * n_step + ["Yes, not a step walker"] * n_not,
+        }
+    )
+    values = pl.DataFrame(
+        {
+            "ID": list(range(n_step + n_not)),
+            "measure": ["replaced_any"] * (n_step + n_not),
+            "window": ["change_00_06"] * (n_step + n_not),
+            "value": [1.0] * 4 + [0.0] * (n_step - 4) + [1.0] * 20 + [0.0] * (n_not - 20),
+            "start_used": ["00"] * (n_step + n_not),
+            "end_used": ["06"] * (n_step + n_not),
+        }
+    )
+    kinds = d.change_kinds({"replaced_any": "binary"})
+    row = d.screen(groups, values, kinds, A_TEST, min_cell=5).row(0, named=True)
+    assert row["summary_step"] == "<5" and row["persons_step"] == n_step
+    assert row["summary_not"] == d._summary(np.array(values["value"][n_step:]), "continuous")
+    assert row["smd"] is None and row["smd_lo"] is None and row["band"] == ""
+
+
+def test_kl_caveat_names_the_screen_csv():
+    text = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap={"primary": 0.2}, label="default"
+    )
+    caveat = text.split("### KL coverage")[1].split("###")[0]
+    assert "reported in discordance_screen.csv" in caveat
+    assert "with this caveat" not in caveat
+
+
+def test_discordance_md_has_one_writer():
+    # the screen writes its CSVs only; discordance_holm, which runs after it, writes the report
+    screen = (ANALYSIS_DIR / "discordance_screen.py").read_text()
+    holm = (ANALYSIS_DIR / "discordance_holm.py").read_text()
+    assert "render_markdown" not in screen and '"DISCORDANCE.md").write_text' not in screen
+    assert "render_markdown" in holm and '"DISCORDANCE.md").write_text' in holm
+
+
+def test_discordance_report_labels_and_wording():
+    qmd = (ANALYSIS_DIR / "discordance.qmd").read_text()
+    assert "times a week" not in qmd and "Item: times a month" in qmd
+    assert "numeric primary leads" in qmd
+    # a masked row has an empty band, which the report's CSV reader turns into NA
+    assert 'scr$band[is.na(scr$band)] <- ""' in qmd

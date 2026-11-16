@@ -87,7 +87,7 @@ LABELS <- c(
   age = "Age at 48 mo", age0 = "Age at baseline", sex = "Female", race = "Race",
   education = "Education", income = "Income", married = "Married", subcohort = "Subcohort",
   site = "Site", amount_years = "Item: years walked", amount_months = "Item: months a year",
-  amount_times = "Item: times a week", valid_days = "Valid device days",
+  amount_times = "Item: times a month", valid_days = "Valid device days",
   wear_hr = "Device wear hours/day", steps = "Steps/day", mv_min = "MV minutes/day",
   season = "Device season", weekend_share = "Weekend share of device days"
 )
@@ -100,6 +100,7 @@ WINDOWS <- c(level_06 = "Level at 48 mo", change_00_06 = "Change 0 to 48 mo",
 flag <- function(x) as.logical(toupper(as.character(x)))  # "true"/"false" from the CSVs
 scr <- run$discordance_screen
 scr$censored <- flag(scr$censored)
+scr$band[is.na(scr$band)] <- ""  # a masked row has no band; the CSV reader gives NA
 scr$area_lab <- factor(AREAS[scr$area], levels = AREAS)
 scr$window_lab <- factor(WINDOWS[scr$window], levels = WINDOWS)
 scr$label <- lab(scr$measure)
@@ -241,7 +242,7 @@ wear_text <- if (nrow(wear) == 1 && wear$band == "lead")
   paste0(" \"", if (wear$smd < 0) GROUPS[["step"]] else GROUPS[["not"]], "\" wore the device longer each day (SMD ", num(wear$smd), ").") else ""
 ```
 
-`r if (nrow(tv_lead)) paste0("The largest leads in the level at 48 months are ", top(tv_lead), " (SMD, \"", GROUPS[["not"]], "\" minus \"", GROUPS[["step"]], "\").") else "No 48-month level reaches a lead."` `r if (nrow(ch_lead)) paste0("Changes reaching a lead: ", top(ch_lead, 10), ".") else "No change from baseline to 48 months, or from 48 to 96 months, reaches a lead."` `r if (nrow(fx_lead)) paste0("Among fixed measures the largest are ", top(fx_lead), ".") else ""``r wear_text` Against the reference group, "`r GROUPS[["not"]]`" sits nearer "`r GROUPS[["no"]]`" than "`r GROUPS[["step"]]`" for `r nn$primary[["no"]]` of the `r nn$primary[["n"]]` primary leads with a "`r GROUPS[["no"]]`" value (`r nn$counts_mv[["no"]]` of `r nn$counts_mv[["n"]]` and `r nn$pase48[["no"]]` of `r nn$pase48[["n"]]` in the replications); the group values are in the table below.
+`r if (nrow(tv_lead)) paste0("The largest leads in the level at 48 months are ", top(tv_lead), " (SMD, \"", GROUPS[["not"]], "\" minus \"", GROUPS[["step"]], "\").") else "No 48-month level reaches a lead."` `r if (nrow(ch_lead)) paste0("Changes reaching a lead: ", top(ch_lead, 10), ".") else "No change from baseline to 48 months, or from 48 to 96 months, reaches a lead."` `r if (nrow(fx_lead)) paste0("Among fixed measures the largest are ", top(fx_lead), ".") else ""``r wear_text` Against the reference group, "`r GROUPS[["not"]]`" sits nearer "`r GROUPS[["no"]]`" than "`r GROUPS[["step"]]`" for `r nn$primary[["no"]]` of the `r nn$primary[["n"]]` numeric primary leads with a "`r GROUPS[["no"]]`" value (`r nn$counts_mv[["no"]]` of `r nn$counts_mv[["n"]]` and `r nn$pase48[["no"]]` of `r nn$pase48[["n"]]` in the replications); the group values are in the table below.
 
 # Stage 1: replications alongside the primary
 
@@ -260,6 +261,7 @@ group_value <- function(m, w, col) {
   if (!nrow(r) || is.na(r[[col]])) return("–")
   if (is_cat(r[[col]])) return("cat.")
   x <- as.character(r[[col]])
+  if (startsWith(x, "<")) return(x)  # masked: fewer than the release threshold
   if (grepl("%$", x)) x else num(level(x), if (abs(level(x)) >= 100) 0 else 2)
 }
 lt <- data.frame(

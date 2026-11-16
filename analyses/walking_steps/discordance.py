@@ -374,11 +374,13 @@ def _smd(a: np.ndarray, b: np.ndarray, kind: str, levels: np.ndarray) -> float |
         pa, pb = float(a.mean()), float(b.mean())
         denom = np.sqrt((pa * (1 - pa) + pb * (1 - pb)) / 2)
         diff = pa - pb
-    elif kind == "continuous":
+    elif kind in ("continuous", "binary_change"):
         denom = np.sqrt((a.var(ddof=1) + b.var(ddof=1)) / 2)
         diff = float(a.mean() - b.mean())
     else:
-        raise ValueError(f"kind must be continuous, binary or categorical, not {kind!r}")
+        raise ValueError(
+            f"kind must be continuous, binary, binary_change or categorical, not {kind!r}"
+        )
     return float(diff / denom) if denom > 0 else None
 
 
@@ -386,7 +388,8 @@ def smd(a: np.ndarray, b: np.ndarray, kind: str) -> float | None:
     """Standardized mean difference, a ("Yes, not a step walker") minus b ("Yes, step walker").
 
     Continuous: difference over the pooled SD. Binary: difference in proportions over the
-    pooled binomial SD. Categorical: the multi-level (Mahalanobis) form of Yang & Dalton (2012),
+    pooled binomial SD. Binary change (a 0/1 measure's change, -1, 0 or 1): as continuous.
+    Categorical: the multi-level (Mahalanobis) form of Yang & Dalton (2012),
     which is unsigned. None when either group has fewer than 2 values or the pooled SD is 0.
     """
     a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
@@ -428,10 +431,16 @@ def _summary(x: np.ndarray, kind: str, min_cell: int = 1) -> str:
     give the masked total away by subtraction, the smallest shown level is masked too while
     the masked levels hold 1..min_cell-1 people in all, or only one level is masked, or fewer
     than two levels would stay shown; when fewer than two can stay shown, the summary is "".
+    A binary change (-1, 0 or 1) shows as mean (SD), which with the group size gives the count
+    of each value; so it shows as "<min_cell" when any of the three holds 1..min_cell-1 people.
     """
     if len(x) == 0:
         return ""
     small = lambda c: 0 < c < min_cell  # noqa: E731
+    if kind == "binary_change":
+        if any(small(int((x == v).sum())) for v in (-1, 0, 1)):
+            return f"<{min_cell}"
+        kind = "continuous"
     if kind == "continuous":
         sd = f"{x.std(ddof=1):.2f}" if len(x) > 1 else "-"
         return f"{x.mean():.2f} ({sd})"
@@ -454,6 +463,11 @@ def _summary(x: np.ndarray, kind: str, min_cell: int = 1) -> str:
         f"{lv:g}: <{min_cell}" if m else f"{lv:g}: {100 * c / len(x):.1f}%"
         for lv, c, m in zip(levels, counts, masked, strict=True)
     )
+
+
+def change_kinds(kinds: dict[str, str]) -> dict[str, str]:
+    """Kinds for the change windows: a 0/1 measure's change (-1, 0 or 1) is "binary_change"."""
+    return {m: "binary_change" if k == "binary" else k for m, k in kinds.items()}
 
 
 def _used(cell: pl.DataFrame, col: str) -> str:
@@ -835,8 +849,8 @@ def render_markdown(
             lines += [
                 "### KL coverage",
                 "",
-                f"{why} (see discordance_kl_coverage.csv), so the KL rows are reported in the "
-                "CSV with this caveat and are not listed as leads.",
+                f"{why} (see discordance_kl_coverage.csv), so the KL rows are reported in "
+                "discordance_screen.csv and are not listed as leads.",
                 "",
             ]
         context = main.filter(pl.col("measure").is_in(defining))

@@ -293,7 +293,7 @@ choices = ["trend_visits"]
 [discordance.binary_change]
 value = "continuous"
 status = "assumed"
-source = "Claude's choice (Task 4): a change in a 0/1 measure is -1, 0 or 1, so the change windows summarise and compare it as continuous (mean change, pooled-SD SMD); the level stays binary"
+source = "Claude's choice (Task 4): a change in a 0/1 measure is -1, 0 or 1, so the change windows summarise and compare it as continuous (mean change, pooled-SD SMD); the level stays binary. Final review fix: the mean (SD) with the group size gives the count of each of -1, 0 and 1, so a change summary where any of them holds 1..min_cell-1 people shows as \"<min_cell\" and the row's SMD, CI and band are blanked"
 choices = ["continuous"]
 
 [discordance.season_coding]
