@@ -9,6 +9,8 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "analyses" / "walking_steps"))
 
+import devices  # noqa: E402
+import discordance as d  # noqa: E402
 import relation as r  # noqa: E402
 import share as s  # noqa: E402
 
@@ -358,3 +360,38 @@ def test_hex_cells_rejects_nan_or_negative_steps(bad):
             50,
             min_people=1,
         )
+
+
+def test_assign_groups_three_way():
+    answers = pl.DataFrame({"ID": [1, 2, 3, 4], "yes": [True, True, False, True]})
+    walkers = pl.DataFrame({"ID": [1, 2, 3], "steps_100:bout_days": [True, False, True]})
+    g = d.assign_groups(answers, walkers, "steps_100:bout_days").sort("ID")
+    assert g["group"].to_list() == ["Yes, step walker", "Yes, not a step walker", "No"]
+
+
+def test_device_waves_mean_matches_combine():
+    defs = devices.walker_definitions(2.0, 150.0, [100])
+    cols = [
+        "steps",
+        "bout_days_per_week",
+        "purposeful_min",
+        "step_bout100_min",
+        "step_bout100_days_per_week",
+    ]
+    dev = pl.DataFrame(
+        {
+            "ID": [1, 1, 2],
+            "wave": ["06", "08", "06"],
+            "valid": [True, True, True],
+            "steps": [5000.0, 7000.0, 3000.0],
+            "bout_days_per_week": [3.0, 1.0, 0.0],
+            "purposeful_min": [30.0, 10.0, 0.0],
+            "step_bout100_min": [20.0, 0.0, 0.0],
+            "step_bout100_days_per_week": [3.0, 0.0, 0.0],
+        }
+    )
+    w = devices.device_waves(dev, defs, cols)
+    mean = w["mean"].sort("ID")
+    assert mean["steps"].to_list() == [6000.0, 3000.0]
+    assert mean["steps_100:bout_days"].to_list() == [False, False]  # (3 + 0) / 2 = 1.5 < 2
+    assert w["06"].sort("ID")["steps_100:bout_days"].to_list() == [True, False]

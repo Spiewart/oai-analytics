@@ -194,6 +194,68 @@ value = 20261112
 status = "assumed"
 source = "Fixed seed for the AUC bootstrap"
 
+[discordance.comparisons]
+value = { primary = ["item96", "steps_100:bout_days", "mean"], counts_mv = ["item96", "counts_mv:bout_days", "mean"], pase48 = ["pase06_any", "steps_100:bout_days", "06"] }
+status = "confirmed"
+source = "Primary comparison: the user's choice (2026-11-16); the counts_mv and 48-month PASE replications: Claude's choice"
+rationale = "Each is (self-report id, device walker definition, device basis)."
+
+[discordance.anchor_visit]
+value = "06"
+status = "assumed"
+source = "The 48-month visit, the first with step data, anchors the group comparison"
+
+[discordance.change_windows]
+value = [["00", "06"], ["06", "10"]]
+status = "assumed"
+source = "Change in covariates from baseline to the anchor visit, and from the anchor visit to 96 months"
+
+[discordance.nearest_visit_steps]
+value = 1
+status = "assumed"
+source = "A covariate is taken from the nearest visit within this many visit steps of the one wanted"
+
+[discordance.smd_bands]
+value = { small = 0.1, lead = 0.2 }
+status = "assumed"
+source = "Standardised mean differences below small are called negligible; at or above lead they lead the readout"
+
+[discordance.bootstrap_reps]
+value = 1000
+status = "assumed"
+source = "Percentile bootstrap replicates for confidence intervals"
+
+[discordance.seed]
+value = 20261116
+status = "assumed"
+source = "Fixed seed for the discordance bootstrap"
+
+[discordance.trend_visits]
+value = ["00", "01", "03", "05", "06", "08", "10"]
+status = "assumed"
+source = "Visits at which PASE and walking-related covariates are followed over time"
+
+[discordance.trend_covariates]
+value = ["age0", "sex"]
+status = "assumed"
+source = "Adjustment covariates for the group trends"
+
+[discordance.multiplicity]
+value = "holm"
+status = "assumed"
+source = "Holm adjustment across the covariate comparisons"
+
+[discordance.replacement]
+value = "keep_kl4"
+status = "confirmed"
+source = "User's choice (2026-11-16): a knee replacement keeps the knee's last KL grade 4 rather than censoring"
+choices = ["keep_kl4", "censor"]
+
+[discordance.kl_coverage_gap]
+value = 0.10
+status = "assumed"
+source = "A group's KL-grade coverage may differ from the others by up to this share before the comparison is flagged"
+
 [variants.primary_cadence_60]
 description = "Headline walking minute = >= 60 steps/min (slow walking)"
 set = { "walking.primary_cadence" = 60 }
@@ -213,3 +275,7 @@ set = { "pase.device_pairing" = "two_wave_mean" }
 [variants.yes_without_amount_as_walker]
 description = "A 96-month 'yes' with no amount answers counts as a walker"
 set = { "exposure.yes_without_amount_as" = "walker" }
+
+[variants.replacement_censor]
+description = "A knee replacement censors the knee instead of keeping KL grade 4"
+set = { "discordance.replacement" = "censor" }
