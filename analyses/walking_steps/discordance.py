@@ -69,11 +69,11 @@ MEASURES: dict[str, tuple[str, str, str]] = {
     "age": ("demographic", "continuous", "V06AGE"),
     "age0": ("demographic", "continuous", "V00AGE"),
     "sex": ("demographic", "binary", "P02SEX (1 male, 2 female)"),
-    "race": ("demographic", "categorical", "P02RACE"),
-    "education": ("demographic", "categorical", "V00EDCV"),
-    "income": ("demographic", "categorical", "V00INCOME"),
+    "race": ("demographic", "categorical", "P02RACE, merged by discordance.category_groups"),
+    "education": ("demographic", "categorical", "V00EDCV, merged by discordance.category_groups"),
+    "income": ("demographic", "categorical", "V00INCOME, merged by discordance.category_groups"),
     "married": ("demographic", "binary", "V00MARITST = 1 (married)"),
-    "subcohort": ("demographic", "categorical", "V00COHORT"),
+    "subcohort": ("demographic", "categorical", "V00COHORT, merged by discordance.category_groups"),
     "site": ("demographic", "categorical", "V00SITE"),
     # fixed: the 96-month item's amounts (category codes)
     "amount_years": ("item_amount", "categorical", "V10WKYRAR4 (walking.walking_answers)"),
@@ -865,3 +865,26 @@ def render_markdown(
         defining = [*DEFINING, *(self_report_measures or {}).get(c, [])]
         lines += render_trends(trends, c, gap(c) > threshold, defining, alpha)
     return "\n".join(lines)
+
+
+def merge_categories(fixed: pl.DataFrame, mapping: dict[str, dict[str, int]]) -> pl.DataFrame:
+    """The fixed-measure long frame (ID, measure, value, ...) with each mapped measure's release
+    codes replaced by their merged group codes (`mapping`: measure -> {release code: group}).
+
+    Nulls stay null; a non-null code missing from a measure's mapping raises.
+    """
+    out = fixed
+    for measure, groups in mapping.items():
+        codes = {float(k): float(v) for k, v in groups.items()}
+        rows = pl.col("measure") == measure
+        seen = set(out.filter(rows)["value"].drop_nulls().to_list())
+        unmapped = seen - set(codes)
+        if unmapped:
+            raise ValueError(f"{measure}: codes {sorted(unmapped)} have no group in the mapping")
+        out = out.with_columns(
+            pl.when(rows)
+            .then(pl.col("value").replace_strict(codes, default=None, return_dtype=pl.Float64))
+            .otherwise(pl.col("value"))
+            .alias("value")
+        )
+    return out

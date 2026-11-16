@@ -97,8 +97,10 @@ for name, (pro_id, _, key) in comparisons.items():
     fixed.append(fixed_long(desc).with_columns(pl.lit(name).alias("comparison")))
     if pro_id == "item96":  # the item's own amount answers describe the item comparisons only
         fixed.append(amounts.with_columns(pl.lit(name).alias("comparison")))
+# rare categories merged (ledger discordance.category_groups), so summaries and SMDs use them
+category_groups = {m: dict(g) for m, g in A["discordance.category_groups"].items()}
 fixed = (
-    pl.concat(fixed)
+    d.merge_categories(pl.concat(fixed, how="vertical_relaxed"), category_groups)
     .select("comparison", "ID", "measure", "value")
     .sort("comparison", "measure", "ID", nulls_last=False)
 )

@@ -915,3 +915,23 @@ def test_discordance_text_renders_trends():
     assert "| kl_worse" not in stage2
     for word in ("bias", "over-report", "overreport", "false positive", "correction", "misclassif"):
         assert word not in text.lower()
+
+
+def test_merge_categories_maps_release_codes():
+    fixed = pl.DataFrame(
+        {
+            "ID": [1, 2, 3, 4, 5, 6],
+            "measure": ["race", "race", "race", "race", "education", "age"],
+            "value": [0.0, 1.0, 2.0, 3.0, 4.0, 61.0],
+        }
+    )
+    mapping = {
+        "race": {"1": 1, "2": 2, "0": 3, "3": 3},
+        "education": {"0": 1, "1": 1, "2": 2, "3": 3, "4": 3, "5": 4},
+    }
+    out = d.merge_categories(fixed, mapping)
+    assert out["value"].to_list() == [3.0, 1.0, 2.0, 3.0, 3.0, 61.0]
+    with pytest.raises(ValueError, match="race"):
+        d.merge_categories(fixed.with_columns(pl.lit(7.0).alias("value")), mapping)
+    nulls = fixed.with_columns(pl.lit(None, dtype=pl.Float64).alias("value"))
+    assert d.merge_categories(nulls, mapping)["value"].null_count() == 6
