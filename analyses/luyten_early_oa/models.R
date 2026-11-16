@@ -24,8 +24,8 @@ if (identical(A[["exposure.s2_coding"]], "levels")) {
   s2_terms <- c(s2_any = "s2")
 }
 
-metrics <- list()
-put <- function(key, value) metrics[[key]] <<- value
+metrics <- oaimodels::metrics_recorder()
+put <- metrics$put
 
 # Events per level of the term's variable, so a sparse level is not fitted
 too_sparse <- function(d, variable, outcome) {
@@ -49,7 +49,7 @@ fit_rows <- function(table, d, variable, terms, other, outcome) {
                                          corstr = A[["model.corstr"]]),
                  error = function(e) list(or = NA_real_, lo = NA_real_, hi = NA_real_))
       key <- sprintf("%s.%s.%s.%s", table, outcome, term, model)
-      put(key, est[["or"]]); put(paste0(key, ".lo"), est[["lo"]]); put(paste0(key, ".hi"), est[["hi"]])
+      metrics$put_est(key, est)
       rows[[length(rows) + 1]] <- data.frame(outcome = outcome, exposure = variable, model = model,
                                              term = term, n = nrow(dd), events = sum(dd[[outcome]]),
                                              or = est[["or"]], lo = est[["lo"]], hi = est[["hi"]])
@@ -58,15 +58,12 @@ fit_rows <- function(table, d, variable, terms, other, outcome) {
   do.call(rbind, rows)
 }
 
-write_table <- function(rows, name) {
-  utils::write.csv(do.call(rbind, rows), file.path(out_dir, sprintf("table_%s.csv", name)),
-                   row.names = FALSE)
-}
 
 # G1: early OA vs controls (KL 0-1 knees in the denominator that are not early OA)
 g1 <- knees[!is.na(knees$luyten) & knees$kl01 %in% TRUE, , drop = FALSE]
 g1$early <- as.integer(g1$luyten)
-write_table(lapply(outcomes, function(o) fit_rows("g1", g1, "early", c(early = "early"), NULL, o)), "g1")
+oaimodels::write_rows(lapply(outcomes, function(o) fit_rows("g1", g1, "early", c(early = "early"), NULL, o)),
+                      "table_g1", out_dir)
 
 # C1, C2: exam crepitus (binary) and self-reported crepitus, each adjusted for the other
 framing <- function(table, exposure) {
@@ -79,9 +76,8 @@ framing <- function(table, exposure) {
   }
   rows
 }
-write_table(framing("c1", "f1_exposure"), "c1")
-write_table(framing("c2", "f2_exposure"), "c2")
+oaimodels::write_rows(framing("c1", "f1_exposure"), "table_c1", out_dir)
+oaimodels::write_rows(framing("c2", "f2_exposure"), "table_c2", out_dir)
 
-utils::write.csv(data.frame(metric = names(metrics), value = unlist(metrics)),
-                 file.path(out_dir, "metrics_models.csv"), row.names = FALSE)
+metrics$write(out_dir)
 cat("Tables G1, C1 and C2 written to", out_dir, "\n")

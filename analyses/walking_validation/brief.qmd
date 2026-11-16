@@ -38,27 +38,18 @@ knitr:
 ```{r setup}
 run <- oaireport::load_results()$default
 source("brief_figures.R")  # Figures 1-3, shared with abstract.qmd
-assumption <- function(key) run$assumptions$assumptions[[key]]$value
-num <- function(x, digits = 2) formatC(x, format = "f", digits = digits, big.mark = ",")
-count <- function(x) formatC(x, format = "d", big.mark = ",")
+assumption <- function(key) oaireport::run_assumption(run, key)
+num <- function(x, digits = 2) oaireport::fmt_num(x, digits, minus = FALSE)
+count <- oaireport::fmt_count
 fmt <- function(x) format(x, trim = TRUE, big.mark = ",")
-pct <- function(x) paste0(num(100 * x, 0), "%")
+pct <- function(x) oaireport::fmt_pct(x, minus = FALSE)
 range_text <- function(x, digits = 2) {
   lo <- num(min(x), digits); hi <- num(max(x), digits)
   if (lo == hi) lo else paste0(lo, "–", hi)
 }
 colours <- oaireport::brief_colours
 # The one row matching every condition; stops when there is none or several (a changed schema)
-one <- function(df, ...) {
-  cond <- list(...)
-  keep <- Reduce(`&`, Map(function(col, value) !is.na(df[[col]]) & df[[col]] == value, names(cond), cond))
-  row <- df[keep, , drop = FALSE]
-  if (nrow(row) != 1) {
-    stop("expected one row for ", paste(names(cond), unlist(cond), sep = " = ", collapse = ", "),
-         ", found ", nrow(row), call. = FALSE)
-  }
-  row
-}
+one <- oaireport::one_row
 cls <- run$validity_classification
 cp <- run$validity_components_pase
 cp$visit <- sprintf("%02d", as.integer(cp$visit))
@@ -78,7 +69,7 @@ item_cuts <- unlist(assumption("components.item_times_cuts"))
 # oaireport::cut_labels() names each cut: "At least <label>", or the label alone at the top level
 pase_names <- oaireport::cut_labels(pase_cuts, labels$pase_days, first_level = 0)
 item_names <- oaireport::cut_labels(item_cuts, labels$times, first_level = 1)
-lower_first <- function(x) paste0(tolower(substr(x, 1, 1)), substring(x, 2))
+lower_first <- oaireport::lower_first
 visits <- c("06", "08")
 wave_names <- c(`06` = "48 months", `08` = "72 months")
 paired <- assumption("pase.device_pairing") == "adjacent_wave"

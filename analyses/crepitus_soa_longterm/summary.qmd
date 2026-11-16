@@ -37,7 +37,7 @@ library(ggplot2)
 
 runs <- oaireport::load_results()
 sibling <- function(name, label = "default") {
-  oaireport::load_results(root = file.path(dirname(Sys.getenv("OAI_RESULTS_ROOT")), name), labels = label)[[label]]
+  oaireport::load_results(analysis = name, labels = label)[[label]]
 }
 lo <- sibling("lo2018_crepitus")
 ex <- sibling("exam_crepitus_soa")
@@ -45,25 +45,17 @@ lt <- runs[["default"]]
 lt120 <- runs[["horizon_120"]]
 lt48 <- runs[["lo2018_48m"]]
 
-one <- function(x, what) {
-  if (length(x) != 1 || is.na(x)) stop("summary.qmd: no single value for ", what, call. = FALSE)
-  x
-}
-num <- function(x, digits = 2) sub("^-", "−", formatC(x, format = "f", digits = digits, big.mark = ","))
-count <- function(x) formatC(x, format = "d", big.mark = ",")
-pct <- function(x, digits = 0) paste0(num(100 * x, digits), "%")
+one <- oaireport::one_value
+num <- oaireport::fmt_num
+count <- oaireport::fmt_count
+pct <- oaireport::fmt_pct
 or_ci <- function(or, lo, hi) sprintf("%s [95%% CI %s–%s]", num(or), num(lo), num(hi))
 pval <- function(p) if (p < 0.001) "p<0.001" else sprintf("p=%s", num(p, if (p < 0.01) 3 else 2))
-m_of <- function(run, key) one(run$metrics[[key]], key)
+m_of <- oaireport::run_metric
 
 # Rows of a table: exam_crepitus_soa (table_e*: group, model, n, events, exposed_*, or, lo, hi) and
 # crepitus_soa_longterm (table_l*: measure, group, model, term, n, events, or, lo, hi, p)
-row_of <- function(df, ...) {
-  keep <- Reduce(`&`, Map(function(col, val) df[[col]] == val, names(list(...)), list(...)))
-  r <- df[!is.na(keep) & keep, , drop = FALSE]
-  if (nrow(r) != 1) stop("summary.qmd: ", nrow(r), " rows for ", paste(names(list(...)), list(...), collapse = ", "), call. = FALSE)
-  r
-}
+row_of <- oaireport::one_row
 exam_or <- function(table, model, group = "all") row_of(table, group = group, model = model)
 long_or <- function(run, table, model, group = "all", measure = "exam") {
   row_of(run[[table]], measure = measure, group = group, model = model, term = if (measure == "exam") "exam" else "always")

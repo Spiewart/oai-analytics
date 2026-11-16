@@ -17,6 +17,7 @@ from crepitus import (
 )
 
 from oai.assumptions import current
+from oai.results import md_table
 
 A = current()
 results = Path(os.environ["OAI_RESULTS_DIR"])
@@ -33,14 +34,6 @@ retention(long, people).write_csv(results / "retention.csv")
 
 events = event_table(knee_table(A), threshold)
 events.write_csv(results / "at_risk_events.csv")
-
-
-def md_table(df: pl.DataFrame) -> str:
-    head = "| " + " | ".join(df.columns) + " |\n|" + "---|" * len(df.columns) + "\n"
-    rows = "".join(
-        "| " + " | ".join("" if v is None else str(v) for v in r) + " |\n" for r in df.iter_rows()
-    )
-    return head + rows
 
 
 collected = avail.filter(pl.col("collected") & (pl.col("cohort") == ALL))

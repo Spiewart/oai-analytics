@@ -38,11 +38,8 @@ source("pase_figures.R")
 limit <- 5000      # the submission's characters: title, body and spaces
 per_image <- 560   # an image is charged up to this many
 
-one <- function(x, what) {
-  if (length(x) != 1 || is.na(x)) stop("abstract_pase.qmd: no single value for ", what, call. = FALSE)
-  x
-}
-metric <- function(key) one(run$metrics[[key]], key)
+one <- oaireport::one_value
+metric <- function(key) oaireport::run_metric(run, key)
 # A contrast against non-walkers (who answered no); numbers by means (as the figures show them),
 # yes/no outcomes (any walking, each band of weekly hours) by shares
 contrast <- function(grouping, visit, outcome, level, col,

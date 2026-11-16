@@ -16,6 +16,7 @@ pytestmark = pytest.mark.skipif(shutil.which("Rscript") is None, reason="Rscript
 
 def covariates(model: str, waves: list[str]) -> list[str]:
     code = (
+        'pkgload::load_all("oaimodels", quiet = TRUE, export_all = FALSE); '
         f'source("{HELPER}"); '
         'A <- list("model.covariates" = c("age", "sex", "bmi", "wear_hr"), '
         '"model.covariates_2" = c("kl_max", "womac_pain_max")); '

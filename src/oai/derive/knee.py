@@ -26,6 +26,11 @@ def find_col(df: pl.DataFrame, name: str, where: str = "") -> str:
     raise KeyError(f"column {name!r} not found" + (f" in {where}" if where else ""))
 
 
+def select_cols(df: pl.DataFrame, **columns: str) -> pl.DataFrame:
+    """Select and rename columns found case-insensitively: select_cols(df, age="V00AGE")."""
+    return df.select([pl.col(find_col(df, src)).alias(dst) for dst, src in columns.items()])
+
+
 def _side(col: Callable[[str], str]) -> pl.Expr:
     return pl.col(col("SIDE")).replace_strict(SIDE_CODES, return_dtype=pl.String).alias("SIDE")
 

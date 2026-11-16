@@ -67,7 +67,11 @@ unhyphenated (the body text is justified and hyphenated, which garbles narrow ce
 
 | Function | Purpose |
 |---|---|
-| `load_results()` | Every listed run: its CSVs by name, `metrics`, `assumptions`, `run_info` |
+| `load_results()` | Every listed run: its CSVs by name, `metrics`, `assumptions`, `run_info`. `load_results(analysis = "lo2018_crepitus", labels = "default")` reads another analysis's runs (its folder beside `OAI_RESULTS_ROOT`) |
+| `fmt_num(x, digits, minus)`, `fmt_count(x)`, `fmt_pct(x, digits, minus)` | Numbers for text and tables: thousands separators; negatives with a true minus (U+2212) unless `minus = FALSE` |
+| `one_value(x, what)`, `one_row(df, col = value, …)` | The single value, or the single row matching every condition; stop the render otherwise, so a changed results schema cannot print the wrong number |
+| `run_assumption(run, key)`, `run_metric(run, key)` | A run's resolved assumption; a run's metric (stops when missing) |
+| `lower_first(x)` | A label used mid-sentence |
 | `theme_oai()`, `oai_palette`, `oai_font()` | ACR journal style: Arial 7–9 pt, Okabe–Ito colours in fixed order |
 | `save_figure(plot, name, "1col"/"2col")` | `figures/<name>.pdf` + 300 dpi `.png` at 3.5 in / 7 in |
 | `forest_plot(estimates, facet = , sources = )` | Odds ratios by outcome, up to four sources |

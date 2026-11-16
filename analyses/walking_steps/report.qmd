@@ -31,19 +31,12 @@ knitr:
 library(ggplot2)
 run <- oaireport::load_results()$default
 colours <- oaireport::brief_colours
-assumption <- function(key) run$assumptions$assumptions[[key]]$value
-num <- function(x, digits = 2) formatC(x, format = "f", digits = digits, big.mark = ",")
-count <- function(x) formatC(x, format = "d", big.mark = ",")
-pct <- function(x) paste0(num(100 * x, 0), "%")
+assumption <- function(key) oaireport::run_assumption(run, key)
+num <- function(x, digits = 2) oaireport::fmt_num(x, digits, minus = FALSE)
+count <- oaireport::fmt_count
+pct <- function(x) oaireport::fmt_pct(x, minus = FALSE)
 wave <- function(x) sprintf("%02d", as.integer(x))
-one <- function(df, ...) {
-  cond <- list(...)
-  keep <- Reduce(`&`, Map(function(col, value) !is.na(df[[col]]) & df[[col]] == value, names(cond), cond))
-  row <- df[keep, , drop = FALSE]
-  if (nrow(row) != 1) stop("expected one row for ", paste(names(cond), unlist(cond), sep = " = ", collapse = ", "),
-                           ", found ", nrow(row), call. = FALSE)
-  row
-}
+one <- oaireport::one_row
 share <- run$walking_share; share$visit <- wave(share$visit)
 pb <- run$cadence_bands_person; pb$visit <- wave(pb$visit)
 acc <- run$pro_accuracy

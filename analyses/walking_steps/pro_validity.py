@@ -17,6 +17,7 @@ from devices import device_inputs, device_waves
 from pro import accuracy, auc_with_ci, self_reports, spearman
 
 from oai.assumptions import current
+from oai.results import md_table
 
 A = current()
 frames, results = Path(os.environ["OAI_FRAME_DIR"]), Path(os.environ["OAI_RESULTS_DIR"])
@@ -89,11 +90,6 @@ def fmt(x: float | None) -> str:
     return "" if x is None else f"{x:.2f}"
 
 
-def md(df: pl.DataFrame) -> str:
-    head = "| " + " | ".join(df.columns) + " |\n|" + "---|" * len(df.columns) + "\n"
-    return head + "".join("| " + " | ".join(str(v) for v in r) + " |\n" for r in df.iter_rows())
-
-
 def summary(rule: str) -> str:
     rows = acc.filter(pl.col("definition").str.ends_with(f":{rule}")).with_columns(
         (
@@ -103,7 +99,7 @@ def summary(rule: str) -> str:
         ).alias("se_sp")
     )
     wide = rows.pivot(on="family", index=["pro_label", "device", "n"], values="se_sp")
-    return md(wide.rename({"pro_label": "Self-report", "device": "Device"}))
+    return md_table(wide.rename({"pro_label": "Self-report", "device": "Device"}))
 
 
 text = f"""# Self-reported walking against device walking [{A.label}]

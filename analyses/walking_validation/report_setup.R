@@ -5,9 +5,10 @@
 
 run <- oaireport::load_results()$default
 # A true minus sign for negatives, as oaireport::fmt_ci prints them
-num <- function(x, digits = 2) sub("^-", "−", formatC(x, format = "f", digits = digits, big.mark = ","))
-count <- function(x) formatC(x, format = "d", big.mark = ",")
-pct <- function(x, digits = 0) paste0(num(100 * x, digits), "%")
+num <- oaireport::fmt_num
+count <- oaireport::fmt_count
+pct <- oaireport::fmt_pct
+lower_first <- oaireport::lower_first
 pct_range <- function(x) {
   lo <- num(100 * min(x), 0)
   hi <- num(100 * max(x), 0)
@@ -34,7 +35,7 @@ model_names <- c(or_unadj = "Unadjusted", or_adj = "Adjusted")
 sample_names <- c(validation = "Validation", lo_subset = "Lo 2022 subset")
 wave_names <- c(`06` = "48 months", `08` = "72 months", `10` = "96 months")
 wave <- function(x) named(sprintf("%02d", as.integer(x)), wave_names)
-assumption <- function(key) run$assumptions$assumptions[[key]]$value
+assumption <- function(key) oaireport::run_assumption(run, key)
 cls <- run$validity_classification
 pick <- function(sample, measure, col = "estimate") cls[[col]][cls$sample == sample & cls$measure == measure]
 youden <- function(sample) pick(sample, "se") + pick(sample, "sp") - 1

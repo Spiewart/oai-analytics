@@ -14,7 +14,7 @@ fit_or <- function(d, rhs) {
   oaimodels::fit_knee_gee(d, rhs, corstr = A[["model.corstr"]])[c("or", "lo", "hi")]
 }
 
-metrics <- list()
+metrics <- oaimodels::metrics_recorder()
 rows <- list()
 for (o in outcomes) {
   d <- frame[!is.na(frame[[o]]), unique(c("ID", "walker", base_covariates, o))]
@@ -24,21 +24,18 @@ for (o in outcomes) {
   d <- d[order(d$ID), ]
   for (g in c("walkers", "nonwalkers")) {
     part <- d[d$walker == (g == "walkers"), ]
-    metrics[[sprintf("t2.%s.%s.events", o, g)]] <- sum(part$y)
-    metrics[[sprintf("t2.%s.%s.n", o, g)]] <- nrow(part)
+    metrics$put(sprintf("t2.%s.%s.events", o, g), sum(part$y))
+    metrics$put(sprintf("t2.%s.%s.n", o, g), nrow(part))
   }
   for (name in names(formulas)) {
     est <- fit_or(d, formulas[[name]])
-    metrics[[sprintf("t2.%s.%s", o, name)]] <- est[["or"]]
-    metrics[[sprintf("t2.%s.%s.lo", o, name)]] <- est[["lo"]]
-    metrics[[sprintf("t2.%s.%s.hi", o, name)]] <- est[["hi"]]
+    metrics$put_est(sprintf("t2.%s.%s", o, name), est)
     rows[[length(rows) + 1]] <- data.frame(
       outcome = o, model = name, n = nrow(d), events = sum(d$y),
       or = est[["or"]], lo = est[["lo"]], hi = est[["hi"]]
     )
   }
 }
-utils::write.csv(do.call(rbind, rows), file.path(out_dir, "table2.csv"), row.names = FALSE)
-utils::write.csv(data.frame(metric = names(metrics), value = unlist(metrics)),
-                 file.path(out_dir, "metrics_models.csv"), row.names = FALSE)
+oaimodels::write_rows(rows, "table2", out_dir)
+metrics$write(out_dir)
 cat("Table 2 written to", out_dir, "\n")

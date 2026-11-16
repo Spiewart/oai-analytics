@@ -64,6 +64,7 @@ def test_linear_data_give_a_nonsignificant_nonlinear_term():
 
 def covariates(model: str, waves: list[str], level: str) -> list[str]:
     return r_json(
+        'pkgload::load_all("oaimodels", quiet = TRUE, export_all = FALSE); '
         f'source("{COVARIATES}"); '
         'A <- list("model.covariates" = c("age", "sex", "bmi", "wear_hr"), '
         '"model.covariates_2_knee" = c("kl48", "womac48"), '

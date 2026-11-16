@@ -17,6 +17,7 @@ from oai.assumptions import Resolved
 from oai.derive.crepitus import crepitus_values
 from oai.derive.knee import KNEE_KEYS, SIDE_CODES, find_col, frequent_knee_pain
 from oai.loader import read_table
+from oai.results import metrics_frame
 
 TF_FEATURES = ("JSM", "JSL", "OSFM", "OSTM", "OSFL", "OSTL")
 JSN = ("JSM", "JSL")
@@ -200,7 +201,4 @@ def anchor_metrics(frame: pl.DataFrame) -> pl.DataFrame:
         "m.structural.events": int(frame["structural"].sum()),
         "m.structural_sx.events": int(frame["structural_sx"].sum()),
     }
-    return pl.DataFrame(
-        {"metric": list(m), "value": [float(v) for v in m.values()]},
-        schema={"metric": pl.String, "value": pl.Float64},
-    )
+    return metrics_frame(m)

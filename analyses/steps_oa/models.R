@@ -84,7 +84,7 @@ band_of <- function(steps) {
 
 # ------------------------------------------------------------------ recording
 rows <- list()
-metrics <- list()
+metrics <- oaimodels::metrics_recorder()
 na_est <- c(estimate = NA_real_, lo = NA_real_, hi = NA_real_)
 record <- function(table, exposure, outcome, term, model, n, events, est, dropped = 0L) {
   rows[[length(rows) + 1]] <<- data.frame(
@@ -93,12 +93,10 @@ record <- function(table, exposure, outcome, term, model, n, events, est, droppe
     hi = unname(est[["hi"]]), dropped = dropped
   )
   key <- sprintf("%s.%s.%s.%s.%s", table, exposure, outcome, term, model)
-  metrics[[key]] <<- unname(est[["estimate"]])
-  metrics[[paste0(key, ".lo")]] <<- unname(est[["lo"]])
-  metrics[[paste0(key, ".hi")]] <<- unname(est[["hi"]])
-  metrics[[paste0(key, ".n")]] <<- n
-  metrics[[paste0(key, ".events")]] <<- events
-  if (isTRUE(dropped > 0)) metrics[[paste0(key, ".dropped_separated")]] <<- dropped
+  metrics$put_est(key, est, "estimate")
+  metrics$put(paste0(key, ".n"), n)
+  metrics$put(paste0(key, ".events"), events)
+  if (isTRUE(dropped > 0)) metrics$put(paste0(key, ".dropped_separated"), dropped)
 }
 complete <- function(d, vars) d[stats::complete.cases(d[, unique(vars), drop = FALSE]), , drop = FALSE]
 knees_n <- function(d) nrow(unique(d[, c("ID", "SIDE")]))
@@ -396,6 +394,5 @@ for (table in TABLES) {
   utils::write.csv(all_rows[all_rows$table == table, , drop = FALSE],
                    file.path(out_dir, sprintf("table_%s.csv", table)), row.names = FALSE)
 }
-utils::write.csv(data.frame(metric = names(metrics), value = unlist(metrics)),
-                 file.path(out_dir, "metrics_models.csv"), row.names = FALSE)
+metrics$write(out_dir)
 cat("Tables", paste(TABLES, collapse = ", "), "written to", out_dir, "\n")
