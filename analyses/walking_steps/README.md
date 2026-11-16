@@ -81,5 +81,21 @@ The step bands are `walking.band_edges`. The hexbin x-axis stops at the `relatio
 ## Caveats
 
 - Steps are counted per minute, so a minute only partly spent walking shows a diluted cadence: 30 seconds at 100 steps/min records 50 steps. Higher thresholds therefore understate walking.
-- A hip-worn GT1M records few steps during cycling, swimming or upper-body work. Those counts land in the "not walking" share at every threshold.
+- A hip-worn GT1M records few steps during cycling, swimming or upper-body work. Those counts land in the "not walking" share at every threshold. The monitoring logs recorded only the dates the device was put on and taken off, with no activity diary, so these activities cannot be identified.
 - Pooled shares are weighted towards the most active people. The per-person quartiles show the typical participant.
+
+## About the step files
+
+The Northwestern accelerometry group answered our questions about the files (2026-11-16):
+
+- **Missing steps.** Steps are missing for 2 participants at 48 months and 9 at 72 months. They are missing because the "step counts" option was skipped at download, and the group reports that this happened at random. Leaving them out should not bias the sample.
+- **File name.** "_modified" in the 72-month file name (`StepMinbyMin08_modified`) has no meaning. There is no other version.
+- **Device settings.** GT1M settings were the same at both waves, so 48- and 72-month steps can be compared directly.
+- **200 steps a minute.** No cap was set. 200 is the highest value recorded, reached once in each wave, and the `relation` hexbin's 0–200 axis covers every minute.
+- **Steps in minutes with zero counts.** About 200 such minutes at 48 months and 800 at 72 months. The group could not say whether this is a known GT1M artifact. They are kept as recorded.
+- **Still open.** These questions had no answer from the data team:
+  - how accurate hip-worn GT1M steps are at slow walking speeds in older adults with knee OA;
+  - which cadence and bout rules define walking in this population;
+  - which waves and step definitions Lo et al. (2015) used.
+
+  The cadence thresholds therefore remain ledger choices with no published standard (`walking.primary_cadence`, `reference.step_cadences`).
