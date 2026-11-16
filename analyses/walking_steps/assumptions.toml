@@ -262,6 +262,41 @@ status = "assumed"
 source = "AllClinical V##CEMPLOY (EMPLOY): 1 works for pay, 2 unpaid work for family business, 3 not working in part due to health, 4 not working for other reasons"
 rationale = "Employed = working, paid or unpaid; refused or missing stay null"
 
+[discordance.visit_order]
+value = "trend_visits"
+status = "assumed"
+source = "Claude's choice (Task 4): 'within one scheduled visit' counts steps along discordance.trend_visits (the clinic visits 00, 01, 03, 05, 06, 08, 10), not along every oai.visits code, whose phone and remote contacts hold none of the measures"
+choices = ["trend_visits"]
+
+[discordance.binary_change]
+value = "continuous"
+status = "assumed"
+source = "Claude's choice (Task 4): a change in a 0/1 measure is -1, 0 or 1, so the change windows summarise and compare it as continuous (mean change, pooled-SD SMD); the level stays binary"
+choices = ["continuous"]
+
+[discordance.season_coding]
+value = "first_valid_day_month"
+status = "assumed"
+source = "Claude's choice (Task 4): AccelDataByDay has the monitoring month only, no date; season is the meteorological season (Dec-Feb winter, Mar-May spring, Jun-Aug summer, Sep-Nov autumn) of the first valid day's month; over the mean of valid waves, the earliest valid wave's season"
+choices = ["first_valid_day_month"]
+
+[discordance.weekend_days]
+value = "release_valid_days"
+status = "assumed"
+source = "Claude's choice (Task 4): weekend_share is the share of AccelDataByDay's valid days (the release's wear-valid days, not this analysis's step-complete days) that are Saturday or Sunday, averaged over the basis's valid waves"
+choices = ["release_valid_days"]
+
+[discordance.kl_gap_rule]
+value = "max_over_visits"
+status = "assumed"
+source = "Claude's choice (Task 4): the KL-coverage gap is the largest, over discordance.trend_visits, of the absolute difference between the two Yes groups' shares with a KL reading (denominator: everyone in the group)"
+choices = ["max_over_visits"]
+
+[discordance.self_report_context]
+value = ["walking_any", "hours_5plus"]
+status = "assumed"
+source = "Claude's choice (Task 4): for the PASE comparison these come from PASE item 2, the self-report that forms the groups, so DISCORDANCE.md shows them as context, not leads (they stay in discordance_screen.csv)"
+
 # Knee outcome keys read by oai.derive.knee_outcomes.knee_status (KL and replacement for the
 # discordance long table), copied with their values from analyses/steps_oa/assumptions.toml.
 

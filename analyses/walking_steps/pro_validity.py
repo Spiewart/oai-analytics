@@ -13,7 +13,7 @@ import os
 from pathlib import Path
 
 import polars as pl
-from devices import COUNT_MEASURES, device_waves, step_bout_measures, walker_definitions
+from devices import device_inputs, device_waves
 from pro import accuracy, auc_with_ci, self_reports, spearman
 
 from oai.assumptions import current
@@ -21,13 +21,7 @@ from oai.assumptions import current
 A = current()
 frames, results = Path(os.environ["OAI_FRAME_DIR"]), Path(os.environ["OAI_RESULTS_DIR"])
 cadences = [int(c) for c in A["reference.step_cadences"]]
-step_measures = ["steps", "peak_cadence"]
-step_measures += [f"cadence{c}_min" for c in cadences]
-step_measures += [m for c in cadences for m in step_bout_measures(c)]
-measures = COUNT_MEASURES + step_measures
-definitions = walker_definitions(
-    A["reference.min_bout_days_per_week"], A["reference.min_bout_minutes_per_week"], cadences
-)
+definitions, measures = device_inputs(A)
 missing = set(A["validity.auc_measures"]) - set(measures)
 if missing:
     raise ValueError(f"validity.auc_measures has measures this step does not build: {missing}")

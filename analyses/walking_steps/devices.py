@@ -80,3 +80,15 @@ def device_waves(device: pl.DataFrame, definitions, measures: list[str]) -> dict
         wave["mean"].select("ID"), on="ID", how="semi"
     )
     return wave
+
+
+def device_inputs(A) -> tuple[list, list[str]]:
+    """(walker definitions, device measures) as pro_validity and discordance_frame use them."""
+    cadences = [int(c) for c in A["reference.step_cadences"]]
+    step_measures = ["steps", "peak_cadence"]
+    step_measures += [f"cadence{c}_min" for c in cadences]
+    step_measures += [m for c in cadences for m in step_bout_measures(c)]
+    definitions = walker_definitions(
+        A["reference.min_bout_days_per_week"], A["reference.min_bout_minutes_per_week"], cadences
+    )
+    return definitions, COUNT_MEASURES + step_measures

@@ -572,7 +572,155 @@ def test_screen_runs_without_no_group():
             "end_used": ["06"] * 4,
         }
     )
-    out = d.screen(groups, values, {"bmi": "continuous"}, A_TEST)
+    out = d.screen(groups, values, {"bmi": "continuous"}, A_TEST, min_cell=1)
     assert out["persons_no"].item() == 0 and out["band"].item() == "lead"
     assert out["persons_step"].item() == 2 and out["area"].item() == "health"
     assert out["smd"].item() > 0
+
+
+def test_screen_suppresses_small_groups():
+    groups = pl.DataFrame(
+        {
+            "ID": list(range(1, 13)),
+            "group": ["Yes, step walker"] * 2 + ["Yes, not a step walker"] * 6 + ["No"] * 4,
+        }
+    )
+    values = pl.DataFrame(
+        {
+            "ID": list(range(1, 13)),
+            "measure": ["bmi"] * 12,
+            "window": ["level_06"] * 12,
+            "value": [25.0, 27.0, 30.0, 32.0, 29.0, 31.0, 28.0, 33.0, 26.0, 27.0, 28.0, 29.0],
+            "start_used": ["06"] * 12,
+            "end_used": ["06"] * 12,
+        }
+    )
+    row = d.screen(groups, values, {"bmi": "continuous"}, A_TEST, min_cell=5).row(0, named=True)
+    assert row["summary_step"] == "" and row["persons_step"] is None
+    assert row["summary_no"] == "" and row["persons_no"] is None
+    assert row["persons_not"] == 6 and row["summary_not"] != ""
+    assert row["smd"] is None and row["smd_lo"] is None and row["smd_hi"] is None
+    assert row["band"] == ""
+
+
+def test_summary_never_prints_nan():
+    assert "nan" not in d._summary(np.array([3.0]), "continuous")
+
+
+SCREEN_FIXTURE = pl.DataFrame(
+    {
+        "comparison": ["primary"] * 3,
+        "censored": [False, False, True],
+        "measure": ["bmi", "kl_worse", "womac_pain"],
+        "area": ["health", "knee", "knee"],
+        "window": ["level_06", "level_06", "change_00_06"],
+        "start_used": ["06", "06", "00"],
+        "end_used": ["06", "06", "06"],
+        "persons_step": [300, 200, 250],
+        "persons_not": [800, 500, 700],
+        "persons_no": [280, 150, 260],
+        "summary_step": ["27.10 (4.00)", "2.10 (1.00)", "0.50 (2.00)"],
+        "summary_not": ["29.00 (5.00)", "2.50 (1.10)", "1.20 (2.50)"],
+        "summary_no": ["29.50 (5.20)", "2.60 (1.00)", "1.30 (2.40)"],
+        "smd": [0.42, 0.37, 0.25],
+        "smd_lo": [0.30, 0.20, 0.10],
+        "smd_hi": [0.55, 0.50, 0.40],
+        "band": ["lead", "lead", "lead"],
+    }
+)
+TRENDS_FIXTURE_EMPTY = pl.DataFrame()
+
+
+def test_discordance_text_is_neutral():
+    text = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap=0.0, label="default"
+    )
+    for word in ("bias", "over-report", "overreport", "false positive", "correction", "misclassif"):
+        assert word not in text.lower()
+
+
+def test_discordance_text_lists_leads_and_kl_caveat():
+    text = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap=0.0, label="default"
+    )
+    assert "bmi" in text and "kl_worse" in text and "[default]" in text
+    flagged = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap={"primary": 0.2}, label="default"
+    )
+    assert "KL coverage" in flagged
+    leads = flagged.split("### Leads")[1].split("###")[0]
+    assert "kl_worse" not in leads
+
+
+def test_season_and_weekend_share_from_valid_days():
+    byday = pl.DataFrame(
+        {
+            "ID": [1, 1, 1, 1, 2],
+            "V06VDaySequence": [2, 1, 3, 4, 1],
+            "V06PAMonth": [3, 2, 3, 3, 12],
+            "V06PAWeekDay": ["Sunday", "Saturday", "Monday", "Tuesday", "Friday"],
+        }
+    )
+    cal = d.device_calendar(byday, "06").sort("ID")
+    assert cal["season"].to_list() == [1.0, 1.0]  # first valid day in Feb; December
+    assert cal["weekend_share"].to_list() == [0.5, 0.0]
+    months = pl.DataFrame({"m": list(range(1, 13))})
+    seasons = months.select(d.season(pl.col("m")))["m"].to_list()
+    assert seasons == [1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 1]
+
+
+def test_device_descriptors_mean_basis_averages_valid_waves():
+    device = pl.DataFrame(
+        {
+            "ID": [1, 1, 2],
+            "wave": ["06", "08", "08"],
+            "valid": [True, True, False],
+            "valid_days": [7.0, 5.0, 7.0],
+            "wear_hr": [14.0, 16.0, 15.0],
+            "steps": [5000.0, None, 4000.0],
+            "mv_min": [10.0, 20.0, 5.0],
+        }
+    )
+    cal = pl.DataFrame(
+        {"ID": [1, 1], "wave": ["06", "08"], "season": [2.0, 4.0], "weekend_share": [0.2, 0.4]}
+    )
+    out = d.device_descriptors(device, cal, "mean")
+    assert out.height == 1
+    r = out.row(0, named=True)
+    assert r["valid_days"] == 6.0 and r["steps"] == 5000.0 and r["season"] == 2.0
+    assert r["weekend_share"] == pytest.approx(0.3)
+    assert d.device_descriptors(device, cal, "08")["valid_days"].to_list() == [5.0]
+
+
+def test_kl_coverage_gap_between_yes_groups():
+    groups = pl.DataFrame(
+        {
+            "comparison": ["c"] * 4,
+            "ID": [1, 2, 3, 4],
+            "group": ["Yes, step walker"] * 2 + ["Yes, not a step walker"] * 2,
+        }
+    )
+    long = pl.DataFrame(
+        {
+            "ID": [1, 2, 3, 3],
+            "visit": ["06", "06", "06", "06"],
+            "measure": ["kl_worse"] * 4,
+            "value": [2.0, 3.0, 1.0, 1.0],
+            "censored": [False, False, False, True],
+        }
+    )
+    cov = d.kl_coverage(groups, long)
+    assert cov.filter(pl.col("group") == "Yes, not a step walker")["share"].item() == 0.5
+    assert d.coverage_gaps(cov) == {"c": pytest.approx(0.5)}
+
+
+def test_self_report_measures_are_context_not_leads():
+    text = d.render_markdown(
+        SCREEN_FIXTURE,
+        TRENDS_FIXTURE_EMPTY,
+        coverage_gap=0.0,
+        label="default",
+        self_report_measures={"primary": ["bmi"]},
+    )
+    leads = text.split("### Leads")[1].split("###")[0]
+    assert "bmi" not in leads and "define the groups" in text

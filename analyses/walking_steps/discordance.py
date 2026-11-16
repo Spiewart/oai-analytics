@@ -424,8 +424,8 @@ def _summary(x: np.ndarray, kind: str) -> str:
     if len(x) == 0:
         return ""
     if kind == "continuous":
-        sd = x.std(ddof=1) if len(x) > 1 else float("nan")
-        return f"{x.mean():.2f} ({sd:.2f})"
+        sd = f"{x.std(ddof=1):.2f}" if len(x) > 1 else "-"
+        return f"{x.mean():.2f} ({sd})"
     if kind == "binary":
         return f"{100 * x.mean():.1f}%"
     levels, counts = np.unique(x, return_counts=True)
@@ -438,13 +438,18 @@ def _used(cell: pl.DataFrame, col: str) -> str:
     return "/".join(sorted(set(cell[col].drop_nulls().to_list())))
 
 
-def screen(groups: pl.DataFrame, values: pl.DataFrame, kinds: dict[str, str], A) -> pl.DataFrame:
+def screen(
+    groups: pl.DataFrame, values: pl.DataFrame, kinds: dict[str, str], A, *, min_cell: int
+) -> pl.DataFrame:
     """The stage-1 screen: one row per measure and window.
 
     `groups` is ID, group; `values` is ID, measure, window, value, start_used, end_used (one
     row per person; a level has the one visit in both *_used). Persons are those with a value,
     per group. SMD is "Yes, not a step walker" minus "Yes, step walker"; "No" is summarised
-    only. Count columns are named persons_* so they stay clear of the egress count pattern.
+    only. Count columns are named persons_* so they stay clear of the egress count pattern, which
+    means egress's small-cell check never sees them; so a group with 1..min_cell-1 persons in a
+    cell has its persons_* nulled and summary_* blanked here, and when either "Yes" group is
+    below min_cell the SMD, its CI and the band are left blank.
     """
     reps = int(A["discordance.bootstrap_reps"])
     seed = int(A["discordance.seed"])
@@ -472,8 +477,11 @@ def screen(groups: pl.DataFrame, values: pl.DataFrame, kinds: dict[str, str], A)
             g: cell.filter(pl.col("group") == g)["value"].to_numpy().astype(float) for g in GROUPS
         }
         a, b = vals[GROUPS[1]], vals[GROUPS[0]]
-        est = smd(a, b, kind)
-        lo, hi = smd_ci(a, b, kind, reps, seed)
+        if min(len(a), len(b)) < min_cell:
+            est, lo, hi = None, None, None
+        else:
+            est = smd(a, b, kind)
+            lo, hi = smd_ci(a, b, kind, reps, seed)
         row = {
             "measure": measure,
             "area": MEASURES.get(measure, ("",))[0],
@@ -486,7 +494,223 @@ def screen(groups: pl.DataFrame, values: pl.DataFrame, kinds: dict[str, str], A)
             "band": band(est, bands["small"], bands["lead"]),
         }
         for short, g in zip(_SHORT, GROUPS, strict=True):
-            row[f"persons_{short}"] = len(vals[g])
-            row[f"summary_{short}"] = _summary(vals[g], kind)
+            small = 0 < len(vals[g]) < min_cell
+            row[f"persons_{short}"] = None if small else len(vals[g])
+            row[f"summary_{short}"] = "" if small else _summary(vals[g], kind)
         rows.append(row)
     return pl.DataFrame(rows, schema=schema).sort("measure", "window")
+
+
+# the device week: descriptors over the same waves that define the group
+DEVICE_NUMBERS = ("valid_days", "wear_hr", "steps", "mv_min")
+# steps and MV minutes are part of how the groups are defined: context, never a lead
+DEFINING = ("steps", "mv_min")
+WEEKEND = ("Saturday", "Sunday")
+
+
+def season(month: pl.Expr) -> pl.Expr:
+    """Meteorological season of a month (1-12): 1 winter (Dec-Feb), 2 spring, 3 summer,
+    4 autumn."""
+    return (month.cast(pl.Int64) % 12 // 3 + 1).cast(pl.Float64)
+
+
+def device_calendar(byday: pl.DataFrame, wave: str) -> pl.DataFrame:
+    """ID, wave, season, weekend_share from one wave's AccelDataByDay (one row per valid day).
+
+    Season is that of the monitoring month of the first valid day (the release has the month
+    only, no date); weekend_share is the share of the valid days that are Saturday or Sunday.
+    """
+    v = wave
+    return (
+        byday.select(
+            pl.col("ID").cast(pl.Int64),
+            pl.col(f"V{v}VDaySequence").alias("_day"),
+            pl.col(f"V{v}PAMonth").alias("_month"),
+            pl.col(f"V{v}PAWeekDay").str.strip_chars().is_in(WEEKEND).alias("_weekend"),
+        )
+        .sort("ID", "_day")
+        .group_by("ID", maintain_order=True)
+        .agg(
+            season(pl.col("_month").drop_nulls().first()).alias("season"),
+            pl.col("_weekend").cast(pl.Float64).mean().alias("weekend_share"),
+        )
+        .with_columns(pl.lit(wave).alias("wave"))
+    )
+
+
+def device_descriptors(device: pl.DataFrame, calendar: pl.DataFrame, key: str) -> pl.DataFrame:
+    """ID, valid_days, wear_hr, steps, mv_min, season, weekend_share over a device basis.
+
+    `device` is the person-wave frame (ID, wave, valid, ...); `calendar` is device_calendar for
+    the waves stacked. Basis "06" or "08" is that valid wave; "mean" averages the numbers and
+    weekend_share over the person's valid waves (nulls skipped, as devices.combine) and takes
+    season from the earliest valid wave.
+    """
+    valid = device.filter("valid").select(
+        pl.col("ID").cast(pl.Int64), "wave", *[pl.col(m).cast(pl.Float64) for m in DEVICE_NUMBERS]
+    )
+    if key != "mean":
+        valid = valid.filter(pl.col("wave") == key)
+    joined = valid.join(calendar, on=["ID", "wave"], how="left").sort("ID", "wave")
+    return joined.group_by("ID", maintain_order=True).agg(
+        *[pl.col(m).mean() for m in DEVICE_NUMBERS],
+        pl.col("season").first(),
+        pl.col("weekend_share").mean(),
+    )
+
+
+def kl_coverage(groups: pl.DataFrame, long: pl.DataFrame) -> pl.DataFrame:
+    """comparison, group, visit, share: the share of each group with a KL reading (kl_worse,
+    replacement kept as KL 4) at each visit. `groups` is comparison, ID, group."""
+    kl = long.filter(
+        (pl.col("measure") == "kl_worse") & ~pl.col("censored") & pl.col("value").is_not_null()
+    ).select("ID", "visit")
+    visits = long.select("visit").unique().sort("visit")
+    size = groups.group_by("comparison", "group").agg(pl.len().alias("_size"))
+    have = (
+        groups.join(kl, on="ID")
+        .group_by("comparison", "group", "visit")
+        .agg(pl.len().alias("_have"))
+    )
+    return (
+        size.join(visits, how="cross")
+        .join(have, on=["comparison", "group", "visit"], how="left")
+        .select(
+            "comparison",
+            "group",
+            "visit",
+            (pl.col("_have").fill_null(0) / pl.col("_size")).alias("share"),
+        )
+        .sort("comparison", "group", "visit")
+    )
+
+
+def coverage_gaps(coverage: pl.DataFrame) -> dict[str, float]:
+    """Per comparison: the largest gap, over visits, between the two "Yes" groups' KL coverage."""
+    wide = coverage.filter(pl.col("group").is_in(GROUPS[:2])).pivot(
+        on="group", index=["comparison", "visit"], values="share"
+    )
+    gaps = wide.group_by("comparison").agg(
+        (pl.col(GROUPS[0]) - pl.col(GROUPS[1])).abs().max().alias("gap")
+    )
+    return {r["comparison"]: float(r["gap"] or 0.0) for r in gaps.iter_rows(named=True)}
+
+
+def _fmt(x: float | None) -> str:
+    return "" if x is None else f"{x:.2f}"
+
+
+def _md_table(rows: pl.DataFrame) -> str:
+    cols = [
+        "Measure",
+        "Window",
+        "Visits used",
+        f"{GROUPS[0]}",
+        f"{GROUPS[1]}",
+        f"{GROUPS[2]} (reference)",
+        "SMD (95% CI)",
+    ]
+    out = "| " + " | ".join(cols) + " |\n|" + "---|" * len(cols) + "\n"
+    for r in rows.iter_rows(named=True):
+        used = (
+            r["start_used"]
+            if r["start_used"] == r["end_used"]
+            else (f"{r['start_used']} to {r['end_used']}")
+        )
+        ci = f"{_fmt(r['smd'])} ({_fmt(r['smd_lo'])} to {_fmt(r['smd_hi'])})"
+        cells = [
+            r["measure"],
+            r["window"],
+            used or "",
+            r["summary_step"],
+            r["summary_not"],
+            r["summary_no"],
+            ci,
+        ]
+        out += "| " + " | ".join(str(c) for c in cells) + " |\n"
+    return out
+
+
+def render_markdown(
+    screen: pl.DataFrame,
+    trends: pl.DataFrame,
+    coverage_gap: float | dict[str, float],
+    label: str,
+    threshold: float = 0.10,
+    self_report_measures: dict[str, list[str]] | None = None,
+) -> str:
+    """DISCORDANCE.md: per comparison, the stage-1 leads (band "lead"), in neutral wording.
+
+    `screen` is the stage-1 screen with comparison and censored columns; `trends` may be empty
+    (stage 2 not yet run). `coverage_gap` is the KL-coverage gap between the two "Yes" groups,
+    one number for every comparison or one per comparison; above `threshold` the KL rows carry
+    a caveat and are not listed as leads. Steps and MV minutes define the groups, and so do the
+    measures built from a comparison's own self-report (`self_report_measures`, per comparison:
+    e.g. PASE walking for the PASE comparison), so they are shown as context, never as leads.
+    """
+
+    def gap(c: str) -> float:
+        return coverage_gap.get(c, 0.0) if isinstance(coverage_gap, dict) else coverage_gap
+
+    lines = [
+        f"# Self-reported walkers by device walking status [{label}]",
+        "",
+        f'Stage 1 compares "{GROUPS[1]}" with "{GROUPS[0]}" on each measure: the level at the '
+        "anchor visit, the change up to it and the change after it, and fixed measures. The "
+        "difference is a standardized mean difference (SMD), the second group minus the first, "
+        "with a bootstrap 95% CI; categorical SMDs are unsigned. A lead is |SMD| >= 0.2, a "
+        "reading rule fixed in the ledger before computing. Leads point to measures worth a "
+        f'closer look; they are not tests. "{GROUPS[2]}" is shown for reference only. The '
+        "self-report and the device may capture different aspects of walking, so a difference "
+        "describes the groups and does not say which source is right. Full table: "
+        "discordance_screen.csv.",
+        "",
+    ]
+    comparisons = (
+        screen["comparison"].unique(maintain_order=True).to_list() if screen.height else []
+    )
+    for c in comparisons:
+        rows = screen.filter(pl.col("comparison") == c)
+        main = rows.filter(~pl.col("censored"))
+        flagged = gap(c) > threshold
+        defining = [*DEFINING, *(self_report_measures or {}).get(c, [])]
+        lead = main.filter(
+            (pl.col("band") == "lead")
+            & ~pl.col("measure").is_in(defining)
+            & ~(pl.lit(flagged) & (pl.col("measure") == "kl_worse"))
+        ).sort("area", "measure", "window")
+        lines += [f"## {c}", "", "### Leads", ""]
+        if lead.height:
+            lines += [_md_table(lead)]
+        else:
+            lines += ["No measure reaches |SMD| >= 0.2.", ""]
+        sens = rows.filter(pl.col("censored") & (pl.col("band") == "lead"))
+        if sens.height:
+            lines += [
+                "### Knee-level leads with replaced knees censored (sensitivity)",
+                "",
+                _md_table(sens.sort("measure", "window")),
+            ]
+        if flagged:
+            lines += [
+                "### KL coverage",
+                "",
+                f'KL readings cover the two "Yes" groups differently (largest gap '
+                f"{100 * gap(c):.0f} percentage points at a visit; discordance_kl_coverage.csv), "
+                "so the KL rows are reported in the CSV with this caveat and are not listed as "
+                "leads.",
+                "",
+            ]
+        context = main.filter(pl.col("measure").is_in(defining))
+        if context.height:
+            lines += [
+                "### Measures that define the groups (context, not findings)",
+                "",
+                _md_table(context.sort("measure", "window")),
+            ]
+    lines += ["## Stage 2: trajectories", ""]
+    if trends.height == 0:
+        lines += ["Not yet run.", ""]
+    else:
+        lines += ["See discordance_trends.csv.", ""]
+    return "\n".join(lines)
