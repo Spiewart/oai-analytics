@@ -131,6 +131,30 @@ hit_text <- function(cmp) {
   p <- vapply(h, function(m) tr$p_interaction_holm[tr$comparison == cmp & !tr$censored & tr$measure == m][1], 0)
   paste0(lab(h), " (Holm p ", pval(p), ")", collapse = ", ")
 }
+CHANGE <- c("change_00_06", "change_06_10")
+n_hits <- sum(lengths(hits_main))
+n_tested <- sum(vapply(names(COMP), function(cmp) {
+  d <- tr[tr$comparison == cmp & !tr$censored & !(tr$measure %in% defining(cmp)), ]
+  length(unique(d$measure[!is.na(d$p_interaction_holm)]))
+}, 0))
+mostly_level <- nrow(leads) > 0 && mean(!leads$window %in% CHANGE) >= 0.9 && n_hits <= 0.1 * n_tested
+brief_stage2 <- paste0(
+  "Stage 2 finds that, after Holm, the gap changes across visits for ",
+  if (length(hits_main$primary)) hit_text("primary") else "no measure",
+  " in the primary comparison; in the replications for ", hit_text("counts_mv"),
+  " (item against MV bouts) and ", hit_text("pase48"), " (PASE).")
+n_cens_hits <- sum(lengths(hits_cens))
+brief_cens <- if (n_cens_hits == 0) "With replaced knees censored, no knee measure passes in any comparison." else
+  paste0("With replaced knees censored, ", paste(unlist(lapply(names(hits_cens), function(c)
+    if (length(hits_cens[[c]])) paste0(paste(lab(hits_cens[[c]]), collapse = ", "), " (", COMP_SHORT[[c]], ")"))), collapse = "; "), " pass.")
+# first number of a group summary ("287.00 (46.22)" or "45.7%"); NA for categorical summaries
+level <- function(x) {
+  x <- as.character(x)
+  out <- suppressWarnings(as.numeric(sub("%$", "", sub(" \\(.*$", "", x))))
+  out[is.na(x) | grepl("^[0-9]+: ", x)] <- NA
+  out
+}
+is_cat <- function(x) grepl("^[0-9]+: ", as.character(x))
 ```
 
 **The question.** Among people who say they walk for exercise, how do those whose device week shows step walking ("`r GROUPS[["step"]]`") differ from those whose device week does not ("`r GROUPS[["not"]]`")? People who say they do not walk ("`r GROUPS[["no"]]`") are shown for reference in stage 1 and are not modelled.
@@ -139,7 +163,7 @@ hit_text <- function(cmp) {
 
 **Stage 1** gives a standardized mean difference (SMD, "`r GROUPS[["not"]]`" minus "`r GROUPS[["step"]]`", pooled SD, bootstrap 95% CI) for each measure: its level at 48 months, its change from baseline to 48 months and from 48 to 96 months, and fixed measures. Reading bands, fixed before computing: |SMD| below `r bands$small` negligible, `r bands$small`–`r bands$lead` small, `r bands$lead` or more a **lead**. Leads point to measures worth a closer look; they are not tests, and there are no p-values. **Stage 2** follows each time-varying measure over seven visits with a model adjusted for baseline age and sex, and asks whether the gap between the two "Yes" groups changes across visits (group × visit test, Holm-adjusted across measures).
 
-**In brief.** Stage 1 finds `r n_leads[["primary"]]` leads in the primary comparison (`r n_leads[["counts_mv"]]` and `r n_leads[["pase48"]]` in the two replications), `r if (n_change_leads == 0) "all" else "almost all"` in the level at 48 months or in fixed measures; the changes over time differ little. Stage 2 finds that, after Holm, the gap changes across visits for no measure in the primary comparison; in the replications for `r hit_text("counts_mv")` (item against MV bouts) and `r hit_text("pase48")` (PASE). With replaced knees censored, no knee measure passes in any comparison. So the groups differ mainly in where they stand, not in how they change.
+**In brief.** Stage 1 finds `r n_leads[["primary"]]` leads in the primary comparison (`r n_leads[["counts_mv"]]` and `r n_leads[["pase48"]]` in the two replications), `r if (n_change_leads == 0) "all in the level at 48 months or in fixed measures; no change over time reaches a lead" else paste0(nrow(leads) - n_change_leads, " of ", nrow(leads), " in the level at 48 months or in fixed measures, ", n_change_leads, " in a change over time")`. `r brief_stage2` `r brief_cens` `r if (mostly_level) "So the groups differ mainly in where they stand, not in how they change." else ""`
 
 # The groups
 
@@ -203,9 +227,21 @@ pl <- leads[leads$comparison == "primary", ]
 tv_lead <- pl[pl$window == "level_06", ]
 ch_lead <- pl[pl$window %in% c("change_00_06", "change_06_10"), ]
 top <- function(d, k = 4) { d <- d[order(-abs(d$smd)), ][seq_len(min(k, nrow(d))), ]; paste0(lab(d$measure), " (", num(d$smd), ")", collapse = ", ") }
+fx_lead <- pl[pl$window == "fixed", ]
+# where "Yes, not a step walker" sits: nearer "No" or nearer "Yes, step walker"
+nearer_no <- function(cmp) {
+  d <- leads[leads$comparison == cmp, ]
+  st <- level(d$summary_step); nt <- level(d$summary_not); no <- level(d$summary_no)
+  ok <- !is.na(st) & !is.na(nt) & !is.na(no)
+  c(no = sum(abs(nt - no)[ok] < abs(nt - st)[ok]), n = sum(ok))
+}
+nn <- lapply(setNames(names(COMP), names(COMP)), nearer_no)
+wear <- main[main$comparison == "primary" & main$measure == "wear_hr", ]
+wear_text <- if (nrow(wear) == 1 && wear$band == "lead")
+  paste0(" \"", if (wear$smd < 0) GROUPS[["step"]] else GROUPS[["not"]], "\" wore the device longer each day (SMD ", num(wear$smd), ").") else ""
 ```
 
-At 48 months, "`r GROUPS[["not"]]`" walk the 400 m more slowly and have a slower 20-m pace, higher BMI, a lower SF-12 physical score and more knee symptoms than "`r GROUPS[["step"]]`" (largest: `r top(tv_lead)`). Their values usually sit between "`r GROUPS[["step"]]`" and "`r GROUPS[["no"]]`". `r if (nrow(ch_lead)) paste0("Changes reaching a lead: ", top(ch_lead, 10), ".") else "No change from baseline to 48 months, or from 48 to 96 months, reaches a lead."` Among fixed measures, education, race and the item's own amounts (how many years, months a year and times a week) differ most, and "`r GROUPS[["step"]]`" wore the device longer each day.
+`r if (nrow(tv_lead)) paste0("The largest leads in the level at 48 months are ", top(tv_lead), " (SMD, \"", GROUPS[["not"]], "\" minus \"", GROUPS[["step"]], "\").") else "No 48-month level reaches a lead."` `r if (nrow(ch_lead)) paste0("Changes reaching a lead: ", top(ch_lead, 10), ".") else "No change from baseline to 48 months, or from 48 to 96 months, reaches a lead."` `r if (nrow(fx_lead)) paste0("Among fixed measures the largest are ", top(fx_lead), ".") else ""``r wear_text` Against the reference group, "`r GROUPS[["not"]]`" sits nearer "`r GROUPS[["no"]]`" than "`r GROUPS[["step"]]`" for `r nn$primary[["no"]]` of the `r nn$primary[["n"]]` primary leads with a "`r GROUPS[["no"]]`" value (`r nn$counts_mv[["no"]]` of `r nn$counts_mv[["n"]]` and `r nn$pase48[["no"]]` of `r nn$pase48[["n"]]` in the replications); the group values are in the table below.
 
 # Stage 1: replications alongside the primary
 
@@ -219,24 +255,45 @@ cell <- function(cmp, m, w) {
   s <- num(r$smd)
   if (r$band == "lead" && !(kl_flag[[cmp]] && m == "kl_worse")) paste0("**", s, "**") else s
 }
+group_value <- function(m, w, col) {
+  r <- main[main$comparison == "primary" & main$measure == m & main$window == w, ]
+  if (!nrow(r) || is.na(r[[col]])) return("–")
+  if (is_cat(r[[col]])) return("cat.")
+  x <- as.character(r[[col]])
+  if (grepl("%$", x)) x else num(level(x), if (abs(level(x)) >= 100) 0 else 2)
+}
 lt <- data.frame(
   Measure = lab(key$measure),
-  Window = unname(WINDOWS[key$window]),
+  Window = c(level_06 = "48 mo", change_00_06 = "0–48", change_06_10 = "48–96", fixed = "Fixed")[key$window],
+  step = mapply(group_value, key$measure, key$window, "summary_step"),
+  not = mapply(group_value, key$measure, key$window, "summary_not"),
+  no = mapply(group_value, key$measure, key$window, "summary_no"),
   Primary = mapply(cell, "primary", key$measure, key$window),
   `Item vs MV bouts` = mapply(cell, "counts_mv", key$measure, key$window),
   `PASE 48 mo` = mapply(cell, "pase48", key$measure, key$window),
   check.names = FALSE
 )
-knitr::kable(lt, row.names = FALSE, align = "llrrr")
+names(lt)[3:5] <- c("Step", "Not step", "No")
+knitr::kable(lt, row.names = FALSE, align = "llrrrrrr")
 ```
 
-The table lists every measure that is a lead (|SMD| ≥ `r bands$lead`, bold) in at least one comparison, with its SMD in each. Categorical SMDs are unsigned. –: not available (the item's amounts do not apply to the PASE comparison). Steps, MV minutes, and in the PASE comparison its own walking items, define the groups and are not listed as leads.
+The table lists every measure that is a lead (|SMD| ≥ `r bands$lead`, bold) in at least one comparison, with its SMD in each. Step, Not step and No are the primary comparison's group levels ("`r GROUPS[["step"]]`", "`r GROUPS[["not"]]`", "`r GROUPS[["no"]]`") (mean, or % for 0/1 measures; "cat.": categorical, in discordance_screen.csv), with "`r GROUPS[["no"]]`" as the reference. Categorical SMDs are unsigned. –: not available (the item's amounts do not apply to the PASE comparison). Steps, MV minutes, and in the PASE comparison its own walking items, define the groups and are not listed as leads.
 
 ```{r rep-text}
 only_rep <- setdiff(unique(leads$measure[leads$comparison != "primary"]), unique(leads$measure[leads$comparison == "primary"]))
+agree <- function(cmp) {
+  a <- main[main$comparison == "primary", c("measure", "window", "smd", "summary_step")]
+  b <- main[main$comparison == cmp, c("measure", "window", "smd")]
+  d <- merge(merge(key, a, by = c("measure", "window")), b, by = c("measure", "window"), suffixes = c("", ".r"))
+  d <- d[!is.na(d$smd) & !is.na(d$smd.r) & !(d$measure %in% defining(cmp)), ]
+  signed <- !is_cat(d$summary_step)
+  c(same = sum(sign(d$smd[signed]) == sign(d$smd.r[signed])), signed = sum(signed),
+    larger = sum(abs(d$smd.r) > abs(d$smd)), n = nrow(d))
+}
+ag <- lapply(c(counts_mv = "counts_mv", pase48 = "pase48"), agree)
 ```
 
-The replications point the same way as the primary comparison, often more strongly when the device walker is defined by MV bouts. `r if (length(only_rep)) paste0("Leads seen only in a replication: ", paste(lab(only_rep), collapse = ", "), ".") else ""`
+Of the measures in the table, the SMD has the same sign as in the primary comparison for `r ag$counts_mv[["same"]]` of `r ag$counts_mv[["signed"]]` signed SMDs with MV bouts and `r ag$pase48[["same"]]` of `r ag$pase48[["signed"]]` in the PASE comparison. It is larger in size than the primary for `r ag$counts_mv[["larger"]]` of `r ag$counts_mv[["n"]]` with MV bouts and `r ag$pase48[["larger"]]` of `r ag$pase48[["n"]]` with PASE. `r if (length(only_rep)) paste0("Leads seen only in a replication: ", paste(lab(only_rep), collapse = ", "), ".") else ""`
 
 # Stage 2: trajectories
 
@@ -278,7 +335,7 @@ trend_plot <- function(d, ncol) {
 
 For each time-varying measure, a model over visits 0 to 96 months (a linear mixed model with a random intercept for continuous measures; a GEE with exchangeable correlation for 0/1 measures), adjusted for baseline age and sex, gives "`r GROUPS[["not"]]`" against "`r GROUPS[["step"]]`" at each visit: a difference, or an odds ratio. The group × visit test asks whether that gap differs across visits. Its p is Holm-adjusted across measures within each comparison and knee-replacement rule.
 
-```{r fig-trends-primary, fig.height = 4.6, fig.cap = paste0("Primary comparison: adjusted gap, \"", GROUPS[["not"]], "\" against \"", GROUPS[["step"]], "\", at each visit (95% CI). Selection: ", sel$primary$why, ", so these are the largest gaps, not measures whose gap changes. Grey line: no gap.")}
+```{r fig-trends-primary, fig.height = 4.6, fig.cap = paste0("Primary comparison: adjusted gap, \"", GROUPS[["not"]], "\" against \"", GROUPS[["step"]], "\", at each visit (95% CI). Selection: ", sel$primary$why, if (!length(hits_main$primary)) ", so these are the largest gaps, not measures whose gap changes" else "", ". Grey line: no gap.")}
 trend_plot(trend_rows[trend_rows$comparison == "primary", ], ncol = 3)
 ```
 
@@ -288,17 +345,33 @@ rep$panel <- paste0(COMP_SHORT[rep$comparison], ": ", rep$panel)
 trend_plot(rep, ncol = 2)
 ```
 
-The gaps in these panels are steady more than changing: where a measure differs at 48 months it already differed at baseline, by a similar amount. The two measures that pass Holm in the replications widen slowly over time.
+```{r trend-text}
+excl <- function(r) !is.na(r$lo) & !is.na(r$hi) & (r$lo > r$ref | r$hi < r$ref)
+at <- function(d, v) d[d$visit == v, ]
+pm <- split(trend_rows[trend_rows$comparison == "primary", ], trend_rows$measure[trend_rows$comparison == "primary"])
+both <- sum(vapply(pm, function(d) { a <- at(d, "00"); b <- at(d, "06"); nrow(a) == 1 && nrow(b) == 1 && excl(a) && excl(b) }, TRUE))
+size <- function(r) if (r$scale == "or") abs(log(r$estimate)) else abs(r$estimate)
+rh <- trend_rows[trend_rows$comparison != "primary" & trend_rows$measure %in% unlist(hits_main[c("counts_mv", "pase48")]), ]
+rep_text <- vapply(split(rh, paste(rh$comparison, rh$measure)), function(d) {
+  a <- at(d, "00"); b <- at(d, "10")
+  if (nrow(a) != 1 || nrow(b) != 1 || is.na(a$estimate) || is.na(b$estimate)) return(paste0(lab(d$measure[1]), " (", COMP_SHORT[[d$comparison[1]]], "): no estimate at both ends"))
+  paste0(lab(d$measure[1]), " (", COMP_SHORT[[d$comparison[1]]], ") ", if (size(b) > size(a)) "widens" else "narrows",
+         " from ", num(a$estimate), " at baseline to ", num(b$estimate), " at 96 months")
+}, "")
+```
+
+In the primary panels, the gap's 95% CI excludes no gap both at baseline and at 48 months for `r both` of `r length(pm)` measures`r if (both > length(pm) / 2) ": a 48-month difference was mostly there from the start." else "."` `r if (length(rep_text)) paste0("In the replications, ", paste(rep_text, collapse = "; "), ".") else ""`
 
 # Sensitivity: replaced knees censored
 
-```{r fig-sens, fig.height = 3.4, fig.cap = paste0("Primary comparison, knee-level measures: SMD (95% CI) with a replaced knee kept as KL grade 4 (main analysis) and with the replaced knee censored from its replacement visit on (sensitivity). Dashed lines at ±", bands$lead, ".")}
-k <- scr[scr$comparison == "primary" & scr$measure %in% scr$measure[scr$censored], ]
+```{r fig-sens, fig.height = 6.6, fig.cap = paste0("Knee-level measures in each comparison: SMD (95% CI) with a replaced knee kept as KL grade 4 (main analysis) and with the replaced knee censored from its replacement visit on (sensitivity). Dashed lines at ±", bands$lead, ".")}
+k <- scr[scr$measure %in% scr$measure[scr$censored] & scr$window != "fixed", ]
+k$comp_lab <- factor(COMP_SHORT[k$comparison], levels = COMP_SHORT)
 k$rule <- factor(ifelse(k$censored, "Replaced knee censored", "KL 4 after replacement"),
                  levels = c("KL 4 after replacement", "Replaced knee censored"))
 k$label <- factor(k$label, levels = rev(sort(unique(k$label))))
 forest(k, "rule", c(colours[["navy"]], colours[["pase"]])) +
-  facet_wrap(~window_lab, nrow = 1) +
+  facet_grid(comp_lab ~ window_lab) +
   scale_x_continuous(breaks = c(-0.2, 0, 0.2))
 ```
 
@@ -320,14 +393,45 @@ knitr::kable(s2, row.names = FALSE, align = "llrrl")
 
 The table gives the stage-2 group × visit test by comparison and knee-replacement rule. The censored rule refits only the knee-level measures. A measure whose model did not converge is not tested.
 
-Censoring replaced knees moves the knee-level SMDs very little, and no knee-level trajectory passes Holm under either rule.
+```{r sens-numbers}
+km <- merge(k[!k$censored, c("comparison", "measure", "window", "smd")],
+            k[k$censored, c("comparison", "measure", "window", "smd")],
+            by = c("comparison", "measure", "window"), suffixes = c("", ".c"))
+shift <- max(abs(km$smd - km$smd.c), na.rm = TRUE)
+knee <- unique(scr$measure[scr$censored])
+knee_hits <- function(h) sum(vapply(names(h), function(c) sum(h[[c]] %in% knee), 0))
+kh_main <- knee_hits(hits_main); kh_cens <- knee_hits(hits_cens)
+```
+
+Censoring replaced knees changes a knee-level SMD by at most `r num(shift)` in any comparison and window. Knee-level trajectories with Holm p < `r alpha`: `r kh_main` with KL 4 kept after replacement and `r kh_cens` with the replaced knee censored, over all comparisons.
+
+```{r tab-knee}
+kt <- do.call(rbind, lapply(names(COMP), function(cmp) do.call(rbind, lapply(knee, function(m) {
+  g <- function(cens, v) {
+    r <- tr[tr$comparison == cmp & tr$censored == cens & tr$measure == m & tr$visit == v, ]
+    if (nrow(r) != 1 || is.na(r$estimate)) "–" else paste0(num(r$estimate), " (", num(r$lo), ", ", num(r$hi), ")")
+  }
+  hp <- function(cens) pval(tr$p_interaction_holm[tr$comparison == cmp & tr$censored == cens & tr$measure == m][1])
+  data.frame(Comparison = COMP_SHORT[[cmp]], Measure = lab(m),
+             `48 mo, censored` = g(TRUE, "06"), `96 mo, censored` = g(TRUE, "10"),
+             `Holm p (cens.)` = hp(TRUE), `Holm p (KL 4)` = hp(FALSE), check.names = FALSE)
+}))))
+knitr::kable(kt, row.names = FALSE, align = "llrrrr")
+```
+
+The table gives, for each knee-level measure, the adjusted gap ("`r GROUPS[["not"]]`" against "`r GROUPS[["step"]]`": a difference, or an odds ratio for frequent knee pain, 95% CI) at 48 and 96 months with the replaced knee censored, and the group × visit Holm p under both rules.
 
 # KL-grade coverage
 
 ```{r kl-text}
 kl_any <- any(kl_flag)
+kc <- klc; kc$visit <- wave(kc$visit)
+kl_falls <- all(vapply(split(kc, paste(kc$comparison, kc$group)), function(d) {
+  a <- d$share[d$visit == "06"]; b <- d$share[d$visit %in% c("08", "10")]
+  length(a) == 1 && !is.na(a) && length(b) > 0 && all(!is.na(b)) && all(b < a)
+}, TRUE))
 ```
 
-`r if (kl_any) paste0("**KL coverage caveat.** In ", paste(COMP_SHORT[kl_flag], collapse = ", "), ", the share of people with a KL reading differs between the two \"Yes\" groups by more than ", 100 * kl_rule, " percentage points at some visit (discordance_kl_coverage.csv), so KL grade is reported there with this caveat and is not counted as a lead or listed in stage 2.") else paste0("The share of people with a KL reading stays within ", 100 * kl_rule, " percentage points between the two \"Yes\" groups at every visit in every comparison, so KL grade is read like any other measure. Coverage falls after 48 months in all groups (discordance_kl_coverage.csv).")`
+`r if (kl_any) paste0("**KL coverage caveat.** In ", paste(COMP_SHORT[kl_flag], collapse = ", "), ", the share of people with a KL reading differs between the two \"Yes\" groups by more than ", 100 * kl_rule, " percentage points at some visit (discordance_kl_coverage.csv), so KL grade is reported there with this caveat and is not counted as a lead or listed in stage 2.") else paste0("The share of people with a KL reading stays within ", 100 * kl_rule, " percentage points between the two \"Yes\" groups at every visit in every comparison, so KL grade is read like any other measure", if (kl_falls) ". Coverage falls after 48 months in every group" else "", " (discordance_kl_coverage.csv).")`
 
 Small cells are suppressed in the results files before this report reads them. Full tables: discordance_screen.csv and discordance_trends.csv.
