@@ -812,3 +812,63 @@ def test_kl_coverage_suppresses_small_counts():
     assert raw.filter(pl.col("visit") == "06")["share"].item() == 0.8
     masked = d.kl_coverage(groups, long, min_cell=5)
     assert masked["share"].to_list() == [None, None]  # 2 without a reading; 2 with one
+
+
+def test_holm_skips_unconverged():
+    df = pl.DataFrame(
+        {"comparison": ["c"] * 3, "p": [0.01, 0.04, None], "converged": [True, True, False]}
+    )
+    out = d.holm_by(df, ["comparison"], "p", "p_holm")
+    assert out["p_holm"].to_list() == [pytest.approx(0.02), pytest.approx(0.04), None]
+
+
+def test_holm_families_and_unconverged_with_p():
+    df = pl.DataFrame(
+        {
+            "comparison": ["a", "a", "a", "b"],
+            "p": [0.01, 0.03, 0.02, 0.03],
+            "converged": [True, True, False, True],
+        }
+    )
+    out = d.holm_by(df, ["comparison"], "p", "p_holm")
+    # the unconverged row keeps a null and is not in its family; b is its own family of one
+    assert out["p_holm"].to_list() == [
+        pytest.approx(0.02),
+        pytest.approx(0.03),
+        None,
+        pytest.approx(0.03),
+    ]
+
+
+TRENDS_FIXTURE = pl.DataFrame(
+    {
+        "comparison": ["primary"] * 4,
+        "censored": [False] * 4,
+        "measure": ["bmi", "bmi", "cesd", "kl_worse"],
+        "kind": ["continuous"] * 4,
+        "visit": ["00", "06", "00", "06"],
+        "estimate": [0.5, 1.2, 0.1, 0.3],
+        "lo": [0.1, 0.6, -0.4, 0.1],
+        "hi": [0.9, 1.8, 0.6, 0.5],
+        "scale": ["difference"] * 4,
+        "p_interaction": [0.001, 0.001, 0.4, 0.001],
+        "p_interaction_holm": [0.003, 0.003, 0.4, 0.003],
+        "persons_model": [1200] * 4,
+        "converged": [True] * 4,
+        "fit_note": [None] * 4,
+    }
+)
+
+
+def test_discordance_text_renders_trends():
+    text = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE, coverage_gap={"primary": 0.2}, label="default"
+    )
+    stage2 = text.split("## Stage 2")[1]
+    assert "Not yet run" not in stage2 and "discordance_trends.csv" in stage2
+    assert "bmi" in stage2 and "1.20 (0.60 to 1.80)" in stage2
+    # Holm p >= 0.05 is not listed; KL under the coverage caveat is not listed either
+    assert "| cesd" not in stage2
+    assert "| kl_worse" not in stage2
+    for word in ("bias", "over-report", "overreport", "false positive", "correction", "misclassif"):
+        assert word not in text.lower()

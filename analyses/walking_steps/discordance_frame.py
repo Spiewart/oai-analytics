@@ -3,7 +3,8 @@
 For each ledger comparison (self-report, device walker definition, device basis), the groups
 "Yes, step walker", "Yes, not a step walker" and "No"; the long table of time-varying measures
 (discordance.long_table); and the fixed measures, with the device-week descriptors over each
-comparison's device basis. Person-level, so all three go to OAI_FRAME_DIR, never to results.
+comparison's device basis. Person-level, so all three go to OAI_FRAME_DIR, never to results,
+with discordance_measures.parquet (each measure's kind) for the stage-2 R step.
 """
 
 import os
@@ -105,4 +106,8 @@ fixed = (
 groups.write_parquet(frames / "discordance_groups.parquet")
 long.write_parquet(frames / "discordance_long.parquet")
 fixed.write_parquet(frames / "discordance_fixed.parquet")
+# each measure's kind, for the stage-2 R step (which cannot read discordance.MEASURES)
+pl.DataFrame(
+    {"measure": list(d.MEASURES), "kind": [spec[1] for spec in d.MEASURES.values()]}
+).write_parquet(frames / "discordance_measures.parquet")
 print(f"long {long.shape}, fixed {fixed.shape}")

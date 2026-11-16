@@ -48,6 +48,20 @@ stage = "local"
 entry = "discordance_screen.py"
 needs = ["discordance_frame"]
 
+[[steps]]
+id = "discordance_trends"
+lang = "r"
+stage = "local"
+entry = "discordance_trends.R"
+needs = ["discordance_frame"]
+
+[[steps]]
+id = "discordance_holm"
+lang = "python"
+stage = "local"
+entry = "discordance_holm.py"
+needs = ["discordance_trends", "discordance_screen"]
+
 [outputs]
 aggregate = ["*.csv", "*.md", "assumptions.resolved.json"]
 

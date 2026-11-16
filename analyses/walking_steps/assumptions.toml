@@ -245,6 +245,28 @@ value = "holm"
 status = "assumed"
 source = "Holm adjustment across the covariate comparisons"
 
+[discordance.gee_corstr]
+value = "exchangeable"
+status = "assumed"
+source = "Spec 'Stage 2 statistics': GEE with exchangeable working correlation for 0/1 measures, as walking_validation construct.gee_corstr"
+choices = ["exchangeable"]
+
+[discordance.lme_optimizer]
+value = "optim"
+status = "assumed"
+source = "lmeControl(opt = ) for the stage-2 linear mixed models, as walking_validation construct.lme_optimizer (nlminb stopped with false convergence on some fits at about 2,600 people)"
+choices = ["optim", "nlminb"]
+
+[discordance.fit_timeout]
+value = 300
+status = "assumed"
+source = "Claude's choice (Task 5): seconds allowed for each GEE fit, the oaimodels::walker_model default; a fit past it is reported as not converged"
+
+[discordance.trend_alpha]
+value = 0.05
+status = "assumed"
+source = "Claude's choice (Task 5): DISCORDANCE.md lists the measures whose Holm-adjusted group x visit p is below this; every measure stays in discordance_trends.csv"
+
 [discordance.replacement]
 value = "keep_kl4"
 status = "confirmed"

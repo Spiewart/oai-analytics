@@ -627,6 +627,29 @@ def coverage_gaps(coverage: pl.DataFrame) -> dict[str, float | None]:
     return {r["comparison"]: r["gap"] for r in gaps.iter_rows(named=True)}
 
 
+def holm_by(df: pl.DataFrame, by: list[str], p: str, out: str) -> pl.DataFrame:
+    """Holm-adjusted `p` as column `out`, one family per combination of `by`.
+
+    Rows with a null `p`, or with `converged` false when that column exists, are left out of the
+    family and keep a null. Adjusted values are monotone within a family and capped at 1.
+    """
+    df = df.with_row_index("_row")
+    ok = pl.col(p).is_not_null()
+    if "converged" in df.columns:
+        ok = ok & pl.col("converged").fill_null(False)
+    fam = df.filter(ok).select("_row", *by, p)
+    adjusted = []
+    for _, part in fam.group_by(by, maintain_order=True):
+        part = part.sort(p)
+        m = part.height
+        raw = part[p].to_numpy() * (m - np.arange(m))
+        adj = np.minimum(np.maximum.accumulate(raw), 1.0)
+        adjusted.append(pl.DataFrame({"_row": part["_row"], out: adj}))
+    schema = {"_row": pl.UInt32, out: pl.Float64}
+    adj = pl.concat(adjusted) if adjusted else pl.DataFrame(schema=schema)
+    return df.join(adj.cast(schema), on="_row", how="left").sort("_row").drop("_row")
+
+
 def _fmt(x: float | None) -> str:
     return "" if x is None else f"{x:.2f}"
 
@@ -662,6 +685,66 @@ def _md_table(rows: pl.DataFrame) -> str:
     return out
 
 
+def _trend_cell(r: dict) -> str:
+    if r["estimate"] is None:
+        return ""
+    return f"{_fmt(r['estimate'])} ({_fmt(r['lo'])} to {_fmt(r['hi'])})"
+
+
+def _trend_table(rows: pl.DataFrame, visits: list[str]) -> str:
+    cols = ["Measure", "Scale", "Holm p (group x visit)", *visits]
+    out = "| " + " | ".join(cols) + " |\n|" + "---|" * len(cols) + "\n"
+    for measure in rows["measure"].unique(maintain_order=True).to_list():
+        m = rows.filter(pl.col("measure") == measure)
+        first = m.row(0, named=True)
+        by_visit = {r["visit"]: _trend_cell(r) for r in m.iter_rows(named=True)}
+        p_holm = first["p_interaction_holm"]
+        cells = [measure, first["scale"], "<0.001" if p_holm < 0.001 else f"{p_holm:.3f}"]
+        out += "| " + " | ".join([*cells, *(by_visit.get(v, "") for v in visits)]) + " |\n"
+    return out
+
+
+def render_trends(
+    trends: pl.DataFrame,
+    comparison: str,
+    flagged: bool,
+    defining: list[str],
+    alpha: float = 0.05,
+) -> list[str]:
+    """Stage-2 lines for one comparison: measures whose group gap changes across visits."""
+    rows = trends.filter(pl.col("comparison") == comparison)
+    lines = [f"### Trajectories: {comparison}", ""]
+    for censored in (False, True):
+        part = rows.filter(pl.col("censored") == censored)
+        if part.height == 0:
+            continue
+        fitted = part.filter(pl.col("p_interaction_holm").is_not_null())
+        total = part["measure"].n_unique()
+        listed = fitted.filter(
+            (pl.col("p_interaction_holm") < alpha)
+            & ~pl.col("measure").is_in(defining)
+            & ~(pl.lit(flagged) & (pl.col("measure") == "kl_worse"))
+        ).sort("measure", "visit")
+        title = (
+            "Main analysis (KL 4 after replacement)"
+            if not censored
+            else "Knee-level measures with replaced knees censored (sensitivity)"
+        )
+        visits = sorted(part["visit"].drop_nulls().unique().to_list())
+        lines += [
+            f"#### {title}",
+            "",
+            f"Group x visit test available for {fitted['measure'].n_unique()} of {total} "
+            f"measures; listed below with Holm p < {alpha:g}: {listed['measure'].n_unique()}. "
+            "The other measures, and those that define the groups, are in "
+            "discordance_trends.csv.",
+            "",
+        ]
+        if listed.height:
+            lines += [_trend_table(listed, visits)]
+    return lines
+
+
 def render_markdown(
     screen: pl.DataFrame,
     trends: pl.DataFrame,
@@ -669,6 +752,7 @@ def render_markdown(
     label: str,
     threshold: float = 0.10,
     self_report_measures: dict[str, list[str]] | None = None,
+    alpha: float = 0.05,
 ) -> str:
     """DISCORDANCE.md: per comparison, the stage-1 leads (band "lead"), in neutral wording.
 
@@ -753,6 +837,19 @@ def render_markdown(
     lines += ["## Stage 2: trajectories", ""]
     if trends.height == 0:
         lines += ["Not yet run.", ""]
-    else:
-        lines += ["See discordance_trends.csv.", ""]
+        return "\n".join(lines)
+    lines += [
+        "For each time-varying measure, a model over the visits (a linear mixed model with a "
+        "random intercept per person for continuous measures; a GEE with exchangeable working "
+        f'correlation for 0/1 measures), adjusted for baseline age and sex, gives "{GROUPS[1]}" '
+        f'against "{GROUPS[0]}" at each visit: a difference, or an odds ratio (OR), with its '
+        "95% CI. The group x visit test asks whether that gap differs across visits; its p is "
+        "Holm-adjusted across measures within each comparison and knee-replacement rule. A "
+        "visit resting on fewer people than the release threshold in either group has no "
+        "estimate. Full table: discordance_trends.csv.",
+        "",
+    ]
+    for c in trends["comparison"].unique(maintain_order=True).to_list():
+        defining = [*DEFINING, *(self_report_measures or {}).get(c, [])]
+        lines += render_trends(trends, c, gap(c) > threshold, defining, alpha)
     return "\n".join(lines)
