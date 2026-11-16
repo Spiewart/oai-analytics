@@ -5,6 +5,7 @@ Pure functions for the comparison; the step script wires them to the frames.
 
 from __future__ import annotations
 
+import numpy as np
 import polars as pl
 
 from oai.derive import construct
@@ -347,3 +348,145 @@ def long_table(A) -> pl.DataFrame:
         if k is not None:
             per_knee.append(k)
     return assemble_long(person, pl.concat(per_knee), status)
+
+
+# stage 1: standardized differences between the two "Yes" groups
+WINDOWS = ("level_06", "change_00_06", "change_06_10")
+_SHORT = ("step", "not", "no")
+
+
+def _smd(a: np.ndarray, b: np.ndarray, kind: str, levels: np.ndarray) -> float | None:
+    if len(a) < 2 or len(b) < 2:
+        return None
+    if kind == "categorical":
+        pa = np.array([(a == lv).mean() for lv in levels])[:-1]
+        pb = np.array([(b == lv).mean() for lv in levels])[:-1]
+        if len(pa) == 0:
+            return None
+
+        def cov(p: np.ndarray) -> np.ndarray:
+            return np.diag(p) - np.outer(p, p)
+
+        diff = pa - pb
+        quad = float(diff @ np.linalg.pinv((cov(pa) + cov(pb)) / 2) @ diff)
+        return float(np.sqrt(max(quad, 0.0)))
+    if kind == "binary":
+        pa, pb = float(a.mean()), float(b.mean())
+        denom = np.sqrt((pa * (1 - pa) + pb * (1 - pb)) / 2)
+        diff = pa - pb
+    elif kind == "continuous":
+        denom = np.sqrt((a.var(ddof=1) + b.var(ddof=1)) / 2)
+        diff = float(a.mean() - b.mean())
+    else:
+        raise ValueError(f"kind must be continuous, binary or categorical, not {kind!r}")
+    return float(diff / denom) if denom > 0 else None
+
+
+def smd(a: np.ndarray, b: np.ndarray, kind: str) -> float | None:
+    """Standardized mean difference, a ("Yes, not a step walker") minus b ("Yes, step walker").
+
+    Continuous: difference over the pooled SD. Binary: difference in proportions over the
+    pooled binomial SD. Categorical: the multi-level (Mahalanobis) form of Yang & Dalton (2012),
+    which is unsigned. None when either group has fewer than 2 values or the pooled SD is 0.
+    """
+    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    return _smd(a, b, kind, np.unique(np.concatenate([a, b])))
+
+
+def smd_ci(
+    a: np.ndarray, b: np.ndarray, kind: str, reps: int, seed: int
+) -> tuple[float | None, float | None]:
+    """Percentile 95% bootstrap CI for `smd`, resampling within each group."""
+    a, b = np.asarray(a, dtype=float), np.asarray(b, dtype=float)
+    if len(a) < 2 or len(b) < 2:
+        return None, None
+    levels = np.unique(np.concatenate([a, b]))
+    rng = np.random.default_rng(seed)
+    draws = []
+    for _ in range(reps):
+        x = _smd(rng.choice(a, len(a)), rng.choice(b, len(b)), kind, levels)
+        if x is not None:
+            draws.append(x)
+    if not draws:
+        return None, None
+    lo, hi = np.percentile(draws, [2.5, 97.5])
+    return float(lo), float(hi)
+
+
+def band(x: float | None, small: float, lead: float) -> str:
+    """Reading band for |SMD|: negligible below `small`, small below `lead`, else lead."""
+    if x is None:
+        return ""
+    return "negligible" if abs(x) < small else "small" if abs(x) < lead else "lead"
+
+
+def _summary(x: np.ndarray, kind: str) -> str:
+    if len(x) == 0:
+        return ""
+    if kind == "continuous":
+        sd = x.std(ddof=1) if len(x) > 1 else float("nan")
+        return f"{x.mean():.2f} ({sd:.2f})"
+    if kind == "binary":
+        return f"{100 * x.mean():.1f}%"
+    levels, counts = np.unique(x, return_counts=True)
+    return "; ".join(
+        f"{lv:g}: {100 * c / len(x):.1f}%" for lv, c in zip(levels, counts, strict=True)
+    )
+
+
+def _used(cell: pl.DataFrame, col: str) -> str:
+    return "/".join(sorted(set(cell[col].drop_nulls().to_list())))
+
+
+def screen(groups: pl.DataFrame, values: pl.DataFrame, kinds: dict[str, str], A) -> pl.DataFrame:
+    """The stage-1 screen: one row per measure and window.
+
+    `groups` is ID, group; `values` is ID, measure, window, value, start_used, end_used (one
+    row per person; a level has the one visit in both *_used). Persons are those with a value,
+    per group. SMD is "Yes, not a step walker" minus "Yes, step walker"; "No" is summarised
+    only. Count columns are named persons_* so they stay clear of the egress count pattern.
+    """
+    reps = int(A["discordance.bootstrap_reps"])
+    seed = int(A["discordance.seed"])
+    bands = A["discordance.smd_bands"]
+    df = values.filter(pl.col("value").is_not_null() & pl.col("value").is_not_nan()).join(
+        groups, on="ID"
+    )
+    schema = {
+        "measure": pl.String,
+        "area": pl.String,
+        "window": pl.String,
+        "start_used": pl.String,
+        "end_used": pl.String,
+        **{f"persons_{k}": pl.Int64 for k in _SHORT},
+        **{f"summary_{k}": pl.String for k in _SHORT},
+        "smd": pl.Float64,
+        "smd_lo": pl.Float64,
+        "smd_hi": pl.Float64,
+        "band": pl.String,
+    }
+    rows = []
+    for (measure, window), cell in df.group_by("measure", "window", maintain_order=True):
+        kind = kinds[measure]
+        vals = {
+            g: cell.filter(pl.col("group") == g)["value"].to_numpy().astype(float) for g in GROUPS
+        }
+        a, b = vals[GROUPS[1]], vals[GROUPS[0]]
+        est = smd(a, b, kind)
+        lo, hi = smd_ci(a, b, kind, reps, seed)
+        row = {
+            "measure": measure,
+            "area": MEASURES.get(measure, ("",))[0],
+            "window": window,
+            "start_used": _used(cell, "start_used"),
+            "end_used": _used(cell, "end_used"),
+            "smd": est,
+            "smd_lo": lo,
+            "smd_hi": hi,
+            "band": band(est, bands["small"], bands["lead"]),
+        }
+        for short, g in zip(_SHORT, GROUPS, strict=True):
+            row[f"persons_{short}"] = len(vals[g])
+            row[f"summary_{short}"] = _summary(vals[g], kind)
+        rows.append(row)
+    return pl.DataFrame(rows, schema=schema).sort("measure", "window")

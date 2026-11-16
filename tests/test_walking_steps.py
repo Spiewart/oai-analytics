@@ -512,3 +512,67 @@ def test_long_table_refuses_either_knee_replacement_scope():
     }
     with pytest.raises(ValueError, match="arthroplasty_scope"):
         d.long_table(A)
+
+
+A_TEST = {
+    "discordance.bootstrap_reps": 50,
+    "discordance.seed": 7,
+    "discordance.smd_bands": {"small": 0.1, "lead": 0.2},
+}
+
+
+def test_smd_continuous_and_binary():
+    assert d.smd(np.array([2.0, 4.0]), np.array([0.0, 2.0]), "continuous") == pytest.approx(
+        2 / np.sqrt(2)
+    )
+    assert d.smd(np.array([1.0, 1.0, 0.0, 0.0]), np.array([0.0] * 4), "binary") == pytest.approx(
+        0.5 / np.sqrt(0.125)
+    )
+
+
+def test_smd_needs_two_values_per_group():
+    assert d.smd(np.array([1.0]), np.array([1.0, 2.0]), "continuous") is None
+
+
+def test_smd_categorical_two_levels_matches_binary():
+    a = np.array([1, 1, 2, 2, 2, 2.0])
+    b = np.array([1, 1, 1, 1, 2, 2.0])
+    as_binary = d.smd(a - 1, b - 1, "binary")
+    assert d.smd(a, b, "categorical") == pytest.approx(abs(as_binary))
+
+
+def test_smd_ci_brackets_and_is_reproducible():
+    a = np.array([2.0, 4, 5, 7, 3, 6])
+    b = np.array([0.0, 2, 1, 3, 2, 1])
+    lo, hi = d.smd_ci(a, b, "continuous", 50, 1)
+    assert lo < d.smd(a, b, "continuous") < hi
+    assert (lo, hi) == d.smd_ci(a, b, "continuous", 50, 1)
+
+
+def test_band_rule():
+    assert [d.band(x, 0.1, 0.2) for x in (0.05, -0.15, 0.25, None)] == [
+        "negligible",
+        "small",
+        "lead",
+        "",
+    ]
+
+
+def test_screen_runs_without_no_group():
+    groups = pl.DataFrame(
+        {"ID": [1, 2, 3, 4], "group": ["Yes, step walker"] * 2 + ["Yes, not a step walker"] * 2}
+    )
+    values = pl.DataFrame(
+        {
+            "ID": [1, 2, 3, 4],
+            "measure": ["bmi"] * 4,
+            "window": ["level_06"] * 4,
+            "value": [25.0, 27.0, 30.0, 32.0],
+            "start_used": ["06"] * 4,
+            "end_used": ["06"] * 4,
+        }
+    )
+    out = d.screen(groups, values, {"bmi": "continuous"}, A_TEST)
+    assert out["persons_no"].item() == 0 and out["band"].item() == "lead"
+    assert out["persons_step"].item() == 2 and out["area"].item() == "health"
+    assert out["smd"].item() > 0
