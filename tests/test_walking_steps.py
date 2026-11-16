@@ -9,6 +9,9 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "analyses" / "walking_steps"))
 
+import devices  # noqa: E402
+import discordance as d  # noqa: E402
+import relation as r  # noqa: E402
 import share as s  # noqa: E402
 
 from oai.derive.accel import DeviceRules  # noqa: E402
@@ -214,3 +217,802 @@ def test_either_week_credits_a_walker_from_any_wave():
     per_wave = pl.DataFrame({"ID": [1, 1, 2, 2, 3], "w": [True, False, False, False, False]})
     out = dv.either_week(per_wave, ["w"])
     assert out["w"].to_list() == [True, False, False]
+
+
+# --- relation (Q1): steps against activity counts within a minute
+
+EDGES = [0, 100, 500, 1000, 1500, 2020, 5999]
+BANDS = [1, 20, 40, 60, 80, 100, 120]
+
+
+def test_count_bin_labels_and_intensity():
+    assert r.count_bin_labels(EDGES) == [
+        "0-99",
+        "100-499",
+        "500-999",
+        "1000-1499",
+        "1500-2019",
+        "2020-5998",
+        "5999+",
+    ]
+    m = r.intensity_of(EDGES, 100, 2020, 5999)
+    assert m["0-99"] == "sedentary" and m["1500-2019"] == "light"
+    assert m["2020-5998"] == "moderate" and m["5999+"] == "vigorous"
+
+
+@pytest.mark.parametrize("edges", [[0, 100, 500, 2000, 5999], [10, 100, 2020], [0, 500, 100, 2020]])
+def test_count_bins_reject_edges_off_the_device_cutpoints(edges):
+    with pytest.raises(ValueError):
+        r.check_count_edges(edges, 100, 2020, 5999)
+
+
+def test_bin_quantiles_by_count_bin():
+    w = frame(
+        cnt=[0.0, 50.0, 2019.0, 2020.0, 2020.0, 6000.0],
+        steps=[0.0, 0.0, 30.0, 90.0, 110.0, 150.0],
+    )
+    q = r.bin_quantiles(w, EDGES)
+    assert q["count_bin"].to_list() == r.count_bin_labels(EDGES)
+    row = q.filter(pl.col("count_bin") == "2020-5998")
+    assert row["steps_median"].item() == 100.0
+    assert row["share_of_minutes"].item() == pytest.approx(2 / 6)
+    assert q.filter(pl.col("count_bin") == "1500-2019")["steps_median"].item() == 30.0
+
+
+def test_band_shares_sum_to_one_within_bin():
+    w = frame(cnt=[2500.0] * 4, steps=[0.0, 19.0, 20.0, 125.0])
+    b = r.band_shares(w, EDGES, BANDS).filter(pl.col("count_bin") == "2020-5998")
+    got = dict(zip(b["band"], b["share"], strict=True))
+    assert got["0"] == 0.25 and got["1-19"] == 0.25 and got["20-39"] == 0.25
+    assert got["120+"] == 0.25
+    assert sum(got.values()) == pytest.approx(1.0)
+
+
+def test_empty_count_bin_is_kept():
+    w = frame(cnt=[0.0, 300.0], steps=[0.0, 10.0])
+    q = r.bin_quantiles(w, EDGES)
+    vig = q.filter(pl.col("count_bin") == "5999+")
+    assert vig.height == 1 and vig["steps_median"].item() is None
+    b = r.band_shares(w, EDGES, BANDS).filter(pl.col("count_bin") == "5999+")
+    assert b.height == 8 and b["share"].sum() == 0
+
+
+def test_hex_cells_shares_sum_to_one_with_beyond():
+    rng = np.random.default_rng(1)
+    cnt = rng.integers(0, 4000, 5000).astype(float)
+    cnt[:3] = 20000.0  # 0.06% of minutes: above the 99.9th percentile
+    steps = rng.integers(0, 201, 5000).astype(float)
+    cells, meta = r.hex_cells(cnt, steps, np.arange(5000), 0.999, 50, min_people=1)
+    assert meta["share_beyond"] > 0
+    assert cells["share"].sum() + meta["share_beyond"] == pytest.approx(1.0)
+    assert cells["x"].max() <= meta["xcap"] + meta["hex_dx"]
+
+
+def test_hex_cells_puts_identical_points_in_one_cell():
+    cells, _ = r.hex_cells(
+        np.array([0.0] * 9 + [1000.0]),
+        np.array([0.0] * 9 + [100.0]),
+        np.arange(10),
+        1.0,
+        50,
+        min_people=1,
+    )
+    assert cells.height == 2
+    assert sorted(cells["share"].to_list()) == pytest.approx([0.1, 0.9])
+
+
+def test_hex_cells_rejects_steps_above_200():
+    with pytest.raises(ValueError, match="200"):
+        r.hex_cells(np.array([100.0]), np.array([201.0]), np.array([1]), 1.0, 50, min_people=1)
+
+
+def test_relation_outputs_pass_egress(tmp_path):
+    from oai.export.egress import check_egress
+
+    w = frame(cnt=[0.0, 300.0, 2500.0, 7000.0] * 50, steps=[0.0, 10.0, 105.0, 130.0] * 50)
+    r.bin_quantiles(w, EDGES).write_csv(tmp_path / "relation_bins.csv")
+    r.band_shares(w, EDGES, BANDS).write_csv(tmp_path / "relation_bands.csv")
+    cells, meta = r.hex_cells(
+        w["cnt"].to_numpy(), w["steps"].to_numpy(), w["ID"].to_numpy(), 0.999, 50, min_people=1
+    )
+    cells.write_csv(tmp_path / "relation_hex.csv")
+    pl.DataFrame([meta]).write_csv(tmp_path / "relation_hex_meta.csv")
+    report = check_egress(tmp_path, min_cell=5, small_cell="fail")
+    assert report.ok, report.problems
+    assert not report.warnings, report.warnings
+
+
+def test_hex_cells_suppresses_cells_with_few_people():
+    # 9 minutes from 9 people in one cell; 6 minutes from 1 person in another
+    cnt = np.array([0.0] * 9 + [1000.0] * 6)
+    steps = np.array([0.0] * 9 + [100.0] * 6)
+    ids = np.array(list(range(9)) + [99] * 6)
+    cells, meta = r.hex_cells(cnt, steps, ids, 1.0, 50, min_people=5)
+    assert cells.height == 1 and cells["share"].item() == pytest.approx(9 / 15)
+    assert meta["share_suppressed"] == pytest.approx(6 / 15)
+    total = cells["share"].sum() + meta["share_beyond"] + meta["share_suppressed"]
+    assert total == pytest.approx(1.0)
+
+
+def test_hex_cells_requires_min_people():
+    with pytest.raises(TypeError):
+        r.hex_cells(np.array([0.0]), np.array([0.0]), np.array([1]), 1.0, 50)
+
+
+@pytest.mark.parametrize("edges", [[0, 100, 2020], [0, 100, 500, 2020, 4000]])
+def test_count_bins_reject_a_missing_vigorous_cut(edges):
+    with pytest.raises(ValueError, match="vigorous"):
+        r.check_count_edges(edges, 100, 2020, 5999)
+
+
+def test_ledger_count_edges_pass():
+    r.check_count_edges(EDGES, 100, 2020, 5999)
+
+
+@pytest.mark.parametrize("bad", [np.nan, -1.0])
+def test_hex_cells_rejects_nan_or_negative_steps(bad):
+    with pytest.raises(ValueError):
+        r.hex_cells(
+            np.array([100.0, 100.0]),
+            np.array([bad, 300.0 if bad != bad else 10.0]),
+            np.array([1, 2]),
+            1.0,
+            50,
+            min_people=1,
+        )
+
+
+def test_assign_groups_three_way():
+    answers = pl.DataFrame({"ID": [1, 2, 3, 4], "yes": [True, True, False, True]})
+    walkers = pl.DataFrame({"ID": [1, 2, 3], "steps_100:bout_days": [True, False, True]})
+    g = d.assign_groups(answers, walkers, "steps_100:bout_days").sort("ID")
+    assert g["group"].to_list() == ["Yes, step walker", "Yes, not a step walker", "No"]
+
+
+def test_device_waves_mean_matches_combine():
+    defs = devices.walker_definitions(2.0, 150.0, [100])
+    cols = [
+        "steps",
+        "bout_days_per_week",
+        "purposeful_min",
+        "step_bout100_min",
+        "step_bout100_days_per_week",
+    ]
+    dev = pl.DataFrame(
+        {
+            "ID": [1, 1, 2],
+            "wave": ["06", "08", "06"],
+            "valid": [True, True, True],
+            "steps": [5000.0, 7000.0, 3000.0],
+            "bout_days_per_week": [3.0, 1.0, 0.0],
+            "purposeful_min": [30.0, 10.0, 0.0],
+            "step_bout100_min": [20.0, 0.0, 0.0],
+            "step_bout100_days_per_week": [3.0, 0.0, 0.0],
+        }
+    )
+    w = devices.device_waves(dev, defs, cols)
+    mean = w["mean"].sort("ID")
+    assert mean["steps"].to_list() == [6000.0, 3000.0]
+    assert mean["steps_100:bout_days"].to_list() == [False, False]  # (3 + 0) / 2 = 1.5 < 2
+    assert w["06"].sort("ID")["steps_100:bout_days"].to_list() == [True, False]
+
+
+def test_worse_knee_kl_replacement_rules():
+    st = pl.DataFrame(
+        {
+            "ID": [1, 1, 1, 1],
+            "SIDE": [1, 2, 1, 2],
+            "visit": ["06", "06", "10", "10"],
+            "kl": [2, None, 3, None],
+            "replaced": [False, False, True, False],
+        }
+    )
+    keep = d.worse_knee_kl(st, "keep_kl4").sort("visit")
+    assert keep["kl_worse"].to_list() == [2, 4]
+    cens = d.worse_knee_kl(st, "censor").sort("visit")
+    assert cens.filter(pl.col("visit") == "10")["kl_worse"].item() is None
+
+
+ORDER = ["00", "01", "03", "05", "06", "08", "10"]
+
+
+def test_window_uses_nearest_visit_and_reports_it():
+    long = pl.DataFrame(
+        {"ID": [1, 1], "visit": ["01", "06"], "measure": ["m", "m"], "value": [10.0, 13.0]}
+    )
+    w = d.window_values(long, "00", "06", 1, ORDER)
+    assert w.row(0, named=True) == {
+        "ID": 1,
+        "measure": "m",
+        "start_used": "01",
+        "end_used": "06",
+        "change": 3.0,
+    }
+
+
+def test_window_blank_beyond_one_visit():
+    long = pl.DataFrame(
+        {"ID": [1, 1], "visit": ["03", "06"], "measure": ["m", "m"], "value": [10.0, 13.0]}
+    )
+    assert d.window_values(long, "00", "06", 1, ORDER).height == 0
+
+
+def test_window_tie_goes_to_earlier_visit():
+    long = pl.DataFrame(
+        {
+            "ID": [1, 1, 1],
+            "visit": ["05", "08", "10"],
+            "measure": ["m"] * 3,
+            "value": [1.0, 2.0, 5.0],
+        }
+    )
+    w = d.window_values(long, "06", "10", 1, ORDER)
+    assert w.row(0, named=True)["start_used"] == "05" and w["change"].item() == 4.0
+
+
+def test_knee_level_censors_replaced_knee_from_replacement_on():
+    per_knee = pl.DataFrame(
+        {
+            "ID": [1] * 4,
+            "SIDE": ["R", "L", "R", "L"],
+            "visit": ["06", "06", "10", "10"],
+            "measure": ["womac_pain"] * 4,
+            "value": [3.0, 1.0, 9.0, 2.0],
+        }
+    )
+    status = pl.DataFrame(
+        {
+            "ID": [1] * 4,
+            "SIDE": ["R", "L", "R", "L"],
+            "visit": ["06", "06", "10", "10"],
+            "kl": [2.0, 1.0, None, 1.0],
+            "replaced": [False, False, True, False],
+        }
+    )
+    keep = d.knee_level(per_knee, status, "keep_kl4").sort("visit")
+    assert keep["value"].to_list() == [3.0, 9.0]
+    cens = d.knee_level(per_knee, status, "censor").sort("visit")
+    assert cens["value"].to_list() == [3.0, 2.0]
+
+
+def test_assemble_long_kl4_only_at_attended_visits():
+    # knee R replaced at 06 (attended); the person misses 10, where knee_status still says
+    # replaced (nominal-month timing): no kl_worse row at 10 under either rule
+    person = pl.DataFrame({"ID": [1], "visit": ["06"], "measure": ["bmi"], "value": [30.0]})
+    knee = pl.DataFrame(
+        {
+            "ID": [1, 1],
+            "SIDE": ["R", "L"],
+            "visit": ["06", "06"],
+            "measure": ["womac_pain"] * 2,
+            "value": [5.0, 2.0],
+        }
+    )
+    status = pl.DataFrame(
+        {
+            "ID": [1] * 4,
+            "SIDE": ["R", "L", "R", "L"],
+            "visit": ["06", "06", "10", "10"],
+            "kl": [None, 2.0, None, None],
+            "replaced": [True, False, True, False],
+        }
+    )
+    out = d.assemble_long([person], knee, status)
+    kl = out.filter(pl.col("measure") == "kl_worse")
+    assert kl.filter(pl.col("visit") == "10").height == 0
+    keep = kl.filter(~pl.col("censored"))
+    assert keep["value"].to_list() == [4.0]
+
+
+def test_long_table_refuses_either_knee_replacement_scope():
+    A = {
+        "outcomes.arthroplasty_scope": "either",
+        "discordance.trend_visits": ["06"],
+        "discordance.anchor_visit": "06",
+    }
+    with pytest.raises(ValueError, match="arthroplasty_scope"):
+        d.long_table(A)
+
+
+A_TEST = {
+    "discordance.bootstrap_reps": 50,
+    "discordance.seed": 7,
+    "discordance.smd_bands": {"small": 0.1, "lead": 0.2},
+}
+
+
+def test_smd_continuous_and_binary():
+    assert d.smd(np.array([2.0, 4.0]), np.array([0.0, 2.0]), "continuous") == pytest.approx(
+        2 / np.sqrt(2)
+    )
+    assert d.smd(np.array([1.0, 1.0, 0.0, 0.0]), np.array([0.0] * 4), "binary") == pytest.approx(
+        0.5 / np.sqrt(0.125)
+    )
+
+
+def test_smd_needs_two_values_per_group():
+    assert d.smd(np.array([1.0]), np.array([1.0, 2.0]), "continuous") is None
+
+
+def test_smd_categorical_two_levels_matches_binary():
+    a = np.array([1, 1, 2, 2, 2, 2.0])
+    b = np.array([1, 1, 1, 1, 2, 2.0])
+    as_binary = d.smd(a - 1, b - 1, "binary")
+    assert d.smd(a, b, "categorical") == pytest.approx(abs(as_binary))
+
+
+def test_smd_ci_brackets_and_is_reproducible():
+    a = np.array([2.0, 4, 5, 7, 3, 6])
+    b = np.array([0.0, 2, 1, 3, 2, 1])
+    lo, hi = d.smd_ci(a, b, "continuous", 50, 1)
+    assert lo < d.smd(a, b, "continuous") < hi
+    assert (lo, hi) == d.smd_ci(a, b, "continuous", 50, 1)
+
+
+def test_band_rule():
+    assert [d.band(x, 0.1, 0.2) for x in (0.05, -0.15, 0.25, None)] == [
+        "negligible",
+        "small",
+        "lead",
+        "",
+    ]
+
+
+def test_screen_runs_without_no_group():
+    groups = pl.DataFrame(
+        {"ID": [1, 2, 3, 4], "group": ["Yes, step walker"] * 2 + ["Yes, not a step walker"] * 2}
+    )
+    values = pl.DataFrame(
+        {
+            "ID": [1, 2, 3, 4],
+            "measure": ["bmi"] * 4,
+            "window": ["level_06"] * 4,
+            "value": [25.0, 27.0, 30.0, 32.0],
+            "start_used": ["06"] * 4,
+            "end_used": ["06"] * 4,
+        }
+    )
+    out = d.screen(groups, values, {"bmi": "continuous"}, A_TEST, min_cell=1)
+    assert out["persons_no"].item() == 0 and out["band"].item() == "lead"
+    assert out["persons_step"].item() == 2 and out["area"].item() == "health"
+    assert out["smd"].item() > 0
+
+
+def test_screen_suppresses_small_groups():
+    groups = pl.DataFrame(
+        {
+            "ID": list(range(1, 13)),
+            "group": ["Yes, step walker"] * 2 + ["Yes, not a step walker"] * 6 + ["No"] * 4,
+        }
+    )
+    values = pl.DataFrame(
+        {
+            "ID": list(range(1, 13)),
+            "measure": ["bmi"] * 12,
+            "window": ["level_06"] * 12,
+            "value": [25.0, 27.0, 30.0, 32.0, 29.0, 31.0, 28.0, 33.0, 26.0, 27.0, 28.0, 29.0],
+            "start_used": ["06"] * 12,
+            "end_used": ["06"] * 12,
+        }
+    )
+    row = d.screen(groups, values, {"bmi": "continuous"}, A_TEST, min_cell=5).row(0, named=True)
+    assert row["summary_step"] == "" and row["persons_step"] is None
+    assert row["summary_no"] == "" and row["persons_no"] is None
+    assert row["persons_not"] == 6 and row["summary_not"] != ""
+    assert row["smd"] is None and row["smd_lo"] is None and row["smd_hi"] is None
+    assert row["band"] == ""
+
+
+def test_summary_never_prints_nan():
+    assert "nan" not in d._summary(np.array([3.0]), "continuous")
+
+
+SCREEN_FIXTURE = pl.DataFrame(
+    {
+        "comparison": ["primary"] * 3,
+        "censored": [False, False, True],
+        "measure": ["bmi", "kl_worse", "womac_pain"],
+        "area": ["health", "knee", "knee"],
+        "window": ["level_06", "level_06", "change_00_06"],
+        "start_used": ["06", "06", "00"],
+        "end_used": ["06", "06", "06"],
+        "persons_step": [300, 200, 250],
+        "persons_not": [800, 500, 700],
+        "persons_no": [280, 150, 260],
+        "summary_step": ["27.10 (4.00)", "2.10 (1.00)", "0.50 (2.00)"],
+        "summary_not": ["29.00 (5.00)", "2.50 (1.10)", "1.20 (2.50)"],
+        "summary_no": ["29.50 (5.20)", "2.60 (1.00)", "1.30 (2.40)"],
+        "smd": [0.42, 0.37, 0.25],
+        "smd_lo": [0.30, 0.20, 0.10],
+        "smd_hi": [0.55, 0.50, 0.40],
+        "band": ["lead", "lead", "lead"],
+    }
+)
+TRENDS_FIXTURE_EMPTY = pl.DataFrame()
+
+
+def test_discordance_text_is_neutral():
+    text = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap=0.0, label="default"
+    )
+    for word in ("bias", "over-report", "overreport", "false positive", "correction", "misclassif"):
+        assert word not in text.lower()
+
+
+def test_discordance_text_lists_leads_and_kl_caveat():
+    text = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap=0.0, label="default"
+    )
+    assert "bmi" in text and "kl_worse" in text and "[default]" in text
+    flagged = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap={"primary": 0.2}, label="default"
+    )
+    assert "KL coverage" in flagged
+    leads = flagged.split("### Leads")[1].split("###")[0]
+    assert "kl_worse" not in leads
+
+
+def test_season_and_weekend_share_from_valid_days():
+    byday = pl.DataFrame(
+        {
+            "ID": [1, 1, 1, 1, 2],
+            "V06VDaySequence": [2, 1, 3, 4, 1],
+            "V06PAMonth": [3, 2, 3, 3, 12],
+            "V06PAWeekDay": ["Sunday", "Saturday", "Monday", "Tuesday", "Friday"],
+        }
+    )
+    cal = d.device_calendar(byday, "06").sort("ID")
+    assert cal["season"].to_list() == [1.0, 1.0]  # first valid day in Feb; December
+    assert cal["weekend_share"].to_list() == [0.5, 0.0]
+    months = pl.DataFrame({"m": list(range(1, 13))})
+    seasons = months.select(d.season(pl.col("m")))["m"].to_list()
+    assert seasons == [1, 1, 2, 2, 2, 3, 3, 3, 4, 4, 4, 1]
+
+
+def test_device_descriptors_mean_basis_averages_valid_waves():
+    device = pl.DataFrame(
+        {
+            "ID": [1, 1, 2],
+            "wave": ["06", "08", "08"],
+            "valid": [True, True, False],
+            "valid_days": [7.0, 5.0, 7.0],
+            "wear_hr": [14.0, 16.0, 15.0],
+            "steps": [5000.0, None, 4000.0],
+            "mv_min": [10.0, 20.0, 5.0],
+        }
+    )
+    cal = pl.DataFrame(
+        {"ID": [1, 1], "wave": ["06", "08"], "season": [2.0, 4.0], "weekend_share": [0.2, 0.4]}
+    )
+    out = d.device_descriptors(device, cal, "mean")
+    assert out.height == 1
+    r = out.row(0, named=True)
+    assert r["valid_days"] == 6.0 and r["steps"] == 5000.0 and r["season"] == 2.0
+    assert r["weekend_share"] == pytest.approx(0.3)
+    assert d.device_descriptors(device, cal, "08")["valid_days"].to_list() == [5.0]
+
+
+def test_kl_coverage_gap_between_yes_groups():
+    groups = pl.DataFrame(
+        {
+            "comparison": ["c"] * 4,
+            "ID": [1, 2, 3, 4],
+            "group": ["Yes, step walker"] * 2 + ["Yes, not a step walker"] * 2,
+        }
+    )
+    long = pl.DataFrame(
+        {
+            "ID": [1, 2, 3, 3],
+            "visit": ["06", "06", "06", "06"],
+            "measure": ["kl_worse"] * 4,
+            "value": [2.0, 3.0, 1.0, 1.0],
+            "censored": [False, False, False, True],
+        }
+    )
+    cov = d.kl_coverage(groups, long)
+    assert cov.filter(pl.col("group") == "Yes, not a step walker")["share"].item() == 0.5
+    assert d.coverage_gaps(cov) == {"c": pytest.approx(0.5)}
+
+
+def test_self_report_measures_are_context_not_leads():
+    text = d.render_markdown(
+        SCREEN_FIXTURE,
+        TRENDS_FIXTURE_EMPTY,
+        coverage_gap=0.0,
+        label="default",
+        self_report_measures={"primary": ["bmi"]},
+    )
+    leads = text.split("### Leads")[1].split("###")[0]
+    assert "bmi" not in leads and "define the groups" in text
+
+
+def test_kl_caveat_also_drops_kl_from_sensitivity_leads():
+    screen = pl.concat(
+        [
+            SCREEN_FIXTURE,
+            SCREEN_FIXTURE.filter(pl.col("measure") == "kl_worse").with_columns(
+                pl.lit(True).alias("censored")
+            ),
+        ]
+    )
+    text = d.render_markdown(
+        screen,
+        TRENDS_FIXTURE_EMPTY,
+        coverage_gap={"primary": 0.2},
+        label="default",
+        self_report_measures={"primary": ["womac_pain"]},
+    )
+    sens = text.split("(sensitivity)")[1].split("###")[0] if "(sensitivity)" in text else ""
+    assert "kl_worse" not in sens and "womac_pain" not in sens
+
+
+def test_missing_or_null_coverage_gap_fails_closed():
+    for gaps in ({}, {"primary": None}, {"primary": float("nan")}):
+        text = d.render_markdown(
+            SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap=gaps, label="default"
+        )
+        assert "### KL coverage" in text
+        leads = text.split("### Leads")[1].split("###")[0]
+        assert "kl_worse" not in leads
+
+
+def test_summary_masks_small_binary_counts():
+    x = np.array([1.0] * 3 + [0.0] * 20)
+    assert d._summary(x, "binary", min_cell=5) == "<5"
+    assert d._summary(np.array([1.0] * 6 + [0.0] * 20), "binary", min_cell=5) == "23.1%"
+
+
+def test_summary_masks_small_categorical_levels():
+    # one masked level is the rest's complement: the smallest other is masked too, which
+    # leaves one level shown, whose share would give the masked total away: blank
+    x = np.array([1.0] * 3 + [2.0] * 10 + [3.0] * 10)
+    assert d._summary(x, "categorical", min_cell=5) == ""
+    z = np.array([1.0] * 3 + [2.0] * 2 + [3.0] * 10 + [4.0] * 10)
+    assert d._summary(z, "categorical", min_cell=5) == "1: <5; 2: <5; 3: 40.0%; 4: 40.0%"
+    y = np.array([1.0] * 3 + [2.0] * 10)
+    assert d._summary(y, "categorical", min_cell=5) == ""
+    w = np.array([1.0] * 6 + [2.0] * 10 + [3.0] * 10)
+    assert d._summary(w, "categorical", min_cell=5) == "1: 23.1%; 2: 38.5%; 3: 38.5%"
+
+
+def test_summary_masks_small_levels_whose_total_is_small():
+    # levels 1 and 2 hold 4 people together: the rest would give that total away
+    x = np.array([1.0] * 2 + [2.0] * 2 + [3.0] * 10 + [4.0] * 11 + [5.0] * 12)
+    assert d._summary(x, "categorical", min_cell=5) == "1: <5; 2: <5; 3: <5; 4: 29.7%; 5: 32.4%"
+
+
+def test_screen_blanks_smd_when_a_yes_summary_is_masked():
+    groups = pl.DataFrame(
+        {
+            "ID": list(range(20)),
+            "group": ["Yes, step walker"] * 10 + ["Yes, not a step walker"] * 10,
+        }
+    )
+    values = pl.DataFrame(
+        {
+            "ID": list(range(20)),
+            "measure": ["race"] * 20,
+            "window": ["fixed"] * 20,
+            "value": [1.0] * 2 + [2.0] * 8 + [1.0] * 5 + [2.0] * 5,
+            "start_used": [None] * 20,
+            "end_used": [None] * 20,
+        },
+        schema_overrides={"start_used": pl.String, "end_used": pl.String},
+    )
+    row = d.screen(groups, values, {"race": "categorical"}, A_TEST, min_cell=5).row(0, named=True)
+    assert row["summary_step"] == "" and row["summary_not"] == "1: 50.0%; 2: 50.0%"
+    assert row["smd"] is None and row["smd_lo"] is None and row["smd_hi"] is None
+    assert row["band"] == "" and row["persons_step"] == 10
+
+
+def test_kl_caveat_does_not_print_the_gap():
+    text = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap={"primary": 0.237}, label="default"
+    )
+    caveat = text.split("### KL coverage")[1].split("###")[0]
+    assert "24" not in caveat and "23.7" not in caveat and "0.237" not in caveat
+    assert "10-percentage-point rule" in caveat
+
+
+def test_screen_masks_small_binary_and_blanks_smd():
+    groups = pl.DataFrame(
+        {
+            "ID": list(range(20)),
+            "group": ["Yes, step walker"] * 10 + ["Yes, not a step walker"] * 10,
+        }
+    )
+    values = pl.DataFrame(
+        {
+            "ID": list(range(20)),
+            "measure": ["sex"] * 20,
+            "window": ["fixed"] * 20,
+            "value": [1.0] * 2 + [0.0] * 8 + [1.0] * 5 + [0.0] * 5,
+            "start_used": [None] * 20,
+            "end_used": [None] * 20,
+        },
+        schema_overrides={"start_used": pl.String, "end_used": pl.String},
+    )
+    row = d.screen(groups, values, {"sex": "binary"}, A_TEST, min_cell=5).row(0, named=True)
+    assert row["summary_step"] == "<5" and row["summary_not"] == "50.0%"
+    # the SMD and the other group's share would give the masked count away
+    assert row["smd"] is None and row["band"] == "" and row["persons_step"] == 10
+
+
+def test_kl_coverage_suppresses_small_counts():
+    groups = pl.DataFrame(
+        {"comparison": ["c"] * 10, "ID": list(range(10)), "group": ["Yes, step walker"] * 10}
+    )
+    long = pl.DataFrame(
+        {
+            "ID": list(range(8)) + [0, 1],
+            "visit": ["06"] * 8 + ["10"] * 2,
+            "measure": ["kl_worse"] * 10,
+            "value": [1.0] * 10,
+            "censored": [False] * 10,
+        }
+    )
+    raw = d.kl_coverage(groups, long)
+    assert raw.filter(pl.col("visit") == "06")["share"].item() == 0.8
+    masked = d.kl_coverage(groups, long, min_cell=5)
+    assert masked["share"].to_list() == [None, None]  # 2 without a reading; 2 with one
+
+
+def test_holm_skips_unconverged():
+    df = pl.DataFrame(
+        {"comparison": ["c"] * 3, "p": [0.01, 0.04, None], "converged": [True, True, False]}
+    )
+    out = d.holm_by(df, ["comparison"], "p", "p_holm")
+    assert out["p_holm"].to_list() == [pytest.approx(0.02), pytest.approx(0.04), None]
+
+
+def test_holm_families_and_unconverged_with_p():
+    df = pl.DataFrame(
+        {
+            "comparison": ["a", "a", "a", "b"],
+            "p": [0.01, 0.03, 0.02, 0.03],
+            "converged": [True, True, False, True],
+        }
+    )
+    out = d.holm_by(df, ["comparison"], "p", "p_holm")
+    # the unconverged row keeps a null and is not in its family; b is its own family of one
+    assert out["p_holm"].to_list() == [
+        pytest.approx(0.02),
+        pytest.approx(0.03),
+        None,
+        pytest.approx(0.03),
+    ]
+
+
+TRENDS_FIXTURE = pl.DataFrame(
+    {
+        "comparison": ["primary"] * 4,
+        "censored": [False] * 4,
+        "measure": ["bmi", "bmi", "cesd", "kl_worse"],
+        "kind": ["continuous"] * 4,
+        "visit": ["00", "06", "00", "06"],
+        "estimate": [0.5, 1.2, 0.1, 0.3],
+        "lo": [0.1, 0.6, -0.4, 0.1],
+        "hi": [0.9, 1.8, 0.6, 0.5],
+        "scale": ["difference"] * 4,
+        "p_interaction": [0.001, 0.001, 0.4, 0.001],
+        "p_interaction_holm": [0.003, 0.003, 0.4, 0.003],
+        "persons_model": [1200] * 4,
+        "converged": [True] * 4,
+        "fit_note": [None] * 4,
+    }
+)
+
+
+def test_discordance_text_renders_trends():
+    text = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE, coverage_gap={"primary": 0.2}, label="default"
+    )
+    stage2 = text.split("## Stage 2")[1]
+    assert "Not yet run" not in stage2 and "discordance_trends.csv" in stage2
+    assert "bmi" in stage2 and "1.20 (0.60 to 1.80)" in stage2
+    # Holm p >= 0.05 is not listed; KL under the coverage caveat is not listed either
+    assert "| cesd" not in stage2
+    assert "| kl_worse" not in stage2
+    for word in ("bias", "over-report", "overreport", "false positive", "correction", "misclassif"):
+        assert word not in text.lower()
+
+
+def test_merge_categories_maps_release_codes():
+    fixed = pl.DataFrame(
+        {
+            "ID": [1, 2, 3, 4, 5, 6],
+            "measure": ["race", "race", "race", "race", "education", "age"],
+            "value": [0.0, 1.0, 2.0, 3.0, 4.0, 61.0],
+        }
+    )
+    mapping = {
+        "race": {"1": 1, "2": 2, "0": 3, "3": 3},
+        "education": {"0": 1, "1": 1, "2": 2, "3": 3, "4": 3, "5": 4},
+    }
+    out = d.merge_categories(fixed, mapping)
+    assert out["value"].to_list() == [3.0, 1.0, 2.0, 3.0, 3.0, 61.0]
+    with pytest.raises(ValueError, match="race"):
+        d.merge_categories(fixed.with_columns(pl.lit(7.0).alias("value")), mapping)
+    nulls = fixed.with_columns(pl.lit(None, dtype=pl.Float64).alias("value"))
+    assert d.merge_categories(nulls, mapping)["value"].null_count() == 6
+
+
+ANALYSIS_DIR = Path(__file__).resolve().parents[1] / "analyses" / "walking_steps"
+
+
+def test_change_kinds_marks_binary_changes():
+    kinds = {"replaced_any": "binary", "bmi": "continuous", "race": "categorical"}
+    assert d.change_kinds(kinds) == {
+        "replaced_any": "binary_change",
+        "bmi": "continuous",
+        "race": "categorical",
+    }
+
+
+def test_binary_change_smd_is_continuous_on_minus_one_zero_one():
+    a = np.array([1.0] * 10 + [0.0] * 30 + [-1.0] * 6)
+    b = np.array([1.0] * 5 + [0.0] * 40 + [-1.0] * 8)
+    assert d.smd(a, b, "binary_change") == pytest.approx(d.smd(a, b, "continuous"))
+
+
+def test_summary_masks_small_counts_in_binary_changes():
+    # mean and SD with the group size known give the number of non-zero changes exactly
+    four_up = np.array([1.0] * 4 + [0.0] * 337)
+    assert d._summary(four_up, "binary_change", min_cell=5) == "<5"
+    four_down = np.array([-1.0] * 4 + [1.0] * 20 + [0.0] * 300)
+    assert d._summary(four_down, "binary_change", min_cell=5) == "<5"
+    few_zero = np.array([0.0] * 3 + [1.0] * 30)
+    assert d._summary(few_zero, "binary_change", min_cell=5) == "<5"
+    fine = np.array([-1.0] * 5 + [1.0] * 6 + [0.0] * 30)
+    assert d._summary(fine, "binary_change", min_cell=5) == d._summary(fine, "continuous")
+    assert d._summary(np.array([0.0] * 30), "binary_change", min_cell=5) == "0.00 (0.00)"
+
+
+def test_screen_masks_small_binary_change_and_blanks_smd():
+    n_step, n_not = 341, 400
+    groups = pl.DataFrame(
+        {
+            "ID": list(range(n_step + n_not)),
+            "group": ["Yes, step walker"] * n_step + ["Yes, not a step walker"] * n_not,
+        }
+    )
+    values = pl.DataFrame(
+        {
+            "ID": list(range(n_step + n_not)),
+            "measure": ["replaced_any"] * (n_step + n_not),
+            "window": ["change_00_06"] * (n_step + n_not),
+            "value": [1.0] * 4 + [0.0] * (n_step - 4) + [1.0] * 20 + [0.0] * (n_not - 20),
+            "start_used": ["00"] * (n_step + n_not),
+            "end_used": ["06"] * (n_step + n_not),
+        }
+    )
+    kinds = d.change_kinds({"replaced_any": "binary"})
+    row = d.screen(groups, values, kinds, A_TEST, min_cell=5).row(0, named=True)
+    assert row["summary_step"] == "<5" and row["persons_step"] == n_step
+    assert row["summary_not"] == d._summary(np.array(values["value"][n_step:]), "continuous")
+    assert row["smd"] is None and row["smd_lo"] is None and row["band"] == ""
+
+
+def test_kl_caveat_names_the_screen_csv():
+    text = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap={"primary": 0.2}, label="default"
+    )
+    caveat = text.split("### KL coverage")[1].split("###")[0]
+    assert "reported in discordance_screen.csv" in caveat
+    assert "with this caveat" not in caveat
+
+
+def test_discordance_md_has_one_writer():
+    # the screen writes its CSVs only; discordance_holm, which runs after it, writes the report
+    screen = (ANALYSIS_DIR / "discordance_screen.py").read_text()
+    holm = (ANALYSIS_DIR / "discordance_holm.py").read_text()
+    assert "render_markdown" not in screen and '"DISCORDANCE.md").write_text' not in screen
+    assert "render_markdown" in holm and '"DISCORDANCE.md").write_text' in holm
+
+
+def test_discordance_report_labels_and_wording():
+    qmd = (ANALYSIS_DIR / "discordance.qmd").read_text()
+    assert "times a week" not in qmd and "Item: times a month" in qmd
+    assert "numeric primary leads" in qmd
+    # a masked row has an empty band, which the report's CSV reader turns into NA
+    assert 'scr$band[is.na(scr$band)] <- ""' in qmd

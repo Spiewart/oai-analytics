@@ -4,8 +4,9 @@ description = "Walking from per-minute GT1M steps at 48 and 72 months: how much 
 [inputs]
 # The per-minute steps are not a release table: they are read from OAI_STEPS_DIR (oai.steps).
 tables = [
-    "enrollees", "allclinical:06", "allclinical:08", "allclinical:10",
-    "acceldatabymin:06", "acceldatabymin:08",
+    "enrollees", "allclinical:00", "allclinical:01", "allclinical:03", "allclinical:05",
+    "allclinical:06", "allclinical:08", "allclinical:10",
+    "acceldatabymin:06", "acceldatabymin:08", "acceldatabyday:06", "acceldatabyday:08",
 ]
 
 [[steps]]
@@ -13,6 +14,12 @@ id = "share"
 lang = "python"
 stage = "local"
 entry = "walking_share.py"
+
+[[steps]]
+id = "relation"
+lang = "python"
+stage = "local"
+entry = "minute_relation.py"
 
 [[steps]]
 id = "persons"
@@ -27,9 +34,37 @@ stage = "local"
 entry = "pro_validity.py"
 needs = ["persons"]
 
+[[steps]]
+id = "discordance_frame"
+lang = "python"
+stage = "local"
+entry = "discordance_frame.py"
+needs = ["persons"]
+
+[[steps]]
+id = "discordance_screen"
+lang = "python"
+stage = "local"
+entry = "discordance_screen.py"
+needs = ["discordance_frame"]
+
+[[steps]]
+id = "discordance_trends"
+lang = "r"
+stage = "local"
+entry = "discordance_trends.R"
+needs = ["discordance_frame"]
+
+[[steps]]
+id = "discordance_holm"
+lang = "python"
+stage = "local"
+entry = "discordance_holm.py"
+needs = ["discordance_trends", "discordance_screen"]
+
 [outputs]
 aggregate = ["*.csv", "*.md", "assumptions.resolved.json"]
 
 [report]
-documents = ["report.qmd"]
+documents = ["report.qmd", "discordance.qmd"]
 runs = ["default"]

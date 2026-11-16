@@ -110,10 +110,16 @@ def shares(w: pl.DataFrame, cadences: list[int]) -> pl.DataFrame:
     return pl.DataFrame(rows)
 
 
+def band_labels(edges: list[int]) -> list[str]:
+    """Cadence band labels: 0 steps, then one band per pair of lower edges, then the top band."""
+    return (
+        ["0"] + [f"{a}-{b - 1}" for a, b in zip(edges, edges[1:], strict=False)] + [f"{edges[-1]}+"]
+    )
+
+
 def cadence_bands(w: pl.DataFrame, edges: list[int], mv_cutpoint: float) -> pl.DataFrame:
     """Minutes, counts and MV share by cadence band; 0 steps is its own band below edges[0]."""
-    labels = ["0"] + [f"{a}-{b - 1}" for a, b in zip(edges, edges[1:], strict=False)]
-    labels.append(f"{edges[-1]}+")
+    labels = band_labels(edges)
     breaks = [e - 0.5 for e in edges]
     return (
         w.with_columns(pl.col("steps").cut(breaks, labels=labels).alias("band"))
@@ -141,8 +147,7 @@ def person_bands(w: pl.DataFrame, edges: list[int], mv_cutpoint: float) -> pl.Da
     minutes in the band; `persons` gives each n. Bands where a person has no minutes count as 0
     for the minutes and counts shares.
     """
-    labels = ["0"] + [f"{a}-{b - 1}" for a, b in zip(edges, edges[1:], strict=False)]
-    labels.append(f"{edges[-1]}+")
+    labels = band_labels(edges)
     banded = w.with_columns(
         pl.col("steps").cut([e - 0.5 for e in edges], labels=labels).cast(pl.String).alias("band")
     )
