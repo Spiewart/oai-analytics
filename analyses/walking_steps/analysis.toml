@@ -66,5 +66,5 @@ needs = ["discordance_trends", "discordance_screen"]
 aggregate = ["*.csv", "*.md", "assumptions.resolved.json"]
 
 [report]
-documents = ["report.qmd"]
+documents = ["report.qmd", "discordance.qmd"]
 runs = ["default"]

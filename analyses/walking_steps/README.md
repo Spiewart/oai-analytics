@@ -1,6 +1,6 @@
 # Walking from per-minute steps
 
-Three questions, at 48 and 72 months: how much of the GT1M activity counts is walking (step `share`), how self-reported walking agrees with count-based and step-based device walking (steps `persons` and `pro_validity`), and how per-minute steps relate to per-minute counts (step `relation`). `oai report walking_steps` renders `report.pdf`, a two-page exploratory summary of both for the study team and the Northwestern accelerometry group.
+Three questions, at 48 and 72 months: how much of the GT1M activity counts is walking (step `share`), how self-reported walking agrees with count-based and step-based device walking (steps `persons` and `pro_validity`), and how per-minute steps relate to per-minute counts (step `relation`). `oai report walking_steps` renders `report.pdf`, a two-page exploratory summary of both for the study team and the Northwestern accelerometry group. It also renders `discordance.pdf` (`discordance.qmd`), the Part 4 report on self-reported walkers by device walking status.
 
 ## Part 1: share of the counts
 
@@ -94,6 +94,8 @@ Among people who say they walk for exercise, how do those who are step-defined w
 | `discordance_kl_coverage.csv` | Share of each group with a KL reading at each visit |
 | `discordance_trends.csv` | Stage 2: per comparison, replacement rule, measure and visit, the adjusted contrast (`estimate`, `lo`, `hi`, `scale` difference or OR), `p_interaction` and `p_interaction_holm` (repeated on the measure's rows), `persons_model`, `converged` and `fit_note` |
 | `DISCORDANCE.md` | Stage 1 leads (\|SMD\| >= 0.2) and stage 2 measures with Holm p < `discordance.trend_alpha`, in neutral wording, with the KL-coverage caveat when the gap passes `discordance.kl_coverage_gap` |
+
+`discordance.pdf` (from `discordance.qmd`, rendered by `oai report walking_steps`) draws both stages from these aggregates: group sizes, a forest plot of the primary comparison's SMDs by window and area, the leads of every comparison side by side, the adjusted per-visit gaps for the measures with Holm p < `discordance.trend_alpha` (or, when a comparison has none, its 6 largest |SMD| at 48 months, labelled so), the censored knee-level sensitivity beside the main results, and the KL-coverage caveat when it applies.
 
 The stage-2 step fits about 100 models, the GEEs in a child process each with `discordance.fit_timeout`; a fit that fails, times out or is separated leaves a row with `converged` false and the reason in `fit_note`.
 
