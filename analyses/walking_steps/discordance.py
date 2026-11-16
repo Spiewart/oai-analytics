@@ -260,43 +260,45 @@ def _visit_tables(allclinical: pl.DataFrame, visit: str, A) -> tuple[pl.DataFram
     return person_long, per_knee
 
 
-def long_table(A) -> pl.DataFrame:
-    """ID, visit, measure, value (Float64; binary 0/1), censored for every time-varying measure
-    at `discordance.trend_visits`.
+def assemble_long(
+    person: list[pl.DataFrame], knee: pl.DataFrame, status: pl.DataFrame
+) -> pl.DataFrame:
+    """The long table from its parts: person-level long frames (ID, visit, measure, value),
+    per-knee long (ID, SIDE, visit, measure, value) and knee_status (ID, SIDE, visit, kl,
+    replaced).
 
-    Knee-level measures (KNEE_LEVEL) have one row per replacement rule: censored False under
-    "keep_kl4", True under "censor". Every other measure has censored False only.
+    knee_status has every enrollee at every visit, and its replacement timing counts a knee as
+    replaced at visits after a replacement whether or not the person came. So replaced_any and
+    kl_worse (both rules) are kept only at attended person-visits: those with some non-null
+    AllClinical value.
     """
-    from oai.derive.knee_outcomes import knee_status
-    from oai.loader import read_table
-
-    visits = list(A["discordance.trend_visits"])
-    status = knee_status(A, visits, A["discordance.anchor_visit"]).select(
-        pl.col("ID").cast(pl.Int64), "SIDE", "visit", "kl", "replaced"
+    attended = (
+        pl.concat([*person, knee.drop("SIDE")], how="vertical_relaxed")
+        .filter(pl.col("value").is_not_null())
+        .select("ID", "visit")
+        .unique()
     )
-    person, per_knee = [], []
-    for v in visits:
-        p, k = _visit_tables(read_table("allclinical", v), v, A)
-        person.append(p)
-        if k is not None:
-            per_knee.append(k)
-    knee = pl.concat(per_knee)
-    # knee_status has every enrollee at every visit; count replacement only where the person
-    # has some AllClinical value at that visit (attended), not as "not replaced" after drop-out
-    attended = pl.concat([*person, knee.drop("SIDE")]).filter(pl.col("value").is_not_null())
     replaced_any = (
         status.group_by("ID", "visit")
         .agg(pl.col("replaced").fill_null(False).any().cast(pl.Float64).alias("value"))
-        .join(attended.select("ID", "visit").unique(), on=["ID", "visit"], how="semi")
+        .join(attended, on=["ID", "visit"], how="semi")
         .select("ID", "visit", pl.lit("replaced_any").alias("measure"), "value")
     )
-    frames = [pl.concat([*person, replaced_any]).with_columns(pl.lit(False).alias("censored"))]
+    frames = [
+        pl.concat([*person, replaced_any], how="vertical_relaxed").with_columns(
+            pl.lit(False).alias("censored")
+        )
+    ]
     for rule, censored in (("keep_kl4", False), ("censor", True)):
-        kl = worse_knee_kl(status, rule).select(
-            "ID",
-            "visit",
-            pl.lit("kl_worse").alias("measure"),
-            pl.col("kl_worse").cast(pl.Float64).alias("value"),
+        kl = (
+            worse_knee_kl(status, rule)
+            .join(attended, on=["ID", "visit"], how="semi")
+            .select(
+                "ID",
+                "visit",
+                pl.lit("kl_worse").alias("measure"),
+                pl.col("kl_worse").cast(pl.Float64).alias("value"),
+            )
         )
         frames.append(
             pl.concat([knee_level(knee, status, rule), kl], how="vertical_relaxed")
@@ -314,3 +316,34 @@ def long_table(A) -> pl.DataFrame:
         )
         .sort("censored", "measure", "ID", "visit")
     )
+
+
+def long_table(A) -> pl.DataFrame:
+    """ID, visit, measure, value (Float64; binary 0/1), censored for every time-varying measure
+    at `discordance.trend_visits`.
+
+    Knee-level measures (KNEE_LEVEL) have one row per replacement rule: censored False under
+    "keep_kl4", True under "censor". Every other measure has censored False only.
+    """
+    # the per-knee replacement rules need each knee's own replacement, which knee_status gives
+    # only under outcomes.arthroplasty_scope = "right" (the side it is run for)
+    scope = A["outcomes.arthroplasty_scope"]
+    if scope != "right":
+        raise ValueError(
+            f"outcomes.arthroplasty_scope must be 'right' (side-specific) for the per-knee "
+            f"replacement rules, not {scope!r}"
+        )
+    from oai.derive.knee_outcomes import knee_status
+    from oai.loader import read_table
+
+    visits = list(A["discordance.trend_visits"])
+    status = knee_status(A, visits, A["discordance.anchor_visit"]).select(
+        pl.col("ID").cast(pl.Int64), "SIDE", "visit", "kl", "replaced"
+    )
+    person, per_knee = [], []
+    for v in visits:
+        p, k = _visit_tables(read_table("allclinical", v), v, A)
+        person.append(p)
+        if k is not None:
+            per_knee.append(k)
+    return assemble_long(person, pl.concat(per_knee), status)

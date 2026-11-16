@@ -473,3 +473,42 @@ def test_knee_level_censors_replaced_knee_from_replacement_on():
     assert keep["value"].to_list() == [3.0, 9.0]
     cens = d.knee_level(per_knee, status, "censor").sort("visit")
     assert cens["value"].to_list() == [3.0, 2.0]
+
+
+def test_assemble_long_kl4_only_at_attended_visits():
+    # knee R replaced at 06 (attended); the person misses 10, where knee_status still says
+    # replaced (nominal-month timing): no kl_worse row at 10 under either rule
+    person = pl.DataFrame({"ID": [1], "visit": ["06"], "measure": ["bmi"], "value": [30.0]})
+    knee = pl.DataFrame(
+        {
+            "ID": [1, 1],
+            "SIDE": ["R", "L"],
+            "visit": ["06", "06"],
+            "measure": ["womac_pain"] * 2,
+            "value": [5.0, 2.0],
+        }
+    )
+    status = pl.DataFrame(
+        {
+            "ID": [1] * 4,
+            "SIDE": ["R", "L", "R", "L"],
+            "visit": ["06", "06", "10", "10"],
+            "kl": [None, 2.0, None, None],
+            "replaced": [True, False, True, False],
+        }
+    )
+    out = d.assemble_long([person], knee, status)
+    kl = out.filter(pl.col("measure") == "kl_worse")
+    assert kl.filter(pl.col("visit") == "10").height == 0
+    keep = kl.filter(~pl.col("censored"))
+    assert keep["value"].to_list() == [4.0]
+
+
+def test_long_table_refuses_either_knee_replacement_scope():
+    A = {
+        "outcomes.arthroplasty_scope": "either",
+        "discordance.trend_visits": ["06"],
+        "discordance.anchor_visit": "06",
+    }
+    with pytest.raises(ValueError, match="arthroplasty_scope"):
+        d.long_table(A)
