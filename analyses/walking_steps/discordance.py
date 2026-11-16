@@ -420,17 +420,34 @@ def band(x: float | None, small: float, lead: float) -> str:
     return "negligible" if abs(x) < small else "small" if abs(x) < lead else "lead"
 
 
-def _summary(x: np.ndarray, kind: str) -> str:
+def _summary(x: np.ndarray, kind: str, min_cell: int = 1) -> str:
+    """A group's summary: mean (SD), or the share of 1s, or the share of each level.
+
+    Shares that stand for 1..min_cell-1 people show as "<min_cell": a binary summary when its
+    1s or its 0s are that few; a categorical level that small. When only one level is masked,
+    the smallest other level is masked too, since the rest would give it away by subtraction
+    (this covers the case of a single other level).
+    """
     if len(x) == 0:
         return ""
+    small = lambda c: 0 < c < min_cell  # noqa: E731
     if kind == "continuous":
         sd = f"{x.std(ddof=1):.2f}" if len(x) > 1 else "-"
         return f"{x.mean():.2f} ({sd})"
     if kind == "binary":
+        ones = int((x == 1).sum())
+        if small(ones) or small(len(x) - ones):
+            return f"<{min_cell}"
         return f"{100 * x.mean():.1f}%"
     levels, counts = np.unique(x, return_counts=True)
+    masked = [small(int(c)) for c in counts]
+    if masked.count(True) == 1:
+        # one masked level is the total minus the others: mask the smallest other level too
+        others = [i for i, m in enumerate(masked) if not m]
+        masked[min(others, key=lambda i: counts[i])] = True
     return "; ".join(
-        f"{lv:g}: {100 * c / len(x):.1f}%" for lv, c in zip(levels, counts, strict=True)
+        f"{lv:g}: <{min_cell}" if m else f"{lv:g}: {100 * c / len(x):.1f}%"
+        for lv, c, m in zip(levels, counts, masked, strict=True)
     )
 
 
@@ -496,7 +513,7 @@ def screen(
         for short, g in zip(_SHORT, GROUPS, strict=True):
             small = 0 < len(vals[g]) < min_cell
             row[f"persons_{short}"] = None if small else len(vals[g])
-            row[f"summary_{short}"] = "" if small else _summary(vals[g], kind)
+            row[f"summary_{short}"] = "" if small else _summary(vals[g], kind, min_cell)
         rows.append(row)
     return pl.DataFrame(rows, schema=schema).sort("measure", "window")
 
@@ -559,9 +576,13 @@ def device_descriptors(device: pl.DataFrame, calendar: pl.DataFrame, key: str) -
     )
 
 
-def kl_coverage(groups: pl.DataFrame, long: pl.DataFrame) -> pl.DataFrame:
+def kl_coverage(groups: pl.DataFrame, long: pl.DataFrame, min_cell: int = 1) -> pl.DataFrame:
     """comparison, group, visit, share: the share of each group with a KL reading (kl_worse,
-    replacement kept as KL 4) at each visit. `groups` is comparison, ID, group."""
+    replacement kept as KL 4) at each visit. `groups` is comparison, ID, group.
+
+    The share is null where the people with a reading, or without one, number 1..min_cell-1
+    (the default, 1, suppresses nothing: compute gaps from that frame).
+    """
     kl = long.filter(
         (pl.col("measure") == "kl_worse") & ~pl.col("censored") & pl.col("value").is_not_null()
     ).select("ID", "visit")
@@ -575,17 +596,27 @@ def kl_coverage(groups: pl.DataFrame, long: pl.DataFrame) -> pl.DataFrame:
     return (
         size.join(visits, how="cross")
         .join(have, on=["comparison", "group", "visit"], how="left")
+        .with_columns(pl.col("_have").fill_null(0))
         .select(
             "comparison",
             "group",
             "visit",
-            (pl.col("_have").fill_null(0) / pl.col("_size")).alias("share"),
+            pl.when(
+                ((pl.col("_have") > 0) & (pl.col("_have") < min_cell))
+                | (
+                    (pl.col("_size") - pl.col("_have") > 0)
+                    & (pl.col("_size") - pl.col("_have") < min_cell)
+                )
+            )
+            .then(None)
+            .otherwise(pl.col("_have") / pl.col("_size"))
+            .alias("share"),
         )
         .sort("comparison", "group", "visit")
     )
 
 
-def coverage_gaps(coverage: pl.DataFrame) -> dict[str, float]:
+def coverage_gaps(coverage: pl.DataFrame) -> dict[str, float | None]:
     """Per comparison: the largest gap, over visits, between the two "Yes" groups' KL coverage."""
     wide = coverage.filter(pl.col("group").is_in(GROUPS[:2])).pivot(
         on="group", index=["comparison", "visit"], values="share"
@@ -593,7 +624,7 @@ def coverage_gaps(coverage: pl.DataFrame) -> dict[str, float]:
     gaps = wide.group_by("comparison").agg(
         (pl.col(GROUPS[0]) - pl.col(GROUPS[1])).abs().max().alias("gap")
     )
-    return {r["comparison"]: float(r["gap"] or 0.0) for r in gaps.iter_rows(named=True)}
+    return {r["comparison"]: r["gap"] for r in gaps.iter_rows(named=True)}
 
 
 def _fmt(x: float | None) -> str:
@@ -650,7 +681,9 @@ def render_markdown(
     """
 
     def gap(c: str) -> float:
-        return coverage_gap.get(c, 0.0) if isinstance(coverage_gap, dict) else coverage_gap
+        # fail closed: a missing, null or NaN gap counts as above the threshold
+        g = coverage_gap.get(c) if isinstance(coverage_gap, dict) else coverage_gap
+        return float("inf") if g is None or g != g else float(g)
 
     lines = [
         f"# Self-reported walkers by device walking status [{label}]",
@@ -684,7 +717,12 @@ def render_markdown(
             lines += [_md_table(lead)]
         else:
             lines += ["No measure reaches |SMD| >= 0.2.", ""]
-        sens = rows.filter(pl.col("censored") & (pl.col("band") == "lead"))
+        sens = rows.filter(
+            pl.col("censored")
+            & (pl.col("band") == "lead")
+            & ~pl.col("measure").is_in(defining)
+            & ~(pl.lit(flagged) & (pl.col("measure") == "kl_worse"))
+        )
         if sens.height:
             lines += [
                 "### Knee-level leads with replaced knees censored (sensitivity)",
@@ -692,13 +730,17 @@ def render_markdown(
                 _md_table(sens.sort("measure", "window")),
             ]
         if flagged:
+            size = (
+                f"largest gap {100 * gap(c):.0f} percentage points at a visit"
+                if gap(c) != float("inf")
+                else "the gap could not be computed"
+            )
             lines += [
                 "### KL coverage",
                 "",
-                f'KL readings cover the two "Yes" groups differently (largest gap '
-                f"{100 * gap(c):.0f} percentage points at a visit; discordance_kl_coverage.csv), "
-                "so the KL rows are reported in the CSV with this caveat and are not listed as "
-                "leads.",
+                f'KL readings may cover the two "Yes" groups differently ({size}; '
+                "discordance_kl_coverage.csv), so the KL rows are reported in the CSV with this "
+                "caveat and are not listed as leads.",
                 "",
             ]
         context = main.filter(pl.col("measure").is_in(defining))

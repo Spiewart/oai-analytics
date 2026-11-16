@@ -724,3 +724,91 @@ def test_self_report_measures_are_context_not_leads():
     )
     leads = text.split("### Leads")[1].split("###")[0]
     assert "bmi" not in leads and "define the groups" in text
+
+
+def test_kl_caveat_also_drops_kl_from_sensitivity_leads():
+    screen = pl.concat(
+        [
+            SCREEN_FIXTURE,
+            SCREEN_FIXTURE.filter(pl.col("measure") == "kl_worse").with_columns(
+                pl.lit(True).alias("censored")
+            ),
+        ]
+    )
+    text = d.render_markdown(
+        screen,
+        TRENDS_FIXTURE_EMPTY,
+        coverage_gap={"primary": 0.2},
+        label="default",
+        self_report_measures={"primary": ["womac_pain"]},
+    )
+    sens = text.split("(sensitivity)")[1].split("###")[0] if "(sensitivity)" in text else ""
+    assert "kl_worse" not in sens and "womac_pain" not in sens
+
+
+def test_missing_or_null_coverage_gap_fails_closed():
+    for gaps in ({}, {"primary": None}, {"primary": float("nan")}):
+        text = d.render_markdown(
+            SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap=gaps, label="default"
+        )
+        assert "### KL coverage" in text
+        leads = text.split("### Leads")[1].split("###")[0]
+        assert "kl_worse" not in leads
+
+
+def test_summary_masks_small_binary_counts():
+    x = np.array([1.0] * 3 + [0.0] * 20)
+    assert d._summary(x, "binary", min_cell=5) == "<5"
+    assert d._summary(np.array([1.0] * 6 + [0.0] * 20), "binary", min_cell=5) == "23.1%"
+
+
+def test_summary_masks_small_categorical_levels():
+    x = np.array([1.0] * 3 + [2.0] * 10 + [3.0] * 10)
+    # one masked level is the rest's complement, so the smallest other level is masked too
+    assert d._summary(x, "categorical", min_cell=5) == "1: <5; 2: <5; 3: 43.5%"
+    z = np.array([1.0] * 3 + [2.0] * 2 + [3.0] * 10 + [4.0] * 10)
+    assert d._summary(z, "categorical", min_cell=5) == "1: <5; 2: <5; 3: 40.0%; 4: 40.0%"
+    y = np.array([1.0] * 3 + [2.0] * 10)  # the one other level would reveal the small one
+    assert d._summary(y, "categorical", min_cell=5) == "1: <5; 2: <5"
+
+
+def test_screen_masks_small_levels_but_keeps_smd():
+    groups = pl.DataFrame(
+        {
+            "ID": list(range(20)),
+            "group": ["Yes, step walker"] * 10 + ["Yes, not a step walker"] * 10,
+        }
+    )
+    values = pl.DataFrame(
+        {
+            "ID": list(range(20)),
+            "measure": ["sex"] * 20,
+            "window": ["fixed"] * 20,
+            "value": [1.0] * 2 + [0.0] * 8 + [1.0] * 5 + [0.0] * 5,
+            "start_used": [None] * 20,
+            "end_used": [None] * 20,
+        },
+        schema_overrides={"start_used": pl.String, "end_used": pl.String},
+    )
+    row = d.screen(groups, values, {"sex": "binary"}, A_TEST, min_cell=5).row(0, named=True)
+    assert row["summary_step"] == "<5" and row["summary_not"] == "50.0%"
+    assert row["smd"] is not None and row["persons_step"] == 10
+
+
+def test_kl_coverage_suppresses_small_counts():
+    groups = pl.DataFrame(
+        {"comparison": ["c"] * 10, "ID": list(range(10)), "group": ["Yes, step walker"] * 10}
+    )
+    long = pl.DataFrame(
+        {
+            "ID": list(range(8)) + [0, 1],
+            "visit": ["06"] * 8 + ["10"] * 2,
+            "measure": ["kl_worse"] * 10,
+            "value": [1.0] * 10,
+            "censored": [False] * 10,
+        }
+    )
+    raw = d.kl_coverage(groups, long)
+    assert raw.filter(pl.col("visit") == "06")["share"].item() == 0.8
+    masked = d.kl_coverage(groups, long, min_cell=5)
+    assert masked["share"].to_list() == [None, None]  # 2 without a reading; 2 with one

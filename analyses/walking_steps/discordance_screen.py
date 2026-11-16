@@ -140,9 +140,9 @@ flow.write_csv(results / "discordance_flow.csv")
 print(flow)
 
 # --- KL coverage by group and visit, and the caveat
-coverage = d.kl_coverage(groups, long)
-coverage.write_csv(results / "discordance_kl_coverage.csv")
-gaps = d.coverage_gaps(coverage)
+# the gap from the unsuppressed shares; the CSV nulls shares resting on 1..min_cell-1 people
+gaps = d.coverage_gaps(d.kl_coverage(groups, long))
+d.kl_coverage(groups, long, min_cell).write_csv(results / "discordance_kl_coverage.csv")
 print("KL coverage gap between the Yes groups:", gaps)
 
 text = d.render_markdown(
