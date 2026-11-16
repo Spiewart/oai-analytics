@@ -763,16 +763,58 @@ def test_summary_masks_small_binary_counts():
 
 
 def test_summary_masks_small_categorical_levels():
+    # one masked level is the rest's complement: the smallest other is masked too, which
+    # leaves one level shown, whose share would give the masked total away: blank
     x = np.array([1.0] * 3 + [2.0] * 10 + [3.0] * 10)
-    # one masked level is the rest's complement, so the smallest other level is masked too
-    assert d._summary(x, "categorical", min_cell=5) == "1: <5; 2: <5; 3: 43.5%"
+    assert d._summary(x, "categorical", min_cell=5) == ""
     z = np.array([1.0] * 3 + [2.0] * 2 + [3.0] * 10 + [4.0] * 10)
     assert d._summary(z, "categorical", min_cell=5) == "1: <5; 2: <5; 3: 40.0%; 4: 40.0%"
-    y = np.array([1.0] * 3 + [2.0] * 10)  # the one other level would reveal the small one
-    assert d._summary(y, "categorical", min_cell=5) == "1: <5; 2: <5"
+    y = np.array([1.0] * 3 + [2.0] * 10)
+    assert d._summary(y, "categorical", min_cell=5) == ""
+    w = np.array([1.0] * 6 + [2.0] * 10 + [3.0] * 10)
+    assert d._summary(w, "categorical", min_cell=5) == "1: 23.1%; 2: 38.5%; 3: 38.5%"
 
 
-def test_screen_masks_small_levels_but_keeps_smd():
+def test_summary_masks_small_levels_whose_total_is_small():
+    # levels 1 and 2 hold 4 people together: the rest would give that total away
+    x = np.array([1.0] * 2 + [2.0] * 2 + [3.0] * 10 + [4.0] * 11 + [5.0] * 12)
+    assert d._summary(x, "categorical", min_cell=5) == "1: <5; 2: <5; 3: <5; 4: 29.7%; 5: 32.4%"
+
+
+def test_screen_blanks_smd_when_a_yes_summary_is_masked():
+    groups = pl.DataFrame(
+        {
+            "ID": list(range(20)),
+            "group": ["Yes, step walker"] * 10 + ["Yes, not a step walker"] * 10,
+        }
+    )
+    values = pl.DataFrame(
+        {
+            "ID": list(range(20)),
+            "measure": ["race"] * 20,
+            "window": ["fixed"] * 20,
+            "value": [1.0] * 2 + [2.0] * 8 + [1.0] * 5 + [2.0] * 5,
+            "start_used": [None] * 20,
+            "end_used": [None] * 20,
+        },
+        schema_overrides={"start_used": pl.String, "end_used": pl.String},
+    )
+    row = d.screen(groups, values, {"race": "categorical"}, A_TEST, min_cell=5).row(0, named=True)
+    assert row["summary_step"] == "" and row["summary_not"] == "1: 50.0%; 2: 50.0%"
+    assert row["smd"] is None and row["smd_lo"] is None and row["smd_hi"] is None
+    assert row["band"] == "" and row["persons_step"] == 10
+
+
+def test_kl_caveat_does_not_print_the_gap():
+    text = d.render_markdown(
+        SCREEN_FIXTURE, TRENDS_FIXTURE_EMPTY, coverage_gap={"primary": 0.237}, label="default"
+    )
+    caveat = text.split("### KL coverage")[1].split("###")[0]
+    assert "24" not in caveat and "23.7" not in caveat and "0.237" not in caveat
+    assert "10-percentage-point rule" in caveat
+
+
+def test_screen_masks_small_binary_and_blanks_smd():
     groups = pl.DataFrame(
         {
             "ID": list(range(20)),
@@ -792,7 +834,8 @@ def test_screen_masks_small_levels_but_keeps_smd():
     )
     row = d.screen(groups, values, {"sex": "binary"}, A_TEST, min_cell=5).row(0, named=True)
     assert row["summary_step"] == "<5" and row["summary_not"] == "50.0%"
-    assert row["smd"] is not None and row["persons_step"] == 10
+    # the SMD and the other group's share would give the masked count away
+    assert row["smd"] is None and row["band"] == "" and row["persons_step"] == 10
 
 
 def test_kl_coverage_suppresses_small_counts():

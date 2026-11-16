@@ -143,7 +143,11 @@ print(flow)
 # the gap from the unsuppressed shares; the CSV nulls shares resting on 1..min_cell-1 people
 gaps = d.coverage_gaps(d.kl_coverage(groups, long))
 d.kl_coverage(groups, long, min_cell).write_csv(results / "discordance_kl_coverage.csv")
-print("KL coverage gap between the Yes groups:", gaps)
+print(
+    "KL coverage caveat:",
+    sorted(c for c, g in gaps.items() if g is None or g > float(A["discordance.kl_coverage_gap"]))
+    or "none",
+)
 
 text = d.render_markdown(
     screen,

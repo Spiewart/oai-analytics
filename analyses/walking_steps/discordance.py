@@ -424,9 +424,10 @@ def _summary(x: np.ndarray, kind: str, min_cell: int = 1) -> str:
     """A group's summary: mean (SD), or the share of 1s, or the share of each level.
 
     Shares that stand for 1..min_cell-1 people show as "<min_cell": a binary summary when its
-    1s or its 0s are that few; a categorical level that small. When only one level is masked,
-    the smallest other level is masked too, since the rest would give it away by subtraction
-    (this covers the case of a single other level).
+    1s or its 0s are that few; a categorical level that small. Then, since the shown shares
+    give the masked total away by subtraction, the smallest shown level is masked too while
+    the masked levels hold 1..min_cell-1 people in all, or only one level is masked, or fewer
+    than two levels would stay shown; when fewer than two can stay shown, the summary is "".
     """
     if len(x) == 0:
         return ""
@@ -441,10 +442,14 @@ def _summary(x: np.ndarray, kind: str, min_cell: int = 1) -> str:
         return f"{100 * x.mean():.1f}%"
     levels, counts = np.unique(x, return_counts=True)
     masked = [small(int(c)) for c in counts]
-    if masked.count(True) == 1:
-        # one masked level is the total minus the others: mask the smallest other level too
-        others = [i for i, m in enumerate(masked) if not m]
-        masked[min(others, key=lambda i: counts[i])] = True
+    while any(masked):
+        shown = [i for i, m in enumerate(masked) if not m]
+        total = sum(int(c) for c, m in zip(counts, masked, strict=True) if m)
+        if not (small(total) or masked.count(True) == 1 or len(shown) < 2):
+            break
+        if len(shown) <= 2:  # masking one more would leave fewer than two shown
+            return ""
+        masked[min(shown, key=lambda i: counts[i])] = True
     return "; ".join(
         f"{lv:g}: <{min_cell}" if m else f"{lv:g}: {100 * c / len(x):.1f}%"
         for lv, c, m in zip(levels, counts, masked, strict=True)
@@ -514,6 +519,12 @@ def screen(
             small = 0 < len(vals[g]) < min_cell
             row[f"persons_{short}"] = None if small else len(vals[g])
             row[f"summary_{short}"] = "" if small else _summary(vals[g], kind, min_cell)
+        # a masked "Yes" summary: the SMD and the other group's shares would give it away
+        if any(
+            len(vals[g]) > 0 and (row[f"summary_{k}"] == "" or "<" in row[f"summary_{k}"])
+            for k, g in zip(_SHORT[:2], GROUPS[:2], strict=True)
+        ):
+            row.update(smd=None, smd_lo=None, smd_hi=None, band="")
         rows.append(row)
     return pl.DataFrame(rows, schema=schema).sort("measure", "window")
 
@@ -814,17 +825,18 @@ def render_markdown(
                 _md_table(sens.sort("measure", "window")),
             ]
         if flagged:
-            size = (
-                f"largest gap {100 * gap(c):.0f} percentage points at a visit"
+            # the gap itself stays internal: only the rule's outcome is reported
+            why = (
+                f'KL reading coverage differs between the two "Yes" groups by more than the '
+                f"{100 * threshold:g}-percentage-point rule"
                 if gap(c) != float("inf")
-                else "the gap could not be computed"
+                else "the KL coverage gap could not be computed"
             )
             lines += [
                 "### KL coverage",
                 "",
-                f'KL readings may cover the two "Yes" groups differently ({size}; '
-                "discordance_kl_coverage.csv), so the KL rows are reported in the CSV with this "
-                "caveat and are not listed as leads.",
+                f"{why} (see discordance_kl_coverage.csv), so the KL rows are reported in the "
+                "CSV with this caveat and are not listed as leads.",
                 "",
             ]
         context = main.filter(pl.col("measure").is_in(defining))
