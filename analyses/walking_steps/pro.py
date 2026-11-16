@@ -12,6 +12,11 @@ import math
 import numpy as np
 import polars as pl
 
+from oai.derive.pase import pase_visit
+from oai.derive.walking import walker_status, walking_answers
+from oai.loader import read_table
+from oai.visits import nominal_month
+
 Z = 1.959963984540054  # two-sided 95%
 
 
@@ -104,3 +109,45 @@ def spearman(x: pl.Series, y: pl.Series) -> dict[str, float | int | None]:
     rho = both.select(pl.corr("x", "y", method="spearman")).item()
     z, half = math.atanh(rho), Z / math.sqrt(n - 3)
     return {"n": n, "rho": rho, "rho_lo": math.tanh(z - half), "rho_hi": math.tanh(z + half)}
+
+
+def self_reports(A) -> dict[str, tuple[str, str, pl.DataFrame]]:
+    """Each self-report as pro id -> (label, visit, frame[ID, yes, score]).
+
+    The 96-month walking-for-exercise item (score null), and PASE item 2 (walking outside the
+    home) at each ledger visit as 'any walking' and as 'walking on at least 3-4 days'.
+    `A` is the analysis's assumptions.
+    """
+    answered = walking_answers().with_columns(
+        walker_status(
+            yes_without_amount_as=A["exposure.yes_without_amount_as"], missing_as="exclude"
+        )
+    )
+    pros = {
+        "item96": (
+            "Walked for exercise since age 50 (96-month item)",
+            "10",
+            answered.filter(pl.col("walker").is_not_null()).select(
+                "ID", pl.col("walker").alias("yes"), pl.lit(None, dtype=pl.Float64).alias("score")
+            ),
+        )
+    }
+    for v in A["pase.visits"]:
+        p = pase_visit(read_table("allclinical", v), v, A["pase.walking_scoring"])
+        score, days = pl.col(f"pase_walking_{v}"), pl.col(f"pase_days_{v}")
+        month = nominal_month(v)
+        pros[f"pase{v}_any"] = (
+            f"PASE walking, any ({month} months)",
+            v,
+            p.filter(score.is_not_null()).select(
+                "ID", (score > A["pase.walker_threshold"]).alias("yes"), score.alias("score")
+            ),
+        )
+        pros[f"pase{v}_frequent"] = (
+            f"PASE walking, 3+ days a week ({month} months)",
+            v,
+            p.filter(days.is_not_null()).select(
+                "ID", (days >= A["pase.frequent_days_code"]).alias("yes"), score.alias("score")
+            ),
+        )
+    return pros
