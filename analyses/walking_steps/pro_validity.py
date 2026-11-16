@@ -13,47 +13,22 @@ import os
 from pathlib import Path
 
 import polars as pl
-from devices import COUNT_MEASURES, combine, either_week, step_bout_measures, walker_definitions
-from pro import accuracy, auc_with_ci, spearman
+from devices import device_inputs, device_waves
+from pro import accuracy, auc_with_ci, self_reports, spearman
 
 from oai.assumptions import current
-from oai.derive.pase import pase_visit
-from oai.derive.walking import walker_status, walking_answers
-from oai.loader import read_table
-from oai.visits import nominal_month
 
 A = current()
 frames, results = Path(os.environ["OAI_FRAME_DIR"]), Path(os.environ["OAI_RESULTS_DIR"])
 cadences = [int(c) for c in A["reference.step_cadences"]]
-step_measures = ["steps", "peak_cadence"]
-step_measures += [f"cadence{c}_min" for c in cadences]
-step_measures += [m for c in cadences for m in step_bout_measures(c)]
-measures = COUNT_MEASURES + step_measures
-definitions = walker_definitions(
-    A["reference.min_bout_days_per_week"], A["reference.min_bout_minutes_per_week"], cadences
-)
+definitions, measures = device_inputs(A)
 missing = set(A["validity.auc_measures"]) - set(measures)
 if missing:
     raise ValueError(f"validity.auc_measures has measures this step does not build: {missing}")
 
 device = pl.read_parquet(frames / "device.parquet")
 
-
-def with_walkers(df: pl.DataFrame) -> pl.DataFrame:
-    common = df.filter(pl.col("steps").is_not_null())  # the same people for every definition
-    return common.with_columns(expr.alias(name) for name, _, expr in definitions)
-
-
-wave = {
-    w: with_walkers(device.filter(pl.col("valid") & (pl.col("wave") == w))) for w in ("06", "08")
-}
-wave["mean"] = with_walkers(combine(device, measures))
-# Either week: a device walker when any valid wave meets the definition (for the self-reports
-# paired with the mean of both waves). Same people as "mean": the combined step measures exist.
-names = [name for name, _, _ in definitions]
-wave["either"] = either_week(pl.concat([wave["06"], wave["08"]], how="diagonal"), names).join(
-    wave["mean"].select("ID"), on="ID", how="semi"
-)
+wave = device_waves(device, definitions, measures)
 DEVICE_LABEL = {
     "06": "48-month wave",
     "08": "72-month wave",
@@ -62,41 +37,7 @@ DEVICE_LABEL = {
 }
 
 # --- self-reports: ID, yes (Boolean), score (PASE walking subscore; null for the item)
-answered = walking_answers().with_columns(
-    walker_status(yes_without_amount_as=A["exposure.yes_without_amount_as"], missing_as="exclude")
-)
-pros = [
-    (
-        "item96",
-        "Walked for exercise since age 50 (96-month item)",
-        "10",
-        answered.filter(pl.col("walker").is_not_null()).select(
-            "ID", pl.col("walker").alias("yes"), pl.lit(None, dtype=pl.Float64).alias("score")
-        ),
-    )
-]
-for v in A["pase.visits"]:
-    p = pase_visit(read_table("allclinical", v), v, A["pase.walking_scoring"])
-    score, days = pl.col(f"pase_walking_{v}"), pl.col(f"pase_days_{v}")
-    month = nominal_month(v)
-    pros += [
-        (
-            f"pase{v}_any",
-            f"PASE walking, any ({month} months)",
-            v,
-            p.filter(score.is_not_null()).select(
-                "ID", (score > A["pase.walker_threshold"]).alias("yes"), score.alias("score")
-            ),
-        ),
-        (
-            f"pase{v}_frequent",
-            f"PASE walking, 3+ days a week ({month} months)",
-            v,
-            p.filter(days.is_not_null()).select(
-                "ID", (days >= A["pase.frequent_days_code"]).alias("yes"), score.alias("score")
-            ),
-        ),
-    ]
+pros = self_reports(A)
 
 
 def paired_wave(visit: str) -> str:
@@ -106,7 +47,7 @@ def paired_wave(visit: str) -> str:
 
 
 acc_rows, auc_rows, rho_rows, flow_rows = [], [], [], []
-for i, (pro_id, pro_label, visit, frame) in enumerate(pros):
+for i, (pro_id, (pro_label, visit, frame)) in enumerate(pros.items()):
     w = paired_wave(visit)
     joined = frame.join(wave[w], on="ID", how="inner")
     base = {"pro": pro_id, "pro_label": pro_label, "device": DEVICE_LABEL[w]}

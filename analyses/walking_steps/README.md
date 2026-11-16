@@ -1,6 +1,6 @@
 # Walking from per-minute steps
 
-Three questions, at 48 and 72 months: how much of the GT1M activity counts is walking (step `share`), how self-reported walking agrees with count-based and step-based device walking (steps `persons` and `pro_validity`), and how per-minute steps relate to per-minute counts (step `relation`). `oai report walking_steps` renders `report.pdf`, a two-page exploratory summary of both for the study team and the Northwestern accelerometry group.
+Three questions, at 48 and 72 months: how much of the GT1M activity counts is walking (step `share`), how self-reported walking agrees with count-based and step-based device walking (steps `persons` and `pro_validity`), and how per-minute steps relate to per-minute counts (step `relation`). `oai report walking_steps` renders `report.pdf`, a two-page exploratory summary of both for the study team and the Northwestern accelerometry group. It also renders `discordance.pdf` (`discordance.qmd`), the Part 4 report on self-reported walkers by device walking status.
 
 ## Part 1: share of the counts
 
@@ -77,6 +77,27 @@ The step bands are `walking.band_edges`. The hexbin x-axis stops at the `relatio
 | `relation_hex_meta.csv` | Per visit: the x-axis cut-off, the share of minutes beyond it, the share in hexagons with minutes from fewer than `relation.hex_min_people` participants (dropped, as in walking_validation), and the hexagon width and height |
 | `relation_bins.csv` | Per visit and count bin: intensity, minutes (thousands), share of minutes, and the steps quartiles |
 | `relation_bands.csv` | Per visit, count bin and step band: the share of the bin's minutes in the band |
+
+## Part 4: self-reported walkers by device walking status
+
+Among people who say they walk for exercise, how do those who are step-defined walkers ("Yes, step walker") differ from those who are not ("Yes, not a step walker")? "No" is shown for reference in stage 1 and is not modelled. The comparisons are `discordance.comparisons`: the primary one (96-month item against step walking over the mean of valid waves) and two replications (count MV bouts; PASE walking at 48 months against step walking at 48 months). The self-report and the device may capture different aspects of walking, so a difference describes the groups and does not say which source is right.
+
+- `discordance_frame` builds the groups, the long table of time-varying measures (knee-level measures under both replacement rules: KL 4 kept after replacement, and the replaced knee censored), the fixed measures and each measure's kind. All person-level, so all in `OAI_WORK_DIR`.
+- `discordance_screen` (stage 1): standardized differences between the two "Yes" groups at 48 months and in the changes 00 to 48 and 48 to 96 months, with bootstrap CIs and the reading bands in `discordance.smd_bands`. No p-values. A change in a 0/1 measure (-1, 0 or 1) is compared as continuous; its group summary, mean (SD), shows as "<min_cell" when any of the three values holds 1..min_cell-1 people, and then the SMD is left blank. Writes the screen CSVs only.
+- `discordance_trends` (stage 2, R): for each comparison, replacement rule and time-varying measure, one `oaimodels::walker_model()` fit over `discordance.trend_visits`, adjusted for `discordance.trend_covariates` (age at 00, sex): a linear mixed model with a random intercept per person for continuous measures, a GEE (`discordance.gee_corstr`) for 0/1 measures. It gives the "Yes, not a step walker" against "Yes, step walker" contrast at each visit (a difference or an OR) and the group x visit test. Raw rows go to `OAI_WORK_DIR` (`discordance_trends_raw.csv`).
+- `discordance_holm` Holm-adjusts the group x visit p across measures, one family per comparison and replacement rule (`discordance.multiplicity`). A measure whose model failed keeps a null. It nulls a visit's estimate when fewer than `[egress] min_cell` people in either "Yes" group have the measure at that visit, then writes `discordance_trends.csv` and `DISCORDANCE.md` with both stages (it is the only step that writes `DISCORDANCE.md`).
+
+| File | Contents |
+|---|---|
+| `discordance_flow.csv` | Persons per comparison and group, and persons with any time-varying value at each visit |
+| `discordance_screen.csv` | Stage 1: per comparison, replacement rule, measure and window, the visits used, the group summaries (with "No") and the SMD (95% CI) with its band |
+| `discordance_kl_coverage.csv` | Share of each group with a KL reading at each visit |
+| `discordance_trends.csv` | Stage 2: per comparison, replacement rule, measure and visit, the adjusted contrast (`estimate`, `lo`, `hi`, `scale` difference or OR), `p_interaction` and `p_interaction_holm` (repeated on the measure's rows), `persons_model`, `converged` and `fit_note` |
+| `DISCORDANCE.md` | Stage 1 leads (\|SMD\| >= 0.2) and stage 2 measures with Holm p < `discordance.trend_alpha`, in neutral wording, with the KL-coverage caveat when the gap passes `discordance.kl_coverage_gap` |
+
+`discordance.pdf` (from `discordance.qmd`, rendered by `oai report walking_steps`) draws both stages from these aggregates: group sizes, a forest plot of the primary comparison's SMDs by window and area, the leads of every comparison side by side, the adjusted per-visit gaps for the measures with Holm p < `discordance.trend_alpha` (or, when a comparison has none, its 6 largest |SMD| at 48 months, labelled so), the censored knee-level sensitivity beside the main results, and the KL-coverage caveat when it applies.
+
+The stage-2 step fits about 100 models, the GEEs in a child process each with `discordance.fit_timeout`; a fit that fails, times out or is separated leaves a row with `converged` false and the reason in `fit_note`.
 
 ## Caveats
 
